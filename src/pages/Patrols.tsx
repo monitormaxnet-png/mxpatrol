@@ -39,45 +39,49 @@ const Patrols = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
-              className="glass-card flex items-center gap-6 p-5"
+              className="glass-card p-4 lg:p-5"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                <MapPin className="h-5 w-5 text-primary" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="font-heading text-sm font-semibold text-foreground">{patrol.name}</p>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${status.bg} ${status.color}`}>
-                    {status.label}
-                  </span>
+              <div className="flex items-center gap-3 lg:gap-4">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 lg:h-10 lg:w-10">
+                  <MapPin className="h-4 w-4 text-primary lg:h-5 lg:w-5" />
                 </div>
-                <p className="text-xs text-muted-foreground">Guard: {patrol.guard} · {patrol.id}</p>
-              </div>
 
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                <span className="text-foreground">{patrol.checkpoints}</span>
-              </div>
-
-              <div className="w-32">
-                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                  <span>{patrol.progress}%</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      patrol.status === "delayed" ? "bg-warning" : "bg-primary"
-                    }`}
-                    style={{ width: `${patrol.progress}%` }}
-                  />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-heading text-sm font-semibold text-foreground">{patrol.name}</p>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${status.bg} ${status.color}`}>
+                      {status.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Guard: {patrol.guard} · {patrol.id}</p>
                 </div>
               </div>
 
-              <div className="text-right text-xs text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {patrol.startTime} — {patrol.eta}
+              <div className="mt-3 flex flex-wrap items-center gap-4 pl-12 lg:pl-14">
+                <div className="flex items-center gap-2 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-foreground">{patrol.checkpoints}</span>
+                </div>
+
+                <div className="w-24 lg:w-32">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                    <span>{patrol.progress}%</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        patrol.status === "delayed" ? "bg-warning" : "bg-primary"
+                      }`}
+                      style={{ width: `${patrol.progress}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {patrol.startTime} — {patrol.eta}
+                  </div>
                 </div>
               </div>
             </motion.div>

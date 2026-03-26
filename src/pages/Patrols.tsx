@@ -19,12 +19,12 @@ const statusConfig: Record<string, { color: string; bg: string; label: string }>
 const Patrols = () => {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-heading text-2xl font-bold text-foreground">Patrol Management</h2>
+          <h2 className="font-heading text-xl font-bold text-foreground lg:text-2xl">Patrol Management</h2>
           <p className="text-sm text-muted-foreground">Monitor and manage all active patrol routes</p>
         </div>
-        <button className="flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+        <button className="flex h-9 w-fit items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
           <Play className="h-4 w-4" />
           New Patrol
         </button>

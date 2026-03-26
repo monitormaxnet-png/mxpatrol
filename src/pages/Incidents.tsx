@@ -24,12 +24,12 @@ const statusColors: Record<string, string> = {
 const Incidents = () => {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-heading text-2xl font-bold text-foreground">Incident Reports</h2>
+          <h2 className="font-heading text-xl font-bold text-foreground lg:text-2xl">Incident Reports</h2>
           <p className="text-sm text-muted-foreground">AI-analyzed security incidents with severity classification</p>
         </div>
-        <button className="flex h-9 items-center gap-2 rounded-lg bg-destructive px-4 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90">
+        <button className="flex h-9 w-fit items-center gap-2 rounded-lg bg-destructive px-4 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90">
           <AlertTriangle className="h-4 w-4" />
           Report Incident
         </button>
@@ -42,7 +42,7 @@ const Incidents = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
-            className="glass-card p-5"
+            className="glass-card p-4 lg:p-5"
           >
             <div className="flex items-start gap-4">
               <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${severityColors[incident.severity]}`}>

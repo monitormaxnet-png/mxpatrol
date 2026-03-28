@@ -20,6 +20,7 @@ import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+import Profile from "./pages/Profile";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="/reports" element={<Reports />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/profile" element={<Profile />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

@@ -1,22 +1,58 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { MapPin, Clock, CheckCircle2, AlertTriangle, Play, Pause } from "lucide-react";
-
-const patrols = [
-  { id: "P-001", name: "Building A — Night Shift", status: "active", progress: 78, guard: "John D.", checkpoints: "7/9", startTime: "22:00", eta: "06:00" },
-  { id: "P-002", name: "Warehouse 3 — Evening", status: "active", progress: 45, guard: "Maria S.", checkpoints: "4/9", startTime: "18:00", eta: "02:00" },
-  { id: "P-003", name: "Parking Lot C", status: "delayed", progress: 30, guard: "Alex K.", checkpoints: "2/7", startTime: "20:00", eta: "04:00" },
-  { id: "P-004", name: "Zone B Perimeter", status: "completed", progress: 100, guard: "Sam W.", checkpoints: "11/11", startTime: "14:00", eta: "22:00" },
-  { id: "P-005", name: "Main Gate — Day Shift", status: "scheduled", progress: 0, guard: "Chris L.", checkpoints: "0/6", startTime: "06:00", eta: "14:00" },
-];
+import { MapPin, Clock, CheckCircle2, Play, Loader2, Plus } from "lucide-react";
+import { usePatrols, useGuards } from "@/hooks/useDashboardData";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatDistanceToNow } from "date-fns";
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
-  active: { color: "text-success", bg: "bg-success/10", label: "Active" },
-  delayed: { color: "text-warning", bg: "bg-warning/10", label: "Delayed" },
+  in_progress: { color: "text-success", bg: "bg-success/10", label: "Active" },
+  missed: { color: "text-destructive", bg: "bg-destructive/10", label: "Missed" },
   completed: { color: "text-primary", bg: "bg-primary/10", label: "Completed" },
   scheduled: { color: "text-muted-foreground", bg: "bg-muted", label: "Scheduled" },
 };
 
 const Patrols = () => {
+  const { data: patrols = [], isLoading } = usePatrols();
+  const { data: guards = [] } = useGuards();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name: "", description: "", guard_id: "", duration: "480" });
+
+  const handleCreate = async () => {
+    if (!form.name) { toast.error("Patrol name is required"); return; }
+    setSaving(true);
+
+    const { data: profile } = await supabase.from("profiles").select("company_id").single();
+    if (!profile?.company_id) { toast.error("No company associated"); setSaving(false); return; }
+
+    const { error } = await supabase.from("patrols").insert({
+      company_id: profile.company_id,
+      name: form.name,
+      description: form.description || null,
+      guard_id: form.guard_id || null,
+      expected_duration_minutes: parseInt(form.duration) || 480,
+      status: "scheduled",
+    });
+
+    setSaving(false);
+    if (error) { toast.error("Failed to create patrol: " + error.message); }
+    else {
+      toast.success("Patrol created");
+      setForm({ name: "", description: "", guard_id: "", duration: "480" });
+      setOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["patrols"] });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -24,65 +60,73 @@ const Patrols = () => {
           <h2 className="font-heading text-xl font-bold text-foreground lg:text-2xl">Patrol Management</h2>
           <p className="text-sm text-muted-foreground">Monitor and manage all active patrol routes</p>
         </div>
-        <button className="flex h-9 w-fit items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
-          <Play className="h-4 w-4" />
-          New Patrol
-        </button>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <button className="flex h-9 w-fit items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+              <Plus className="h-4 w-4" />
+              New Patrol
+            </button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Create New Patrol</DialogTitle></DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Building A — Night Shift" /></div>
+              <div><Label>Description (optional)</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+              <div>
+                <Label>Assign Guard</Label>
+                <Select value={form.guard_id} onValueChange={(v) => setForm({ ...form, guard_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select guard" /></SelectTrigger>
+                  <SelectContent>
+                    {guards.filter(g => g.is_active).map(g => (
+                      <SelectItem key={g.id} value={g.id}>{g.full_name} ({g.badge_number})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label>Duration (minutes)</Label><Input type="number" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} /></div>
+              <Button onClick={handleCreate} disabled={saving} className="w-full">
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create Patrol
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
+
+      {isLoading && <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}
 
       <div className="space-y-3">
         {patrols.map((patrol, i) => {
-          const status = statusConfig[patrol.status];
+          const status = statusConfig[patrol.status] || statusConfig.scheduled;
           return (
-            <motion.div
-              key={patrol.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="glass-card p-4 lg:p-5"
-            >
+            <motion.div key={patrol.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="glass-card p-4 lg:p-5">
               <div className="flex items-center gap-3 lg:gap-4">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 lg:h-10 lg:w-10">
                   <MapPin className="h-4 w-4 text-primary lg:h-5 lg:w-5" />
                 </div>
-
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-heading text-sm font-semibold text-foreground">{patrol.name}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${status.bg} ${status.color}`}>
-                      {status.label}
-                    </span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${status.bg} ${status.color}`}>{status.label}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Guard: {patrol.guard} · {patrol.id}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {patrol.guards?.full_name ? `Guard: ${patrol.guards.full_name}` : "Unassigned"} · {formatDistanceToNow(new Date(patrol.updated_at), { addSuffix: true })}
+                  </p>
                 </div>
               </div>
-
+              {patrol.description && (
+                <p className="mt-2 pl-12 text-xs text-muted-foreground lg:pl-14">{patrol.description}</p>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-4 pl-12 lg:pl-14">
-                <div className="flex items-center gap-2 text-sm">
-                  <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-foreground">{patrol.checkpoints}</span>
-                </div>
-
-                <div className="w-24 lg:w-32">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                    <span>{patrol.progress}%</span>
+                {patrol.expected_duration_minutes && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />{patrol.expected_duration_minutes} min
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={`h-full rounded-full transition-all ${
-                        patrol.status === "delayed" ? "bg-warning" : "bg-primary"
-                      }`}
-                      style={{ width: `${patrol.progress}%` }}
-                    />
+                )}
+                {patrol.started_at && (
+                  <div className="text-xs text-muted-foreground">
+                    Started {formatDistanceToNow(new Date(patrol.started_at), { addSuffix: true })}
                   </div>
-                </div>
-
-                <div className="text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {patrol.startTime} — {patrol.eta}
-                  </div>
-                </div>
+                )}
               </div>
             </motion.div>
           );

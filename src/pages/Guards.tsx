@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { User, Star, Shield, MapPin, Plus, Loader2 } from "lucide-react";
 import { useGuards } from "@/hooks/useDashboardData";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,6 +20,7 @@ const statusColors: Record<string, string> = {
 const Guards = () => {
   const { data: guards = [], isLoading } = useGuards();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ full_name: "", badge_number: "", phone: "" });
@@ -113,7 +115,8 @@ const Guards = () => {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: i * 0.05 }}
-            className="glass-card p-5"
+            className="glass-card p-5 cursor-pointer transition-colors hover:bg-muted/30"
+            onClick={() => navigate(`/guards/${guard.id}`)}
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">

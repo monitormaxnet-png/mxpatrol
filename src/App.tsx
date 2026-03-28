@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
+import GuardDetail from "./pages/GuardDetail";
 import Patrols from "./pages/Patrols";
 import Guards from "./pages/Guards";
 import Incidents from "./pages/Incidents";
@@ -47,6 +48,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/patrols" element={<Patrols />} />
               <Route path="/guards" element={<Guards />} />
+              <Route path="/guards/:id" element={<GuardDetail />} />
               <Route path="/incidents" element={<Incidents />} />
               <Route path="/ai-insights" element={<AIInsights />} />
               <Route path="/reports" element={<Reports />} />

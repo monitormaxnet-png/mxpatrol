@@ -11,16 +11,24 @@ import {
   Radio,
   X,
 } from "lucide-react";
+import { useUserRole, type AppRole } from "@/hooks/useUserRole";
 
-const navItems = [
+type NavItem = {
+  to: string;
+  icon: typeof LayoutDashboard;
+  label: string;
+  minRole?: AppRole[];
+};
+
+const navItems: NavItem[] = [
   { to: "/", icon: LayoutDashboard, label: "Command Center" },
   { to: "/patrols", icon: MapPin, label: "Patrols" },
-  { to: "/guards", icon: Users, label: "Guards" },
+  { to: "/guards", icon: Users, label: "Guards", minRole: ["admin", "supervisor"] },
   { to: "/incidents", icon: AlertTriangle, label: "Incidents" },
-  { to: "/ai-insights", icon: Brain, label: "AI Insights" },
-  { to: "/reports", icon: FileText, label: "Reports" },
-  { to: "/devices", icon: Radio, label: "Devices" },
-  { to: "/settings", icon: Settings, label: "Settings" },
+  { to: "/ai-insights", icon: Brain, label: "AI Insights", minRole: ["admin", "supervisor"] },
+  { to: "/reports", icon: FileText, label: "Reports", minRole: ["admin", "supervisor"] },
+  { to: "/devices", icon: Radio, label: "Devices", minRole: ["admin"] },
+  { to: "/settings", icon: Settings, label: "Settings", minRole: ["admin"] },
 ];
 
 interface AppSidebarProps {
@@ -30,10 +38,14 @@ interface AppSidebarProps {
 
 const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
   const location = useLocation();
+  const { role } = useUserRole();
+
+  const visibleItems = navItems.filter(
+    (item) => !item.minRole || item.minRole.includes(role)
+  );
 
   return (
     <>
-      {/* Mobile overlay */}
       {open && (
         <div
           className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm lg:hidden"
@@ -46,7 +58,6 @@ const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Brand */}
         <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-4 lg:h-16 lg:px-5">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 glow-primary lg:h-9 lg:w-9">
@@ -65,9 +76,8 @@ const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
           </button>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {navItems.map(({ to, icon: Icon, label }) => {
+          {visibleItems.map(({ to, icon: Icon, label }) => {
             const isActive = location.pathname === to;
             return (
               <NavLink
@@ -87,7 +97,6 @@ const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
           })}
         </nav>
 
-        {/* Status */}
         <div className="border-t border-sidebar-border p-4">
           <div className="glass-card flex items-center gap-3 px-3 py-2.5">
             <span className="relative flex h-2 w-2">
@@ -96,7 +105,7 @@ const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
             </span>
             <div>
               <p className="text-xs font-medium text-foreground">System Online</p>
-              <p className="text-[10px] text-muted-foreground">All services operational</p>
+              <p className="text-[10px] text-muted-foreground capitalize">{role} access</p>
             </div>
           </div>
         </div>

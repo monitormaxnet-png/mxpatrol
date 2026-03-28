@@ -19,35 +19,44 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Get auth user from request
-    const authHeader = req.headers.get("Authorization");
-    const anonKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
-    const userClient = createClient(SUPABASE_URL, anonKey, {
-      global: { headers: { Authorization: authHeader || "" } },
-    });
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Parse request body
+    let body: Record<string, unknown> = {};
+    try { body = await req.json(); } catch { /* empty body is ok */ }
+
+    let companyId: string;
+
+    if (body.scheduled) {
+      // Scheduled cron call — analyze the demo company
+      companyId = "a0000000-0000-0000-0000-000000000001";
+    } else {
+      // User-initiated — authenticate and get their company
+      const authHeader = req.headers.get("Authorization");
+      const anonKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
+      const userClient = createClient(SUPABASE_URL, anonKey, {
+        global: { headers: { Authorization: authHeader || "" } },
       });
+      const { data: { user }, error: authError } = await userClient.auth.getUser();
+      if (authError || !user) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("company_id")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile?.company_id) {
+        return new Response(JSON.stringify({ error: "No company associated" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      companyId = profile.company_id;
     }
-
-    // Get user's company_id
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("company_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.company_id) {
-      return new Response(JSON.stringify({ error: "No company associated" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const companyId = profile.company_id;
 
     // Fetch recent data for analysis
     const [guardsRes, patrolsRes, alertsRes, scansRes, incidentsRes] = await Promise.all([

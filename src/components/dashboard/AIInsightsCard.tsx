@@ -1,9 +1,30 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Brain, TrendingUp, TrendingDown, Minus, Loader2 } from "lucide-react";
+import { Brain, TrendingUp, TrendingDown, Minus, Loader2, Zap } from "lucide-react";
 import { useAIInsights } from "@/hooks/useDashboardData";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 const AIInsightsCard = () => {
   const { data: insights = [], isLoading } = useAIInsights();
+  const [analyzing, setAnalyzing] = useState(false);
+  const queryClient = useQueryClient();
+
+  const runAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("patrol-analysis");
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success(`AI generated ${data?.insights?.length || 0} new insights`);
+      queryClient.invalidateQueries({ queryKey: ["ai_insights"] });
+    } catch (e: any) {
+      toast.error(e.message || "Analysis failed");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   return (
     <motion.div
@@ -15,6 +36,14 @@ const AIInsightsCard = () => {
         <Brain className="h-4 w-4 text-primary" />
         <h3 className="font-heading text-sm font-semibold text-foreground">AI Insights</h3>
         <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">Live</span>
+        <button
+          onClick={runAnalysis}
+          disabled={analyzing}
+          className="ml-2 flex h-7 items-center gap-1.5 rounded-md bg-primary px-3 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+          {analyzing ? "Analyzing…" : "Analyze"}
+        </button>
       </div>
       <div className="divide-y divide-border/30">
         {isLoading && (
@@ -24,10 +53,10 @@ const AIInsightsCard = () => {
         )}
         {!isLoading && insights.length === 0 && (
           <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-            No AI insights yet — they'll appear after patrol data is analyzed
+            No AI insights yet — click <strong>Analyze</strong> to generate them
           </div>
         )}
-        {insights.map((item, i) => {
+        {insights.map((item) => {
           const data = item.data as Record<string, unknown> | null;
           const score = (data?.score as number) ?? 0;
           const trend = (data?.trend as string) ?? "stable";

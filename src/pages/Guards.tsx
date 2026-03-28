@@ -20,6 +20,7 @@ const statusColors: Record<string, string> = {
 const Guards = () => {
   const { data: guards = [], isLoading } = useGuards();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ full_name: "", badge_number: "", phone: "" });

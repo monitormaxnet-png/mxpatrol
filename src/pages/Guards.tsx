@@ -115,7 +115,8 @@ const Guards = () => {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: i * 0.05 }}
-            className="glass-card p-5"
+            className="glass-card p-5 cursor-pointer transition-colors hover:bg-muted/30"
+            onClick={() => navigate(`/guards/${guard.id}`)}
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">

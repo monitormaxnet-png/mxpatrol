@@ -1,22 +1,68 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, MapPin, Scan, FileText } from "lucide-react";
+import { CheckCircle2, MapPin, Scan, FileText, AlertTriangle } from "lucide-react";
+import { useScanLogs, useIncidents, usePatrols } from "@/hooks/useDashboardData";
+import { formatDistanceToNow } from "date-fns";
+import { useMemo } from "react";
 
-const activities = [
-  { id: 1, action: "NFC scan completed", detail: "Guard #3 at Checkpoint D-2", time: "1 min ago", icon: Scan },
-  { id: 2, action: "Patrol completed", detail: "Night shift — Building A", time: "4 min ago", icon: CheckCircle2 },
-  { id: 3, action: "Location updated", detail: "Guard #8 — Zone B perimeter", time: "6 min ago", icon: MapPin },
-  { id: 4, action: "Incident filed", detail: "Broken window — Parking Lot C", time: "10 min ago", icon: FileText },
-  { id: 5, action: "NFC scan completed", detail: "Guard #15 at Checkpoint A-7", time: "11 min ago", icon: Scan },
-  { id: 6, action: "Patrol started", detail: "Evening shift — Warehouse 3", time: "14 min ago", icon: MapPin },
-];
+type ActivityItem = {
+  id: string;
+  action: string;
+  detail: string;
+  time: Date;
+  icon: typeof Scan;
+};
 
 const ActivityFeed = () => {
+  const { data: scans = [] } = useScanLogs();
+  const { data: incidents = [] } = useIncidents();
+  const { data: patrols = [] } = usePatrols();
+
+  const activities = useMemo<ActivityItem[]>(() => {
+    const items: ActivityItem[] = [];
+
+    scans.forEach((s) => {
+      items.push({
+        id: `scan-${s.id}`,
+        action: "NFC scan completed",
+        detail: `${s.guards?.full_name || "Guard"} at ${s.checkpoints?.name || "Checkpoint"}`,
+        time: new Date(s.scanned_at),
+        icon: Scan,
+      });
+    });
+
+    incidents.slice(0, 5).forEach((inc) => {
+      items.push({
+        id: `inc-${inc.id}`,
+        action: "Incident filed",
+        detail: inc.title,
+        time: new Date(inc.created_at),
+        icon: inc.severity === "high" || inc.severity === "critical" ? AlertTriangle : FileText,
+      });
+    });
+
+    patrols.slice(0, 5).forEach((p) => {
+      const isComplete = p.status === "completed";
+      items.push({
+        id: `patrol-${p.id}`,
+        action: isComplete ? "Patrol completed" : p.status === "in_progress" ? "Patrol started" : "Patrol scheduled",
+        detail: `${p.name}${p.guards?.full_name ? ` — ${p.guards.full_name}` : ""}`,
+        time: new Date(p.updated_at),
+        icon: isComplete ? CheckCircle2 : MapPin,
+      });
+    });
+
+    return items.sort((a, b) => b.time.getTime() - a.time.getTime()).slice(0, 15);
+  }, [scans, incidents, patrols]);
+
   return (
     <div className="glass-card flex flex-col">
       <div className="border-b border-border/50 px-5 py-4">
         <h3 className="font-heading text-sm font-semibold text-foreground">Activity Feed</h3>
       </div>
       <div className="flex-1 divide-y divide-border/30 overflow-auto">
+        {activities.length === 0 && (
+          <div className="px-5 py-8 text-center text-sm text-muted-foreground">No recent activity</div>
+        )}
         {activities.map((item, i) => (
           <motion.div
             key={item.id}
@@ -32,7 +78,9 @@ const ActivityFeed = () => {
               <p className="text-sm font-medium text-foreground">{item.action}</p>
               <p className="text-xs text-muted-foreground">{item.detail}</p>
             </div>
-            <span className="shrink-0 text-[10px] text-muted-foreground">{item.time}</span>
+            <span className="shrink-0 text-[10px] text-muted-foreground">
+              {formatDistanceToNow(item.time, { addSuffix: true })}
+            </span>
           </motion.div>
         ))}
       </div>

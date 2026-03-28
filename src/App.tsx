@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
+import GuardDetail from "./pages/GuardDetail";
 import Patrols from "./pages/Patrols";
 import Guards from "./pages/Guards";
 import Incidents from "./pages/Incidents";

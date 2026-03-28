@@ -2,8 +2,10 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import AppSidebar from "./AppSidebar";
 import TopBar from "./TopBar";
+import { useAlertNotifications } from "@/hooks/useAlertNotifications";
 
 const AppLayout = () => {
+  useAlertNotifications();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (

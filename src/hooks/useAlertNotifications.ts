@@ -1,22 +1,13 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { AlertTriangle, ShieldAlert, Clock, Radio } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
-const alertIcons: Record<string, typeof AlertTriangle> = {
-  missed_checkpoint: Clock,
-  late_patrol: Clock,
-  panic_button: ShieldAlert,
-  device_offline: Radio,
-  anomaly: AlertTriangle,
-};
-
-const severityStyles: Record<string, { bg: string; title: string }> = {
-  critical: { bg: "destructive", title: "🚨 CRITICAL ALERT" },
-  high: { bg: "destructive", title: "⚠️ High Alert" },
-  medium: { bg: "warning", title: "Alert" },
-  low: { bg: "default", title: "Notice" },
+const severityStyles: Record<string, { title: string }> = {
+  critical: { title: "🚨 CRITICAL ALERT" },
+  high: { title: "⚠️ High Alert" },
+  medium: { title: "Alert" },
+  low: { title: "Notice" },
 };
 
 export function useAlertNotifications() {
@@ -28,23 +19,35 @@ export function useAlertNotifications() {
     initializedRef.current = true;
 
     const channel = supabase
-      .channel("alert-notifications")
+      .channel("all-notifications")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "alerts" },
         (payload) => {
-          const alert = payload.new as {
-            type: string;
-            message: string;
-            severity: string;
-          };
-
+          const alert = payload.new as { message: string; severity: string };
           const style = severityStyles[alert.severity] || severityStyles.low;
-
           toast.error(alert.message, {
             description: style.title,
             duration: alert.severity === "critical" ? 10000 : 5000,
           });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "incidents" },
+        (payload) => {
+          const incident = payload.new as { title: string; severity: string };
+          toast.warning(`New Incident: ${incident.title}`, {
+            description: `Severity: ${incident.severity}`,
+            duration: 6000,
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "scan_logs" },
+        () => {
+          toast.info("New NFC scan recorded", { duration: 3000 });
         }
       )
       .subscribe();

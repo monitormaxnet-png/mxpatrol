@@ -1,4 +1,5 @@
-import { Bell, Search, Scan, Menu } from "lucide-react";
+import { Search, Scan, Menu } from "lucide-react";
+import NotificationCenter from "./NotificationCenter";
 
 interface TopBarProps {
   onMenuClick: () => void;
@@ -25,12 +26,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
       </div>
 
       <div className="flex items-center gap-2 lg:gap-3">
-        <button className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted/50 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-          <Bell className="h-4 w-4" />
-          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-            3
-          </span>
-        </button>
+        <NotificationCenter />
         <button className="flex h-9 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20 lg:px-3">
           <Scan className="h-4 w-4" />
           <span className="hidden sm:inline">NFC Scan</span>

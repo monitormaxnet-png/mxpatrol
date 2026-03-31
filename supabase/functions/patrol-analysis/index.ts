@@ -35,7 +35,7 @@ serve(async (req) => {
     } else {
       // User-initiated — authenticate and get their company
       const authHeader = req.headers.get("Authorization");
-      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const anonKey = SUPABASE_ANON_KEY;
       const userClient = createClient(SUPABASE_URL, anonKey, {
         global: { headers: { Authorization: authHeader || "" } },
       });

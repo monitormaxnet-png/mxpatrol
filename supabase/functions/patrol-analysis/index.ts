@@ -12,10 +12,14 @@ serve(async (req) => {
 
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    if (!SUPABASE_URL) throw new Error("SUPABASE_URL not configured");
+    if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY not configured");
+    if (!SUPABASE_ANON_KEY) throw new Error("SUPABASE_ANON_KEY not configured");
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -31,7 +35,7 @@ serve(async (req) => {
     } else {
       // User-initiated — authenticate and get their company
       const authHeader = req.headers.get("Authorization");
-      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const anonKey = SUPABASE_ANON_KEY;
       const userClient = createClient(SUPABASE_URL, anonKey, {
         global: { headers: { Authorization: authHeader || "" } },
       });

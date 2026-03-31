@@ -25,9 +25,9 @@ const Profile = () => {
         .from("profiles")
         .select("*")
         .eq("id", user!.id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as Tables<"profiles">;
+      return data as Tables<"profiles"> | null;
     },
     enabled: !!user,
   });
@@ -46,8 +46,7 @@ const Profile = () => {
     try {
       const { error } = await supabase
         .from("profiles")
-        .update({ full_name: fullName, phone, avatar_url: avatarUrl })
-        .eq("id", user.id);
+        .upsert({ id: user.id, full_name: fullName, phone, avatar_url: avatarUrl });
       if (error) throw error;
       toast.success("Profile updated");
       queryClient.invalidateQueries({ queryKey: ["profile"] });

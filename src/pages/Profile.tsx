@@ -25,9 +25,9 @@ const Profile = () => {
         .from("profiles")
         .select("*")
         .eq("id", user!.id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as Tables<"profiles">;
+      return data as Tables<"profiles"> | null;
     },
     enabled: !!user,
   });

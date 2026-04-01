@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
   { to: "/", icon: LayoutDashboard, label: "Command Center" },
   { to: "/patrols", icon: MapPin, label: "Patrols" },
   { to: "/guards", icon: Users, label: "Guards", minRole: ["admin", "supervisor"] },
+  { to: "/checkpoints", icon: Scan, label: "Checkpoints", minRole: ["admin", "supervisor"] },
   { to: "/incidents", icon: AlertTriangle, label: "Incidents" },
   { to: "/ai-insights", icon: Brain, label: "AI Insights", minRole: ["admin", "supervisor"] },
   { to: "/reports", icon: FileText, label: "Reports", minRole: ["admin", "supervisor"] },

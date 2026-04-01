@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { MapPin, Clock, CheckCircle2, Play, Loader2, Plus } from "lucide-react";
+import { MapPin, Clock, CheckCircle2, Play, Loader2, Plus, Square, XCircle } from "lucide-react";
 import { usePatrols, useGuards } from "@/hooks/useDashboardData";
+import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,8 +23,21 @@ const statusConfig: Record<string, { color: string; bg: string; label: string }>
 const Patrols = () => {
   const { data: patrols = [], isLoading } = usePatrols();
   const { data: guards = [] } = useGuards();
+  const { canManage } = useUserRole();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const updatePatrolStatus = async (id: string, status: string, extra: Record<string, unknown> = {}) => {
+    setActionLoading(id);
+    const { error } = await supabase.from("patrols").update({ status, ...extra } as any).eq("id", id);
+    setActionLoading(null);
+    if (error) toast.error("Failed: " + error.message);
+    else {
+      toast.success(`Patrol ${status.replace("_", " ")}`);
+      queryClient.invalidateQueries({ queryKey: ["patrols"] });
+    }
+  };
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", guard_id: "", duration: "480" });
 
@@ -125,6 +139,25 @@ const Patrols = () => {
                 {patrol.started_at && (
                   <div className="text-xs text-muted-foreground">
                     Started {formatDistanceToNow(new Date(patrol.started_at), { addSuffix: true })}
+                  </div>
+                )}
+                {canManage && (
+                  <div className="flex items-center gap-2 ml-auto">
+                    {patrol.status === "scheduled" && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={actionLoading === patrol.id} onClick={() => updatePatrolStatus(patrol.id, "in_progress", { started_at: new Date().toISOString() })}>
+                        {actionLoading === patrol.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Start
+                      </Button>
+                    )}
+                    {patrol.status === "in_progress" && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={actionLoading === patrol.id} onClick={() => updatePatrolStatus(patrol.id, "completed", { completed_at: new Date().toISOString() })}>
+                        {actionLoading === patrol.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Complete
+                      </Button>
+                    )}
+                    {(patrol.status === "scheduled" || patrol.status === "in_progress") && (
+                      <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-destructive hover:text-destructive" disabled={actionLoading === patrol.id} onClick={() => updatePatrolStatus(patrol.id, "missed")}>
+                        <XCircle className="h-3 w-3" /> Miss
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

@@ -1,15 +1,35 @@
 import { useParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserRole } from "@/hooks/useUserRole";
 import { motion } from "framer-motion";
-import { ArrowLeft, User, Star, Scan, MapPin, Clock, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, User, Star, Scan, MapPin, Clock, Loader2, CheckCircle2, AlertTriangle, Power } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { useState } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const GuardDetail = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { canManage } = useUserRole();
+  const queryClient = useQueryClient();
+  const [toggling, setToggling] = useState(false);
+
+  const toggleActive = async () => {
+    if (!guard) return;
+    setToggling(true);
+    const { error } = await supabase.from("guards").update({ is_active: !guard.is_active }).eq("id", guard.id);
+    setToggling(false);
+    if (error) toast.error("Failed: " + error.message);
+    else {
+      toast.success(guard.is_active ? "Guard deactivated" : "Guard activated");
+      queryClient.invalidateQueries({ queryKey: ["guard", id] });
+      queryClient.invalidateQueries({ queryKey: ["guards"] });
+    }
+  };
 
   const { data: guard, isLoading: loadingGuard } = useQuery({
     queryKey: ["guard", id],
@@ -118,12 +138,26 @@ const GuardDetail = () => {
             <h2 className="font-heading text-xl font-bold text-foreground">{guard.full_name}</h2>
             <p className="text-sm text-muted-foreground">Badge: {guard.badge_number} · {guard.phone || "No phone"}</p>
           </div>
-          <div className="text-right">
-            <div className="flex items-center gap-1">
-              <Star className="h-5 w-5 text-warning" />
-              <span className="font-heading text-2xl font-bold text-foreground">{guard.performance_score ?? 0}</span>
+          <div className="flex items-center gap-3">
+            {canManage && (
+              <Button
+                size="sm"
+                variant={guard.is_active ? "destructive" : "default"}
+                className="gap-1.5"
+                disabled={toggling}
+                onClick={toggleActive}
+              >
+                {toggling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+                {guard.is_active ? "Deactivate" : "Activate"}
+              </Button>
+            )}
+            <div className="text-right">
+              <div className="flex items-center gap-1">
+                <Star className="h-5 w-5 text-warning" />
+                <span className="font-heading text-2xl font-bold text-foreground">{guard.performance_score ?? 0}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Performance</p>
             </div>
-            <p className="text-xs text-muted-foreground">Performance</p>
           </div>
         </div>
 

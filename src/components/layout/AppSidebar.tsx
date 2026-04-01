@@ -9,6 +9,7 @@ import {
   FileText,
   Settings,
   Radio,
+  Scan,
   UserCircle,
   X,
 } from "lucide-react";

@@ -141,6 +141,25 @@ const Patrols = () => {
                     Started {formatDistanceToNow(new Date(patrol.started_at), { addSuffix: true })}
                   </div>
                 )}
+                {canManage && (
+                  <div className="flex items-center gap-2 ml-auto">
+                    {patrol.status === "scheduled" && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={actionLoading === patrol.id} onClick={() => updatePatrolStatus(patrol.id, "in_progress", { started_at: new Date().toISOString() })}>
+                        {actionLoading === patrol.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Start
+                      </Button>
+                    )}
+                    {patrol.status === "in_progress" && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={actionLoading === patrol.id} onClick={() => updatePatrolStatus(patrol.id, "completed", { completed_at: new Date().toISOString() })}>
+                        {actionLoading === patrol.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Complete
+                      </Button>
+                    )}
+                    {(patrol.status === "scheduled" || patrol.status === "in_progress") && (
+                      <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-destructive hover:text-destructive" disabled={actionLoading === patrol.id} onClick={() => updatePatrolStatus(patrol.id, "missed")}>
+                        <XCircle className="h-3 w-3" /> Miss
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             </motion.div>
           );

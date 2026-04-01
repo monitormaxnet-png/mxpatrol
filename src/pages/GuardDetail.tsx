@@ -14,6 +14,22 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 const GuardDetail = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { canManage } = useUserRole();
+  const queryClient = useQueryClient();
+  const [toggling, setToggling] = useState(false);
+
+  const toggleActive = async () => {
+    if (!guard) return;
+    setToggling(true);
+    const { error } = await supabase.from("guards").update({ is_active: !guard.is_active }).eq("id", guard.id);
+    setToggling(false);
+    if (error) toast.error("Failed: " + error.message);
+    else {
+      toast.success(guard.is_active ? "Guard deactivated" : "Guard activated");
+      queryClient.invalidateQueries({ queryKey: ["guard", id] });
+      queryClient.invalidateQueries({ queryKey: ["guards"] });
+    }
+  };
 
   const { data: guard, isLoading: loadingGuard } = useQuery({
     queryKey: ["guard", id],

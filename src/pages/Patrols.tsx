@@ -23,8 +23,21 @@ const statusConfig: Record<string, { color: string; bg: string; label: string }>
 const Patrols = () => {
   const { data: patrols = [], isLoading } = usePatrols();
   const { data: guards = [] } = useGuards();
+  const { canManage } = useUserRole();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const updatePatrolStatus = async (id: string, status: string, extra: Record<string, unknown> = {}) => {
+    setActionLoading(id);
+    const { error } = await supabase.from("patrols").update({ status, ...extra } as any).eq("id", id);
+    setActionLoading(null);
+    if (error) toast.error("Failed: " + error.message);
+    else {
+      toast.success(`Patrol ${status.replace("_", " ")}`);
+      queryClient.invalidateQueries({ queryKey: ["patrols"] });
+    }
+  };
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", guard_id: "", duration: "480" });
 

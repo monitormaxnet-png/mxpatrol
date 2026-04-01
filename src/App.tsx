@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import GuardDetail from "./pages/GuardDetail";
 import Patrols from "./pages/Patrols";
 import Guards from "./pages/Guards";
+import Checkpoints from "./pages/Checkpoints";
 import Incidents from "./pages/Incidents";
 import AIInsights from "./pages/AIInsights";
 import Reports from "./pages/Reports";

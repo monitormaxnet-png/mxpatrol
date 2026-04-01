@@ -1,9 +1,13 @@
 import { useParams, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserRole } from "@/hooks/useUserRole";
 import { motion } from "framer-motion";
-import { ArrowLeft, User, Star, Scan, MapPin, Clock, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, User, Star, Scan, MapPin, Clock, Loader2, CheckCircle2, AlertTriangle, Power } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { useState } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 

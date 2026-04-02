@@ -1,16 +1,18 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserRole } from "@/hooks/useUserRole";
 import { useOfflineScanQueue } from "@/hooks/useOfflineScanQueue";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Scan, MapPin, CheckCircle2, Clock, Wifi, WifiOff, RefreshCw } from "lucide-react";
+import { Scan, Clock, WifiOff, AlertTriangle, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
+import ManualScanForm from "@/components/scan/ManualScanForm";
+
+const MAX_MANUAL_SCANS_PER_SHIFT = 3;
 
 type ScanEntry = {
   id: string;
@@ -20,22 +22,22 @@ type ScanEntry = {
   gps_lat: number | null;
   gps_lng: number | null;
   is_offline_sync: boolean | null;
+  is_manual: boolean;
   guards?: { full_name: string; badge_number: string } | null;
   checkpoints?: { name: string } | null;
 };
 
 const ScanRecord = () => {
   const { user } = useAuth();
+  const { canManage } = useUserRole();
   const queryClient = useQueryClient();
-  const { queue, enqueue, syncQueue, syncing, pendingCount } = useOfflineScanQueue();
-  const [selectedCheckpoint, setSelectedCheckpoint] = useState("");
+  const { pendingCount, syncQueue, syncing } = useOfflineScanQueue();
   const [selectedGuard, setSelectedGuard] = useState("");
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
-  const [scanSuccess, setScanSuccess] = useState(false);
+  const [showManualForm, setShowManualForm] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Track online status
   useEffect(() => {
     const goOnline = () => setIsOnline(true);
     const goOffline = () => setIsOnline(false);
@@ -46,6 +48,15 @@ const ScanRecord = () => {
       window.removeEventListener("offline", goOffline);
     };
   }, []);
+
+  const { data: profile } = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("company_id").eq("id", user!.id).single();
+      return data;
+    },
+    enabled: !!user,
+  });
 
   const { data: checkpoints = [] } = useQuery({
     queryKey: ["checkpoints"],
@@ -60,15 +71,28 @@ const ScanRecord = () => {
   const { data: guards = [] } = useQuery({
     queryKey: ["guards-active"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("guards")
-        .select("id, full_name, badge_number")
-        .eq("is_active", true)
-        .order("full_name");
+      const { data, error } = await supabase.from("guards").select("id, full_name, badge_number").eq("is_active", true).order("full_name");
       if (error) throw error;
       return data;
     },
     enabled: !!user,
+  });
+
+  // Count manual scans in the current shift (last 12 hours)
+  const { data: manualScanCount = 0 } = useQuery({
+    queryKey: ["manual_scan_count", selectedGuard],
+    queryFn: async () => {
+      const shiftStart = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+      const { count, error } = await supabase
+        .from("scan_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("guard_id", selectedGuard)
+        .eq("is_manual", true)
+        .gte("scanned_at", shiftStart);
+      if (error) return 0;
+      return count ?? 0;
+    },
+    enabled: !!selectedGuard,
   });
 
   const { data: recentScans = [] } = useQuery({
@@ -76,7 +100,7 @@ const ScanRecord = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("scan_logs")
-        .select("*, guards(full_name, badge_number), checkpoints(name)")
+        .select("id, guard_id, checkpoint_id, scanned_at, gps_lat, gps_lng, is_offline_sync, is_manual, guards(full_name, badge_number), checkpoints(name)")
         .order("scanned_at", { ascending: false })
         .limit(10);
       if (error) throw error;
@@ -105,179 +129,70 @@ const ScanRecord = () => {
     );
   };
 
-  const scanMutation = useMutation({
-    mutationFn: async () => {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("company_id")
-        .eq("id", user!.id)
-        .single();
-      if (!profile?.company_id) throw new Error("No company");
-
-      const scanData = {
-        guard_id: selectedGuard,
-        checkpoint_id: selectedCheckpoint,
-        company_id: profile.company_id,
-        scanned_at: new Date().toISOString(),
-        gps_lat: gps?.lat ?? null,
-        gps_lng: gps?.lng ?? null,
-      };
-
-      if (!isOnline) {
-        enqueue(scanData);
-        return;
-      }
-
-      const { error } = await supabase.from("scan_logs").insert({
-        ...scanData,
-        is_offline_sync: false,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["recent_scans"] });
-      queryClient.invalidateQueries({ queryKey: ["scan_logs"] });
-      setScanSuccess(true);
-      setTimeout(() => setScanSuccess(false), 2500);
-      setSelectedCheckpoint("");
-      setGps(null);
-      toast.success(isOnline ? "Scan recorded successfully" : "Scan saved offline — will sync when online");
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const selectedCp = checkpoints.find((c) => c.id === selectedCheckpoint);
-
   return (
     <div className="space-y-6">
       <div>
         <h2 className="font-heading text-2xl font-bold text-foreground">Record Scan</h2>
-        <p className="text-sm text-muted-foreground">Log NFC checkpoint scans manually</p>
+        <p className="text-sm text-muted-foreground">Fallback Manual Entry (Restricted)</p>
       </div>
 
-      {/* Scan Form Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card relative overflow-hidden p-6"
-      >
-        <AnimatePresence>
-          {scanSuccess && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/95 backdrop-blur"
-            >
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", damping: 12 }}
-              >
-                <CheckCircle2 className="h-16 w-16 text-success" />
-              </motion.div>
-              <p className="mt-3 font-heading text-lg font-bold text-success">Scan Recorded!</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <div className="space-y-5">
-          {/* Connection status */}
-          <div className="flex items-center gap-2">
-            {isOnline ? (
-              <Badge variant="default" className="gap-1.5 bg-success/20 text-success border-success/30">
-                <Wifi className="h-3 w-3" /> Online
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="gap-1.5">
-                <WifiOff className="h-3 w-3" /> Offline — scans queued locally
-              </Badge>
-            )}
-            {pendingCount > 0 && (
-              <Badge variant="outline" className="gap-1.5 border-warning/30 text-warning">
-                {pendingCount} pending
-              </Badge>
-            )}
-            {pendingCount > 0 && isOnline && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => { syncQueue().then(() => { queryClient.invalidateQueries({ queryKey: ["recent_scans"] }); }); }}
-                disabled={syncing}
-                className="h-7 gap-1 px-2 text-xs"
-              >
-                <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} />
-                Sync now
-              </Button>
-            )}
-          </div>
-
-          {/* Guard selection */}
-          <div className="space-y-2">
-            <Label>Guard</Label>
-            <Select value={selectedGuard} onValueChange={setSelectedGuard}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select guard on duty" />
-              </SelectTrigger>
-              <SelectContent>
-                {guards.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.full_name} ({g.badge_number})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Checkpoint selection */}
-          <div className="space-y-2">
-            <Label>Checkpoint</Label>
-            <Select value={selectedCheckpoint} onValueChange={setSelectedCheckpoint}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select or scan checkpoint" />
-              </SelectTrigger>
-              <SelectContent>
-                {checkpoints.map((cp) => (
-                  <SelectItem key={cp.id} value={cp.id}>
-                    {cp.name} — {cp.nfc_tag_id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedCp && (
-              <p className="text-xs text-muted-foreground">
-                NFC Tag: <span className="font-mono text-primary">{selectedCp.nfc_tag_id}</span>
-              </p>
-            )}
-          </div>
-
-          {/* GPS Capture */}
-          <div className="space-y-2">
-            <Label>GPS Location</Label>
+      {/* Offline sync bar */}
+      {pendingCount > 0 && (
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="gap-1.5 border-warning/30 text-warning text-xs">
+            {pendingCount} pending sync
+          </Badge>
+          {isOnline && (
             <Button
-              type="button"
-              variant="outline"
-              onClick={captureGps}
-              disabled={gpsLoading}
-              className="w-full gap-2"
+              variant="ghost"
+              size="sm"
+              onClick={() => syncQueue().then(() => queryClient.invalidateQueries({ queryKey: ["recent_scans"] }))}
+              disabled={syncing}
+              className="h-7 text-xs"
             >
-              <MapPin className="h-4 w-4" />
-              {gpsLoading ? "Capturing..." : gps ? `${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}` : "Capture Location"}
+              Sync now
             </Button>
-          </div>
-
-          {/* Submit */}
-          <Button
-            onClick={() => scanMutation.mutate()}
-            disabled={!selectedGuard || !selectedCheckpoint || scanMutation.isPending}
-            className="w-full gap-2 text-base py-6"
-            size="lg"
-          >
-            <Scan className="h-5 w-5" />
-            {scanMutation.isPending ? "Recording..." : "Record Scan"}
-          </Button>
+          )}
         </div>
-      </motion.div>
+      )}
+
+      {/* Gate: "Having trouble scanning NFC?" */}
+      {!showManualForm ? (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center py-10 text-center">
+          <div className="mb-4 rounded-full bg-warning/10 p-4">
+            <AlertTriangle className="h-10 w-10 text-warning" />
+          </div>
+          <h3 className="font-heading text-lg font-bold text-foreground mb-1">Use the NFC Scanner</h3>
+          <p className="text-sm text-muted-foreground mb-6 max-w-xs">
+            Scans should be recorded via the NFC Scanner for accuracy and security. Manual entry is a monitored fallback.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => setShowManualForm(true)}
+            className="gap-2 border-warning/30 text-warning hover:bg-warning/10"
+          >
+            <ChevronDown className="h-4 w-4" />
+            Having trouble scanning NFC?
+          </Button>
+        </motion.div>
+      ) : (
+        <AnimatePresence>
+          <ManualScanForm
+            guards={guards}
+            checkpoints={checkpoints}
+            selectedGuard={selectedGuard}
+            onGuardChange={setSelectedGuard}
+            gps={gps}
+            gpsLoading={gpsLoading}
+            onCaptureGps={captureGps}
+            isOnline={isOnline}
+            companyId={profile?.company_id ?? null}
+            manualScanCount={manualScanCount}
+            maxManualScans={MAX_MANUAL_SCANS_PER_SHIFT}
+            canBypassLimit={canManage}
+          />
+        </AnimatePresence>
+      )}
 
       {/* Recent scans */}
       <div>
@@ -299,8 +214,12 @@ const ScanRecord = () => {
                 transition={{ delay: idx * 0.04 }}
                 className="glass-card flex items-center gap-3 p-3"
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                  <Scan className="h-4 w-4 text-primary" />
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${scan.is_manual ? "bg-warning/10" : "bg-primary/10"}`}>
+                  {scan.is_manual ? (
+                    <AlertTriangle className="h-4 w-4 text-warning" />
+                  ) : (
+                    <Scan className="h-4 w-4 text-primary" />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">
@@ -311,16 +230,17 @@ const ScanRecord = () => {
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-xs text-muted-foreground">
-                    {format(new Date(scan.scanned_at), "HH:mm")}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground/70">
-                    {format(new Date(scan.scanned_at), "MMM d")}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{format(new Date(scan.scanned_at), "HH:mm")}</p>
+                  <p className="text-[10px] text-muted-foreground/70">{format(new Date(scan.scanned_at), "MMM d")}</p>
                 </div>
-                {scan.is_offline_sync && (
-                  <WifiOff className="h-3 w-3 shrink-0 text-muted-foreground/50" />
-                )}
+                <div className="flex flex-col items-end gap-0.5 shrink-0">
+                  {scan.is_manual && (
+                    <Badge variant="outline" className="text-[9px] border-warning/30 text-warning px-1.5 py-0">Manual</Badge>
+                  )}
+                  {scan.is_offline_sync && (
+                    <WifiOff className="h-3 w-3 text-muted-foreground/50" />
+                  )}
+                </div>
               </motion.div>
             ))}
           </div>

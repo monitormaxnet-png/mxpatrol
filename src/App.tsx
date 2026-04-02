@@ -23,6 +23,7 @@ import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import Profile from "./pages/Profile";
 import Shifts from "./pages/Shifts";
+import ScanRecord from "./pages/ScanRecord";
 
 const queryClient = new QueryClient();
 

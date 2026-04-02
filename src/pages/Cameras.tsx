@@ -115,10 +115,10 @@ const Cameras = () => {
                   </div>
                   <div>
                     <Label>Link to Checkpoint</Label>
-                    <Select value={form.checkpoint_id} onValueChange={(v) => setForm({ ...form, checkpoint_id: v })}>
+                    <Select value={form.checkpoint_id || "none"} onValueChange={(v) => setForm({ ...form, checkpoint_id: v === "none" ? "" : v })}>
                       <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
                         {checkpoints.map((cp) => (
                           <SelectItem key={cp.id} value={cp.id}>{cp.name}</SelectItem>
                         ))}

@@ -68,6 +68,7 @@ const App = () => (
               <Route path="/cameras" element={<Cameras />} />
               <Route path="/cameras/live" element={<CameraLive />} />
               <Route path="/cameras/events" element={<CameraEvents />} />
+              <Route path="/whatsapp" element={<WhatsApp />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/profile" element={<Profile />} />

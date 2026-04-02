@@ -1,17 +1,19 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserRole } from "@/hooks/useUserRole";
 import { useNfcReader } from "@/hooks/useNfcReader";
 import { useNfcScanProcessor, type ScanValidationResult } from "@/hooks/useNfcScanProcessor";
 import { useOfflineScanQueue } from "@/hooks/useOfflineScanQueue";
 import ScannerRing from "@/components/scanner/ScannerRing";
 import ScannerControls from "@/components/scanner/ScannerControls";
 import ScanLog, { type ScanLogEntry } from "@/components/scanner/ScanLog";
+import ManualScanForm from "@/components/scan/ManualScanForm";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
-import { Scan, ScanLine, Keyboard } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ScanLine, AlertTriangle } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
 
 const NFCScanner = () => {

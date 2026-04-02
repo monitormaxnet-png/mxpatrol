@@ -55,6 +55,7 @@ const Patrols = () => {
       guard_id: form.guard_id || null,
       expected_duration_minutes: parseInt(form.duration) || 480,
       status: "scheduled",
+      verification_level: form.verification_level,
     });
 
     setSaving(false);

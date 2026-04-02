@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, AlertTriangle, Clock, ShieldAlert, Radio, Check, CheckCheck } from "lucide-react";
+import { Bell, AlertTriangle, Clock, ShieldAlert, Radio, Check, CheckCheck, ScanFace } from "lucide-react";
 import { useAlerts } from "@/hooks/useDashboardData";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";

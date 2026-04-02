@@ -1,4 +1,5 @@
 import { Search, Scan, Menu } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import NotificationCenter from "./NotificationCenter";
 
 interface TopBarProps {
@@ -6,6 +7,7 @@ interface TopBarProps {
 }
 
 const TopBar = ({ onMenuClick }: TopBarProps) => {
+  const navigate = useNavigate();
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/80 backdrop-blur-xl px-4 lg:h-16 lg:px-6">
       <div className="flex items-center gap-3">
@@ -27,7 +29,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
 
       <div className="flex items-center gap-2 lg:gap-3">
         <NotificationCenter />
-        <button className="flex h-9 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20 lg:px-3">
+        <button onClick={() => navigate("/nfc-scanner")} className="flex h-9 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20 lg:px-3">
           <Scan className="h-4 w-4" />
           <span className="hidden sm:inline">NFC Scan</span>
         </button>

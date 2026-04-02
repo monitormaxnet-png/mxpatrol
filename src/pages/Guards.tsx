@@ -120,9 +120,13 @@ const Guards = () => {
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
-                  <User className="h-5 w-5 text-primary" />
-                </div>
+                {(guard as any).photo_url ? (
+                  <img src={(guard as any).photo_url} alt={guard.full_name} className="h-11 w-11 rounded-full object-cover border-2 border-primary/20" />
+                ) : (
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+                    <User className="h-5 w-5 text-primary" />
+                  </div>
+                )}
                 <div>
                   <p className="font-heading text-sm font-semibold text-foreground">{guard.full_name}</p>
                   <p className="text-xs text-muted-foreground">{guard.badge_number}</p>

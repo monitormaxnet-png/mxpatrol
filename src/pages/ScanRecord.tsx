@@ -190,8 +190,25 @@ const ScanRecord = () => {
               </Badge>
             ) : (
               <Badge variant="secondary" className="gap-1.5">
-                <WifiOff className="h-3 w-3" /> Offline — will sync later
+                <WifiOff className="h-3 w-3" /> Offline — scans queued locally
               </Badge>
+            )}
+            {pendingCount > 0 && (
+              <Badge variant="outline" className="gap-1.5 border-warning/30 text-warning">
+                {pendingCount} pending
+              </Badge>
+            )}
+            {pendingCount > 0 && isOnline && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { syncQueue().then(() => { queryClient.invalidateQueries({ queryKey: ["recent_scans"] }); }); }}
+                disabled={syncing}
+                className="h-7 gap-1 px-2 text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} />
+                Sync now
+              </Button>
             )}
           </div>
 

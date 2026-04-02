@@ -18,6 +18,7 @@ import type { NfcStatus } from "@/hooks/useNfcReader";
 
 const NFCScanner = () => {
   const { user } = useAuth();
+  const { canManage } = useUserRole();
   const queryClient = useQueryClient();
   const { syncQueue, syncing, pendingCount } = useOfflineScanQueue();
 
@@ -29,8 +30,7 @@ const NFCScanner = () => {
   const [scannerStatus, setScannerStatus] = useState<NfcStatus>("idle");
   const [lastCheckpoint, setLastCheckpoint] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [manualMode, setManualMode] = useState(false);
-  const [manualTagInput, setManualTagInput] = useState("");
+  const [showManualFallback, setShowManualFallback] = useState(false);
 
   // Online/offline tracking
   useEffect(() => {

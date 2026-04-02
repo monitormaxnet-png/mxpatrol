@@ -83,7 +83,7 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
         device_identifier: values.device_identifier,
         serial_number: values.serial_number || null,
         site_location: values.site_location || null,
-        guard_id: values.guard_id || null,
+        guard_id: values.guard_id && values.guard_id !== "unassigned" ? values.guard_id : null,
         notes: values.notes || null,
         company_id: profile.company_id,
       };
@@ -220,7 +220,7 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
                       {guards.map((g) => (
                         <SelectItem key={g.id} value={g.id}>
                           {g.full_name} ({g.badge_number})

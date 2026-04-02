@@ -13,6 +13,7 @@ const severityStyles: Record<string, { title: string }> = {
 
 export function useAlertNotifications() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const initializedRef = useRef(false);
 
   useEffect(() => {

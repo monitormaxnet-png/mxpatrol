@@ -39,7 +39,7 @@ const Patrols = () => {
     }
   };
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", guard_id: "", duration: "480" });
+  const [form, setForm] = useState({ name: "", description: "", guard_id: "", duration: "480", verification_level: "standard" });
 
   const handleCreate = async () => {
     if (!form.name) { toast.error("Patrol name is required"); return; }

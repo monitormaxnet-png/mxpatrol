@@ -15,6 +15,7 @@ import {
   UserCircle,
   X,
   Camera,
+  MessageSquare,
 } from "lucide-react";
 import { useUserRole, type AppRole } from "@/hooks/useUserRole";
 

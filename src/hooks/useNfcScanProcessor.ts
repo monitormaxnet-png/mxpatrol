@@ -13,11 +13,13 @@ export type ScanValidationResult = {
 
 type ProcessorOptions = {
   checkpoints: Array<{ id: string; name: string; nfc_tag_id: string; patrol_id: string | null }>;
+  patrols: Array<{ id: string; verification_level?: string }>;
   selectedGuardId: string;
   companyId: string | null;
   isOnline: boolean;
   onSuccess?: (result: ScanValidationResult) => void;
   onFailure?: (result: ScanValidationResult) => void;
+  onFaceVerificationRequired?: (result: ScanValidationResult, scanData: any) => void;
 };
 
 export function useNfcScanProcessor({

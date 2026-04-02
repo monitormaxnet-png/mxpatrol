@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,10 +10,11 @@ import ScannerRing from "@/components/scanner/ScannerRing";
 import ScannerControls from "@/components/scanner/ScannerControls";
 import ScanLog, { type ScanLogEntry } from "@/components/scanner/ScanLog";
 import ManualScanForm from "@/components/scan/ManualScanForm";
+import FaceVerification, { type FaceVerifyResult } from "@/components/scanner/FaceVerification";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, AlertTriangle } from "lucide-react";
+import { ScanLine, AlertTriangle, ShieldCheck } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
 
 const NFCScanner = () => {
@@ -31,6 +32,12 @@ const NFCScanner = () => {
   const [lastCheckpoint, setLastCheckpoint] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [showManualFallback, setShowManualFallback] = useState(false);
+
+  // Face verification state
+  const [pendingFaceScan, setPendingFaceScan] = useState<{
+    result: ScanValidationResult;
+    scanData: any;
+  } | null>(null);
 
   // Online/offline tracking
   useEffect(() => {
@@ -62,20 +69,34 @@ const NFCScanner = () => {
     enabled: !!user,
   });
 
+  // Patrols (for verification_level)
+  const { data: patrols = [] } = useQuery({
+    queryKey: ["patrols-verification"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("patrols").select("id, verification_level");
+      if (error) throw error;
+      return data as Array<{ id: string; verification_level: string }>;
+    },
+    enabled: !!user,
+  });
+
   // Guards
   const { data: guards = [] } = useQuery({
     queryKey: ["guards-active"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("guards").select("id, full_name, badge_number").eq("is_active", true).order("full_name");
+      const { data, error } = await supabase.from("guards").select("id, full_name, badge_number, photo_url").eq("is_active", true).order("full_name");
       if (error) throw error;
       return data;
     },
     enabled: !!user,
   });
 
+  const selectedGuardData = guards.find((g) => g.id === selectedGuard);
+
   // Scan processor
   const { processScan } = useNfcScanProcessor({
     checkpoints,
+    patrols,
     selectedGuardId: selectedGuard,
     companyId: profile?.company_id ?? null,
     isOnline,
@@ -95,6 +116,12 @@ const NFCScanner = () => {
       addToLog(result, false);
       setTimeout(() => setScannerStatus(nfcReader.supported ? "scanning" : "idle"), 2500);
     },
+    onFaceVerificationRequired: (result, scanData) => {
+      // Pause scanning, show face verification
+      setScannerStatus("idle");
+      setPendingFaceScan({ result, scanData });
+      toast.info("🔐 Face verification required for this patrol");
+    },
   });
 
   const addToLog = (result: ScanValidationResult, valid: boolean) => {
@@ -109,6 +136,53 @@ const NFCScanner = () => {
       ...prev,
     ].slice(0, 50));
   };
+
+  // Handle face verification result
+  const handleFaceResult = useCallback(async (faceResult: FaceVerifyResult) => {
+    if (!pendingFaceScan) return;
+
+    if (faceResult.verified) {
+      // Complete the scan with face data
+      const { scanData } = pendingFaceScan;
+      try {
+        const { error } = await supabase.from("scan_logs").insert({
+          ...scanData,
+          is_offline_sync: false,
+          face_verified: true,
+          face_confidence: faceResult.confidence,
+        });
+        if (error) throw error;
+
+        setScannerStatus("success");
+        setLastCheckpoint(pendingFaceScan.result.checkpoint?.name ?? null);
+        addToLog(pendingFaceScan.result, true);
+        queryClient.invalidateQueries({ queryKey: ["recent_scans"] });
+        toast.success("✅ Triple-verified: NFC + GPS + Face ID");
+      } catch {
+        toast.error("Failed to save verified scan");
+      }
+    } else {
+      // Face verification failed — flag as alert
+      setScannerStatus("error");
+      setLastError("Face verification failed — identity mismatch");
+      addToLog(pendingFaceScan.result, false);
+
+      // Create security alert
+      if (profile?.company_id) {
+        await supabase.from("alerts").insert({
+          company_id: profile.company_id,
+          type: "anomaly" as const,
+          severity: "high" as const,
+          guard_id: selectedGuard || null,
+          message: `Face verification FAILED at checkpoint "${pendingFaceScan.result.checkpoint?.name}". Confidence: ${Math.round(faceResult.confidence * 100)}%. Possible identity mismatch.`,
+        });
+      }
+      toast.error("⚠️ Face mismatch — security alert generated");
+    }
+
+    setPendingFaceScan(null);
+    setTimeout(() => setScannerStatus(nfcReader.supported ? "scanning" : "idle"), 3000);
+  }, [pendingFaceScan, selectedGuard, profile?.company_id, queryClient]);
 
   // NFC Reader
   const nfcReader = useNfcReader({
@@ -167,55 +241,108 @@ const NFCScanner = () => {
     enabled: !!selectedGuard,
   });
 
+  // Check if any assigned patrol has enhanced verification
+  const hasEnhancedPatrol = patrols.some((p) => p.verification_level === "enhanced");
+
   return (
     <div className="flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)]">
       {/* Header */}
       <div className="px-4 pt-4 pb-2">
-        <div>
-          <h2 className="font-heading text-xl font-bold text-foreground">NFC Scanner</h2>
-          <p className="text-xs text-muted-foreground">Tap NFC tags to verify checkpoints</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-heading text-xl font-bold text-foreground">NFC Scanner</h2>
+            <p className="text-xs text-muted-foreground">Tap NFC tags to verify checkpoints</p>
+          </div>
+          {hasEnhancedPatrol && (
+            <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1">
+              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[10px] font-semibold text-primary uppercase tracking-wider">Multi-Factor</span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Face Verification Overlay */}
+      <AnimatePresence>
+        {pendingFaceScan && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mx-4 mb-4"
+          >
+            <div className="rounded-xl border border-primary/30 bg-card p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-bold text-foreground">Face Verification Required</p>
+                  <p className="text-xs text-muted-foreground">
+                    Checkpoint: {pendingFaceScan.result.checkpoint?.name} — NFC ✓ GPS ✓ Face ID pending
+                  </p>
+                </div>
+              </div>
+              <FaceVerification
+                guardPhotoUrl={selectedGuardData?.photo_url ?? null}
+                onResult={handleFaceResult}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs text-muted-foreground"
+                onClick={() => {
+                  setPendingFaceScan(null);
+                  setScannerStatus(nfcReader.supported ? "scanning" : "idle");
+                  toast.warning("Face verification skipped — scan not recorded");
+                }}
+              >
+                Cancel Verification
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Scanner Area */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-6">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4 }}
-        >
-          <ScannerRing
-            status={scannerStatus}
-            checkpointName={lastCheckpoint}
-            errorReason={lastError}
-            onClick={scannerStatus === "idle" ? handleStartScan : undefined}
-          />
-        </motion.div>
+      {!pendingFaceScan && (
+        <div className="flex-1 flex flex-col items-center justify-center px-4 py-6">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+          >
+            <ScannerRing
+              status={scannerStatus}
+              checkpointName={lastCheckpoint}
+              errorReason={lastError}
+              onClick={scannerStatus === "idle" ? handleStartScan : undefined}
+            />
+          </motion.div>
 
-        {/* Action buttons */}
-        <div className="mt-6 w-full max-w-xs space-y-3">
-          {scannerStatus === "idle" && (
-            <Button
-              onClick={handleStartScan}
-              disabled={!selectedGuard}
-              className="w-full gap-2 py-5 text-base"
-              size="lg"
-            >
-              <ScanLine className="h-5 w-5" />
-              Start NFC Scanning
-            </Button>
-          )}
-          {scannerStatus === "scanning" && (
-            <Button
-              onClick={nfcReader.stopScanning}
-              variant="outline"
-              className="w-full gap-2 border-destructive/30 text-destructive hover:bg-destructive/10"
-            >
-              Stop Scanning
-            </Button>
-          )}
+          {/* Action buttons */}
+          <div className="mt-6 w-full max-w-xs space-y-3">
+            {scannerStatus === "idle" && (
+              <Button
+                onClick={handleStartScan}
+                disabled={!selectedGuard}
+                className="w-full gap-2 py-5 text-base"
+                size="lg"
+              >
+                <ScanLine className="h-5 w-5" />
+                Start NFC Scanning
+              </Button>
+            )}
+            {scannerStatus === "scanning" && (
+              <Button
+                onClick={nfcReader.stopScanning}
+                variant="outline"
+                className="w-full gap-2 border-destructive/30 text-destructive hover:bg-destructive/10"
+              >
+                Stop Scanning
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Manual Fallback Toggle */}
       <div className="px-4 mb-2">

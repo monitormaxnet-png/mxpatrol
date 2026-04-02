@@ -83,7 +83,7 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
         device_identifier: values.device_identifier,
         serial_number: values.serial_number || null,
         site_location: values.site_location || null,
-        guard_id: values.guard_id || null,
+        guard_id: values.guard_id && values.guard_id !== "unassigned" ? values.guard_id : null,
         notes: values.notes || null,
         company_id: profile.company_id,
       };

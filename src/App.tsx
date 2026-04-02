@@ -22,6 +22,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import Profile from "./pages/Profile";
+import Shifts from "./pages/Shifts";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ const App = () => (
               <Route path="/guards" element={<Guards />} />
               <Route path="/guards/:id" element={<GuardDetail />} />
               <Route path="/checkpoints" element={<Checkpoints />} />
+              <Route path="/shifts" element={<Shifts />} />
               <Route path="/incidents" element={<Incidents />} />
               <Route path="/ai-insights" element={<AIInsights />} />
               <Route path="/reports" element={<Reports />} />

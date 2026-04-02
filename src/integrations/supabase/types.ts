@@ -612,6 +612,63 @@ export type Database = {
           },
         ]
       }
+      shifts: {
+        Row: {
+          company_id: string
+          created_at: string
+          day_of_week: number
+          end_time: string
+          guard_id: string
+          id: string
+          is_recurring: boolean
+          notes: string | null
+          specific_date: string | null
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          guard_id: string
+          id?: string
+          is_recurring?: boolean
+          notes?: string | null
+          specific_date?: string | null
+          start_time: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          guard_id?: string
+          id?: string
+          is_recurring?: boolean
+          notes?: string | null
+          specific_date?: string | null
+          start_time?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string

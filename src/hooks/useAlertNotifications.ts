@@ -63,6 +63,21 @@ export function useAlertNotifications() {
           toast.info("New NFC scan recorded", { duration: 3000 });
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "camera_events" },
+        (payload) => {
+          const evt = payload.new as { event_type: string; severity: string; description: string };
+          const critical = ["intrusion", "motion_restricted", "suspicious_behavior"];
+          if (critical.includes(evt.event_type)) {
+            toast.error(`📹 Camera: ${evt.event_type.replace(/_/g, " ").toUpperCase()}`, {
+              description: evt.description || "Check camera feed immediately",
+              duration: 12000,
+            });
+          }
+          queryClient.invalidateQueries({ queryKey: ["camera_events"] });
+        }
+      )
       .subscribe();
 
     return () => {

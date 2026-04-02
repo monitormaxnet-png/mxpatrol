@@ -10,6 +10,7 @@ import {
   Settings,
   Radio,
   Scan,
+  ScanLine,
   CalendarClock,
   UserCircle,
   X,

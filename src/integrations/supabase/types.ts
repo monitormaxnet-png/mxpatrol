@@ -362,9 +362,17 @@ export type Database = {
           created_at: string
           device_identifier: string
           device_name: string | null
+          device_type: string
           guard_id: string | null
           id: string
           last_seen_at: string | null
+          notes: string | null
+          pairing_code: string | null
+          pairing_expires_at: string | null
+          pairing_status: string
+          registration_date: string
+          serial_number: string | null
+          site_location: string | null
           status: Database["public"]["Enums"]["device_status"]
           updated_at: string
         }
@@ -374,9 +382,17 @@ export type Database = {
           created_at?: string
           device_identifier: string
           device_name?: string | null
+          device_type?: string
           guard_id?: string | null
           id?: string
           last_seen_at?: string | null
+          notes?: string | null
+          pairing_code?: string | null
+          pairing_expires_at?: string | null
+          pairing_status?: string
+          registration_date?: string
+          serial_number?: string | null
+          site_location?: string | null
           status?: Database["public"]["Enums"]["device_status"]
           updated_at?: string
         }
@@ -386,9 +402,17 @@ export type Database = {
           created_at?: string
           device_identifier?: string
           device_name?: string | null
+          device_type?: string
           guard_id?: string | null
           id?: string
           last_seen_at?: string | null
+          notes?: string | null
+          pairing_code?: string | null
+          pairing_expires_at?: string | null
+          pairing_status?: string
+          registration_date?: string
+          serial_number?: string | null
+          site_location?: string | null
           status?: Database["public"]["Enums"]["device_status"]
           updated_at?: string
         }

@@ -561,7 +561,9 @@ export type Database = {
           gps_lng: number | null
           guard_id: string
           id: string
+          is_manual: boolean
           is_offline_sync: boolean | null
+          manual_scan_reason: string | null
           scanned_at: string
         }
         Insert: {
@@ -573,7 +575,9 @@ export type Database = {
           gps_lng?: number | null
           guard_id: string
           id?: string
+          is_manual?: boolean
           is_offline_sync?: boolean | null
+          manual_scan_reason?: string | null
           scanned_at?: string
         }
         Update: {
@@ -585,7 +589,9 @@ export type Database = {
           gps_lng?: number | null
           guard_id?: string
           id?: string
+          is_manual?: boolean
           is_offline_sync?: boolean | null
+          manual_scan_reason?: string | null
           scanned_at?: string
         }
         Relationships: [

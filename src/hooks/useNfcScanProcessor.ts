@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 export type ScanValidationResult = {
   valid: boolean;
-  checkpoint?: { id: string; name: string; nfc_tag_id: string };
+  checkpoint?: { id: string; name: string; nfc_tag_id: string; patrol_id?: string | null };
   reason?: string;
   requiresFaceVerification?: boolean;
 };

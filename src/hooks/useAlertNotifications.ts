@@ -24,12 +24,21 @@ export function useAlertNotifications() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "alerts" },
         (payload) => {
-          const alert = payload.new as { message: string; severity: string };
+          const alert = payload.new as { message: string; severity: string; type: string };
           const style = severityStyles[alert.severity] || severityStyles.low;
-          toast.error(alert.message, {
-            description: style.title,
-            duration: alert.severity === "critical" ? 10000 : 5000,
-          });
+          const isFaceAlert = alert.message?.toLowerCase().includes("face verification");
+          
+          if (isFaceAlert) {
+            toast.error(alert.message, {
+              description: "🔐 FACE ID SECURITY ALERT",
+              duration: 12000,
+            });
+          } else {
+            toast.error(alert.message, {
+              description: style.title,
+              duration: alert.severity === "critical" ? 10000 : 5000,
+            });
+          }
         }
       )
       .on(

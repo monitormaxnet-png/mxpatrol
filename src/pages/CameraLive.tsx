@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Maximize2, Minimize2, Grid2x2, Grid3x3, AlertTriangle, Camera } from "lucide-react";
+import Hls from "hls.js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,21 +12,65 @@ type GridSize = "2x2" | "3x3" | "1x1";
 
 const CameraFeedPlayer = ({ streamUrl, name, status }: { streamUrl: string; name: string; status: string }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
+
+  const destroyHls = useCallback(() => {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
-    if (!videoRef.current || status !== "online") return;
-
-    // HLS.js would be needed for HLS streams in non-Safari browsers
-    // For now, use native video element which works for HLS in Safari and direct mp4/webm
     const video = videoRef.current;
-    video.src = streamUrl;
-    video.load();
+    if (!video || status !== "online") return;
+
+    const isHls = streamUrl.includes(".m3u8") || streamUrl.includes("m3u8");
+
+    if (isHls && Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        maxBufferLength: 10,
+        maxMaxBufferLength: 30,
+        liveSyncDurationCount: 3,
+      });
+      hls.loadSource(streamUrl);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {});
+      });
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hls.startLoad();
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+          } else {
+            hls.destroy();
+          }
+        }
+      });
+      hlsRef.current = hls;
+    } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
+      // Safari native HLS
+      video.src = streamUrl;
+      video.load();
+      video.play().catch(() => {});
+    } else {
+      // Direct mp4/webm fallback
+      video.src = streamUrl;
+      video.load();
+      video.play().catch(() => {});
+    }
 
     return () => {
+      destroyHls();
       video.pause();
       video.removeAttribute("src");
+      video.load();
     };
-  }, [streamUrl, status]);
+  }, [streamUrl, status, destroyHls]);
 
   if (status !== "online") {
     return (

@@ -1,21 +1,24 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserRole } from "@/hooks/useUserRole";
 import { useNfcReader } from "@/hooks/useNfcReader";
 import { useNfcScanProcessor, type ScanValidationResult } from "@/hooks/useNfcScanProcessor";
 import { useOfflineScanQueue } from "@/hooks/useOfflineScanQueue";
 import ScannerRing from "@/components/scanner/ScannerRing";
 import ScannerControls from "@/components/scanner/ScannerControls";
 import ScanLog, { type ScanLogEntry } from "@/components/scanner/ScanLog";
+import ManualScanForm from "@/components/scan/ManualScanForm";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
-import { Scan, ScanLine, Keyboard } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ScanLine, AlertTriangle } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
 
 const NFCScanner = () => {
   const { user } = useAuth();
+  const { canManage } = useUserRole();
   const queryClient = useQueryClient();
   const { syncQueue, syncing, pendingCount } = useOfflineScanQueue();
 
@@ -27,8 +30,7 @@ const NFCScanner = () => {
   const [scannerStatus, setScannerStatus] = useState<NfcStatus>("idle");
   const [lastCheckpoint, setLastCheckpoint] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [manualMode, setManualMode] = useState(false);
-  const [manualTagInput, setManualTagInput] = useState("");
+  const [showManualFallback, setShowManualFallback] = useState(false);
 
   // Online/offline tracking
   useEffect(() => {
@@ -149,31 +151,29 @@ const NFCScanner = () => {
     nfcReader.startScanning();
   };
 
-  const handleManualScan = async () => {
-    if (!manualTagInput.trim()) return;
-    if (!selectedGuard) { toast.error("Select a guard first"); return; }
-    await processScan(manualTagInput.trim(), gps);
-    setManualTagInput("");
-  };
+  // Manual scan count for rate limiting
+  const { data: manualScanCount = 0 } = useQuery({
+    queryKey: ["manual_scan_count", selectedGuard],
+    queryFn: async () => {
+      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+      const { count } = await supabase
+        .from("scan_logs")
+        .select("*", { count: "exact", head: true })
+        .eq("guard_id", selectedGuard)
+        .eq("is_manual", true)
+        .gte("scanned_at", twelveHoursAgo);
+      return count ?? 0;
+    },
+    enabled: !!selectedGuard,
+  });
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)]">
       {/* Header */}
       <div className="px-4 pt-4 pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-heading text-xl font-bold text-foreground">NFC Scanner</h2>
-            <p className="text-xs text-muted-foreground">Tap NFC tags to verify checkpoints</p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setManualMode(!manualMode)}
-            className="gap-1.5 text-xs h-8"
-          >
-            {manualMode ? <Scan className="h-3.5 w-3.5" /> : <Keyboard className="h-3.5 w-3.5" />}
-            {manualMode ? "NFC Mode" : "Manual"}
-          </Button>
+        <div>
+          <h2 className="font-heading text-xl font-bold text-foreground">NFC Scanner</h2>
+          <p className="text-xs text-muted-foreground">Tap NFC tags to verify checkpoints</p>
         </div>
       </div>
 
@@ -194,7 +194,7 @@ const NFCScanner = () => {
 
         {/* Action buttons */}
         <div className="mt-6 w-full max-w-xs space-y-3">
-          {scannerStatus === "idle" && !manualMode && (
+          {scannerStatus === "idle" && (
             <Button
               onClick={handleStartScan}
               disabled={!selectedGuard}
@@ -205,7 +205,7 @@ const NFCScanner = () => {
               Start NFC Scanning
             </Button>
           )}
-          {scannerStatus === "scanning" && !manualMode && (
+          {scannerStatus === "scanning" && (
             <Button
               onClick={nfcReader.stopScanning}
               variant="outline"
@@ -214,28 +214,59 @@ const NFCScanner = () => {
               Stop Scanning
             </Button>
           )}
-          {(scannerStatus === "unsupported" || manualMode) && (
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={manualTagInput}
-                  onChange={(e) => setManualTagInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleManualScan()}
-                  placeholder="Enter NFC Tag ID..."
-                  className="flex-1 h-10 rounded-lg border border-border bg-card/60 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-                <Button onClick={handleManualScan} disabled={!manualTagInput.trim() || !selectedGuard} size="default">
-                  Scan
-                </Button>
-              </div>
-              <p className="text-[10px] text-muted-foreground text-center">
-                Enter the NFC tag ID printed on the checkpoint tag
-              </p>
-            </div>
-          )}
         </div>
       </div>
+
+      {/* Manual Fallback Toggle */}
+      <div className="px-4 mb-2">
+        {!showManualFallback ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowManualFallback(true)}
+            className="w-full gap-1.5 text-xs h-8 text-muted-foreground hover:text-warning"
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Having trouble scanning NFC?
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowManualFallback(false)}
+            className="w-full gap-1.5 text-xs h-8 text-muted-foreground"
+          >
+            Hide manual fallback
+          </Button>
+        )}
+      </div>
+
+      {/* Manual Scan Form (restricted fallback) */}
+      <AnimatePresence>
+        {showManualFallback && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="px-4 mb-4 overflow-hidden"
+          >
+            <ManualScanForm
+              guards={guards}
+              checkpoints={checkpoints}
+              selectedGuard={selectedGuard}
+              onGuardChange={setSelectedGuard}
+              gps={gps}
+              gpsLoading={gpsLoading}
+              onCaptureGps={captureGps}
+              isOnline={isOnline}
+              companyId={profile?.company_id ?? null}
+              manualScanCount={manualScanCount}
+              maxManualScans={3}
+              canBypassLimit={canManage}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Bottom panel */}
       <div className="glass-card mx-4 mb-4 p-4 space-y-4 rounded-xl">

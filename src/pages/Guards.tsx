@@ -149,6 +149,13 @@ const Guards = () => {
                 <span className="font-heading text-sm font-bold text-foreground">{guard.performance_score ?? 0}</span>
                 <span className="text-[10px] text-muted-foreground">score</span>
               </div>
+              {(guard as any).photo_url ? (
+                <span className="flex items-center gap-1 text-[10px] text-success font-medium">
+                  <ScanFace className="h-3 w-3" /> Face ID
+                </span>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">No Face ID</span>
+              )}
             </div>
           </motion.div>
         ))}

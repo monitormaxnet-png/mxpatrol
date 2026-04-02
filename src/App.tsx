@@ -25,6 +25,9 @@ import Profile from "./pages/Profile";
 import Shifts from "./pages/Shifts";
 import ScanRecord from "./pages/ScanRecord";
 import NFCScanner from "./pages/NFCScanner";
+import Cameras from "./pages/Cameras";
+import CameraLive from "./pages/CameraLive";
+import CameraEvents from "./pages/CameraEvents";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +64,9 @@ const App = () => (
               <Route path="/nfc-scanner" element={<NFCScanner />} />
               <Route path="/ai-insights" element={<AIInsights />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/cameras" element={<Cameras />} />
+              <Route path="/cameras/live" element={<CameraLive />} />
+              <Route path="/cameras/events" element={<CameraEvents />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/profile" element={<Profile />} />

@@ -14,6 +14,7 @@ import {
   CalendarClock,
   UserCircle,
   X,
+  Camera,
 } from "lucide-react";
 import { useUserRole, type AppRole } from "@/hooks/useUserRole";
 
@@ -35,6 +36,7 @@ const navItems: NavItem[] = [
   { to: "/incidents", icon: AlertTriangle, label: "Incidents" },
   { to: "/ai-insights", icon: Brain, label: "AI Insights", minRole: ["admin", "supervisor"] },
   { to: "/reports", icon: FileText, label: "Reports", minRole: ["admin", "supervisor"] },
+  { to: "/cameras", icon: Camera, label: "CCTV Cameras", minRole: ["admin", "supervisor"] },
   { to: "/devices", icon: Radio, label: "Devices", minRole: ["admin"] },
   { to: "/profile", icon: UserCircle, label: "My Profile" },
   { to: "/settings", icon: Settings, label: "Settings", minRole: ["admin"] },

@@ -132,9 +132,13 @@ const GuardDetail = () => {
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 lg:p-6">
         <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-            <User className="h-7 w-7 text-primary" />
-          </div>
+          {(guard as any).photo_url ? (
+            <img src={(guard as any).photo_url} alt={guard.full_name} className="h-14 w-14 rounded-full object-cover border-2 border-primary/30" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <User className="h-7 w-7 text-primary" />
+            </div>
+          )}
           <div className="flex-1">
             <h2 className="font-heading text-xl font-bold text-foreground">{guard.full_name}</h2>
             <p className="text-sm text-muted-foreground">Badge: {guard.badge_number} · {guard.phone || "No phone"}</p>

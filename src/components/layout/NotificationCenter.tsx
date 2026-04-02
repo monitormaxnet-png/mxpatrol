@@ -84,8 +84,9 @@ const NotificationCenter = () => {
           ) : (
             <div className="divide-y divide-border">
               {alerts.slice(0, 15).map((alert: any) => {
-                const Icon = alertIcons[alert.type] || AlertTriangle;
-                const colors = severityColors[alert.severity] || severityColors.low;
+                const isFaceAlert = alert.message?.toLowerCase().includes("face verification");
+                const Icon = isFaceAlert ? ScanFace : (alertIcons[alert.type] || AlertTriangle);
+                const colors = isFaceAlert ? "text-destructive bg-destructive/10" : (severityColors[alert.severity] || severityColors.low);
                 return (
                   <div
                     key={alert.id}

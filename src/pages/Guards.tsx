@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { User, Star, Shield, MapPin, Plus, Loader2 } from "lucide-react";
+import { User, Star, Shield, MapPin, Plus, Loader2, ScanFace } from "lucide-react";
 import { useGuards } from "@/hooks/useDashboardData";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";

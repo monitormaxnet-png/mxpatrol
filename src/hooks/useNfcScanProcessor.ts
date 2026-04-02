@@ -8,6 +8,7 @@ export type ScanValidationResult = {
   valid: boolean;
   checkpoint?: { id: string; name: string; nfc_tag_id: string };
   reason?: string;
+  requiresFaceVerification?: boolean;
 };
 
 type ProcessorOptions = {

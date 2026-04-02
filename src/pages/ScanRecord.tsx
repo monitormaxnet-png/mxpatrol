@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOfflineScanQueue } from "@/hooks/useOfflineScanQueue";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Scan, MapPin, CheckCircle2, Clock, Wifi, WifiOff } from "lucide-react";
+import { Scan, MapPin, CheckCircle2, Clock, Wifi, WifiOff, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 
@@ -26,6 +27,7 @@ type ScanEntry = {
 const ScanRecord = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { queue, enqueue, syncQueue, syncing, pendingCount } = useOfflineScanQueue();
   const [selectedCheckpoint, setSelectedCheckpoint] = useState("");
   const [selectedGuard, setSelectedGuard] = useState("");
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
@@ -112,14 +114,23 @@ const ScanRecord = () => {
         .single();
       if (!profile?.company_id) throw new Error("No company");
 
-      const { error } = await supabase.from("scan_logs").insert({
+      const scanData = {
         guard_id: selectedGuard,
         checkpoint_id: selectedCheckpoint,
         company_id: profile.company_id,
         scanned_at: new Date().toISOString(),
         gps_lat: gps?.lat ?? null,
         gps_lng: gps?.lng ?? null,
-        is_offline_sync: !isOnline,
+      };
+
+      if (!isOnline) {
+        enqueue(scanData);
+        return;
+      }
+
+      const { error } = await supabase.from("scan_logs").insert({
+        ...scanData,
+        is_offline_sync: false,
       });
       if (error) throw error;
     },
@@ -130,7 +141,7 @@ const ScanRecord = () => {
       setTimeout(() => setScanSuccess(false), 2500);
       setSelectedCheckpoint("");
       setGps(null);
-      toast.success("Scan recorded successfully");
+      toast.success(isOnline ? "Scan recorded successfully" : "Scan saved offline — will sync when online");
     },
     onError: (e) => toast.error(e.message),
   });
@@ -179,8 +190,25 @@ const ScanRecord = () => {
               </Badge>
             ) : (
               <Badge variant="secondary" className="gap-1.5">
-                <WifiOff className="h-3 w-3" /> Offline — will sync later
+                <WifiOff className="h-3 w-3" /> Offline — scans queued locally
               </Badge>
+            )}
+            {pendingCount > 0 && (
+              <Badge variant="outline" className="gap-1.5 border-warning/30 text-warning">
+                {pendingCount} pending
+              </Badge>
+            )}
+            {pendingCount > 0 && isOnline && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { syncQueue().then(() => { queryClient.invalidateQueries({ queryKey: ["recent_scans"] }); }); }}
+                disabled={syncing}
+                className="h-7 gap-1 px-2 text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} />
+                Sync now
+              </Button>
             )}
           </div>
 

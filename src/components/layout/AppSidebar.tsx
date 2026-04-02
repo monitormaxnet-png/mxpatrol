@@ -27,7 +27,8 @@ type NavItem = {
 const navItems: NavItem[] = [
   { to: "/", icon: LayoutDashboard, label: "Command Center" },
   { to: "/patrols", icon: MapPin, label: "Patrols" },
-  { to: "/scan", icon: ScanLine, label: "Record Scan" },
+  { to: "/nfc-scanner", icon: ScanLine, label: "NFC Scanner" },
+  { to: "/scan", icon: Scan, label: "Manual Scan" },
   { to: "/guards", icon: Users, label: "Guards", minRole: ["admin", "supervisor"] },
   { to: "/checkpoints", icon: Scan, label: "Checkpoints", minRole: ["admin", "supervisor"] },
   { to: "/shifts", icon: CalendarClock, label: "Shifts", minRole: ["admin", "supervisor"] },

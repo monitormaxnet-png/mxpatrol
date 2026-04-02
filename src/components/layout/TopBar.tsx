@@ -29,7 +29,7 @@ const TopBar = ({ onMenuClick }: TopBarProps) => {
 
       <div className="flex items-center gap-2 lg:gap-3">
         <NotificationCenter />
-        <button className="flex h-9 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20 lg:px-3">
+        <button onClick={() => navigate("/nfc-scanner")} className="flex h-9 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20 lg:px-3">
           <Scan className="h-4 w-4" />
           <span className="hidden sm:inline">NFC Scan</span>
         </button>

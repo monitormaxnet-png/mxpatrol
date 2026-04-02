@@ -58,6 +58,7 @@ const App = () => (
               <Route path="/shifts" element={<Shifts />} />
               <Route path="/incidents" element={<Incidents />} />
               <Route path="/scan" element={<ScanRecord />} />
+              <Route path="/nfc-scanner" element={<NFCScanner />} />
               <Route path="/ai-insights" element={<AIInsights />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/devices" element={<Devices />} />

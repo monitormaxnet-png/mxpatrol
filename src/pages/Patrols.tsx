@@ -99,6 +99,17 @@ const Patrols = () => {
                 </Select>
               </div>
               <div><Label>Duration (minutes)</Label><Input type="number" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} /></div>
+              <div>
+                <Label>Verification Level</Label>
+                <Select value={form.verification_level} onValueChange={(v) => setForm({ ...form, verification_level: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="standard">Standard (NFC + GPS)</SelectItem>
+                    <SelectItem value="enhanced">Enhanced (NFC + GPS + Face ID)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground mt-1">Enhanced requires guards to verify identity via facial recognition</p>
+              </div>
               <Button onClick={handleCreate} disabled={saving} className="w-full">
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create Patrol
               </Button>

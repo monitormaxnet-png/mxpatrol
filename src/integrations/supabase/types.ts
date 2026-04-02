@@ -831,6 +831,102 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_conversations: {
+        Row: {
+          company_id: string
+          created_at: string
+          guard_id: string | null
+          id: string
+          is_active: boolean
+          phone_number: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          guard_id?: string | null
+          id?: string
+          is_active?: boolean
+          phone_number: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          guard_id?: string | null
+          id?: string
+          is_active?: boolean
+          phone_number?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_conversations_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          company_id: string
+          conversation_id: string
+          created_at: string
+          direction: string
+          id: string
+          message_body: string
+          message_type: string
+          metadata: Json | null
+          twilio_sid: string | null
+        }
+        Insert: {
+          company_id: string
+          conversation_id: string
+          created_at?: string
+          direction?: string
+          id?: string
+          message_body: string
+          message_type?: string
+          metadata?: Json | null
+          twilio_sid?: string | null
+        }
+        Update: {
+          company_id?: string
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          message_body?: string
+          message_type?: string
+          metadata?: Json | null
+          twilio_sid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

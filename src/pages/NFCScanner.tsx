@@ -151,12 +151,21 @@ const NFCScanner = () => {
     nfcReader.startScanning();
   };
 
-  const handleManualScan = async () => {
-    if (!manualTagInput.trim()) return;
-    if (!selectedGuard) { toast.error("Select a guard first"); return; }
-    await processScan(manualTagInput.trim(), gps);
-    setManualTagInput("");
-  };
+  // Manual scan count for rate limiting
+  const { data: manualScanCount = 0 } = useQuery({
+    queryKey: ["manual_scan_count", selectedGuard],
+    queryFn: async () => {
+      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+      const { count } = await supabase
+        .from("scan_logs")
+        .select("*", { count: "exact", head: true })
+        .eq("guard_id", selectedGuard)
+        .eq("is_manual", true)
+        .gte("scanned_at", twelveHoursAgo);
+      return count ?? 0;
+    },
+    enabled: !!selectedGuard,
+  });
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)]">

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { MapPin, Plus, Loader2, Pencil, Trash2, Scan } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { MapPin, Plus, Loader2, Pencil, Trash2, Scan, Wifi, WifiOff, CheckCircle2, XCircle } from "lucide-react";
 import { useCheckpoints, usePatrols } from "@/hooks/useDashboardData";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useNfcReader, type NfcStatus } from "@/hooks/useNfcReader";
 
 type CheckpointForm = {
   name: string;
@@ -23,6 +24,94 @@ type CheckpointForm = {
 
 const emptyForm: CheckpointForm = { name: "", nfc_tag_id: "", location_lat: "", location_lng: "", patrol_id: "", sort_order: "0" };
 
+const NfcScanButton = ({ onTagScanned, currentTag }: { onTagScanned: (tag: string) => void; currentTag: string }) => {
+  const { status, lastTag, errorMessage, supported, startScanning, stopScanning } = useNfcReader({
+    onScan: (result) => {
+      onTagScanned(result.serialNumber);
+      stopScanning();
+    },
+  });
+
+  const isScanning = status === "scanning";
+  const isSuccess = status === "success";
+  const isError = status === "error" || status === "unsupported" || status === "disabled";
+
+  return (
+    <div className="space-y-2">
+      <Label>NFC Tag ID</Label>
+      <div className="flex gap-2">
+        <Input
+          value={currentTag}
+          readOnly
+          placeholder="Tap 'Scan' to read NFC tag"
+          className="bg-muted/50 font-mono text-sm"
+        />
+        <Button
+          type="button"
+          variant={isScanning ? "destructive" : "default"}
+          size="sm"
+          className="shrink-0 gap-1.5"
+          onClick={isScanning ? stopScanning : startScanning}
+        >
+          <Scan className="h-4 w-4" />
+          {isScanning ? "Stop" : "Scan"}
+        </Button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {isScanning && (
+          <motion.div
+            key="scanning"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2"
+          >
+            <motion.div
+              className="h-2.5 w-2.5 rounded-full bg-primary"
+              animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
+              transition={{ duration: 1.2, repeat: Infinity }}
+            />
+            <span className="text-xs font-medium text-primary">Waiting for tag…</span>
+          </motion.div>
+        )}
+
+        {isSuccess && (
+          <motion.div
+            key="success"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2"
+          >
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+            <span className="text-xs font-medium text-green-500">Tag detected: {lastTag}</span>
+          </motion.div>
+        )}
+
+        {isError && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2"
+          >
+            <XCircle className="h-4 w-4 text-destructive" />
+            <span className="text-xs font-medium text-destructive">{errorMessage || "Failed to read tag"}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {!supported && (
+        <p className="text-xs text-muted-foreground">
+          NFC not supported — you can type a tag ID manually below.
+        </p>
+      )}
+    </div>
+  );
+};
+
 const Checkpoints = () => {
   const { data: checkpoints = [], isLoading } = useCheckpoints();
   const { data: patrols = [] } = usePatrols();
@@ -33,6 +122,7 @@ const Checkpoints = () => {
   const [form, setForm] = useState<CheckpointForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const nfcSupported = typeof window !== "undefined" && "NDEFReader" in window;
 
   const openCreate = () => {
     setEditId(null);
@@ -121,7 +211,24 @@ const Checkpoints = () => {
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Main Entrance Gate" /></div>
-                <div><Label>NFC Tag ID</Label><Input value={form.nfc_tag_id} onChange={(e) => setForm({ ...form, nfc_tag_id: e.target.value })} placeholder="NFC-A001" /></div>
+
+                {/* NFC Scan section */}
+                <NfcScanButton
+                  currentTag={form.nfc_tag_id}
+                  onTagScanned={(tag) => setForm((f) => ({ ...f, nfc_tag_id: tag }))}
+                />
+                {/* Manual fallback for unsupported devices */}
+                {!nfcSupported && (
+                  <div>
+                    <Label>Manual Tag ID</Label>
+                    <Input
+                      value={form.nfc_tag_id}
+                      onChange={(e) => setForm({ ...form, nfc_tag_id: e.target.value })}
+                      placeholder="NFC-A001"
+                    />
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <div><Label>Latitude</Label><Input type="number" step="any" value={form.location_lat} onChange={(e) => setForm({ ...form, location_lat: e.target.value })} /></div>
                   <div><Label>Longitude</Label><Input type="number" step="any" value={form.location_lng} onChange={(e) => setForm({ ...form, location_lng: e.target.value })} /></div>
@@ -139,7 +246,7 @@ const Checkpoints = () => {
                   </Select>
                 </div>
                 <div><Label>Sort Order</Label><Input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} /></div>
-                <Button onClick={handleSave} disabled={saving} className="w-full">
+                <Button onClick={handleSave} disabled={saving || !form.nfc_tag_id} className="w-full">
                   {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {editId ? "Update Checkpoint" : "Create Checkpoint"}
                 </Button>

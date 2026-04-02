@@ -148,6 +148,132 @@ export type Database = {
           },
         ]
       }
+      camera_events: {
+        Row: {
+          camera_id: string
+          clip_url: string | null
+          company_id: string
+          created_at: string
+          description: string | null
+          detected_at: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          severity: string
+          thumbnail_url: string | null
+        }
+        Insert: {
+          camera_id: string
+          clip_url?: string | null
+          company_id: string
+          created_at?: string
+          description?: string | null
+          detected_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          severity?: string
+          thumbnail_url?: string | null
+        }
+        Update: {
+          camera_id?: string
+          clip_url?: string | null
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          detected_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          severity?: string
+          thumbnail_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "camera_events_camera_id_fkey"
+            columns: ["camera_id"]
+            isOneToOne: false
+            referencedRelation: "cameras"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "camera_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cameras: {
+        Row: {
+          camera_type: string
+          checkpoint_id: string | null
+          company_id: string
+          created_at: string
+          id: string
+          ip_address: string | null
+          is_recording: boolean
+          location: string | null
+          location_lat: number | null
+          location_lng: number | null
+          name: string
+          settings: Json | null
+          status: string
+          stream_url: string
+          updated_at: string
+        }
+        Insert: {
+          camera_type?: string
+          checkpoint_id?: string | null
+          company_id: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          is_recording?: boolean
+          location?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          name: string
+          settings?: Json | null
+          status?: string
+          stream_url: string
+          updated_at?: string
+        }
+        Update: {
+          camera_type?: string
+          checkpoint_id?: string | null
+          company_id?: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          is_recording?: boolean
+          location?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          name?: string
+          settings?: Json | null
+          status?: string
+          stream_url?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cameras_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cameras_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checkpoints: {
         Row: {
           company_id: string

@@ -28,6 +28,7 @@ import NFCScanner from "./pages/NFCScanner";
 import Cameras from "./pages/Cameras";
 import CameraLive from "./pages/CameraLive";
 import CameraEvents from "./pages/CameraEvents";
+import WhatsApp from "./pages/WhatsApp";
 
 const queryClient = new QueryClient();
 

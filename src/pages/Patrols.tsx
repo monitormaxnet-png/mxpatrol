@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { MapPin, Clock, CheckCircle2, Play, Loader2, Plus, Square, XCircle } from "lucide-react";
+import { MapPin, Clock, CheckCircle2, Play, Loader2, Plus, Square, XCircle, ShieldCheck } from "lucide-react";
 import { usePatrols, useGuards } from "@/hooks/useDashboardData";
 import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";

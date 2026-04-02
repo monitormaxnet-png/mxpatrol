@@ -171,20 +171,9 @@ const NFCScanner = () => {
     <div className="flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)]">
       {/* Header */}
       <div className="px-4 pt-4 pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-heading text-xl font-bold text-foreground">NFC Scanner</h2>
-            <p className="text-xs text-muted-foreground">Tap NFC tags to verify checkpoints</p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setManualMode(!manualMode)}
-            className="gap-1.5 text-xs h-8"
-          >
-            {manualMode ? <Scan className="h-3.5 w-3.5" /> : <Keyboard className="h-3.5 w-3.5" />}
-            {manualMode ? "NFC Mode" : "Manual"}
-          </Button>
+        <div>
+          <h2 className="font-heading text-xl font-bold text-foreground">NFC Scanner</h2>
+          <p className="text-xs text-muted-foreground">Tap NFC tags to verify checkpoints</p>
         </div>
       </div>
 
@@ -205,7 +194,7 @@ const NFCScanner = () => {
 
         {/* Action buttons */}
         <div className="mt-6 w-full max-w-xs space-y-3">
-          {scannerStatus === "idle" && !manualMode && (
+          {scannerStatus === "idle" && (
             <Button
               onClick={handleStartScan}
               disabled={!selectedGuard}
@@ -216,7 +205,7 @@ const NFCScanner = () => {
               Start NFC Scanning
             </Button>
           )}
-          {scannerStatus === "scanning" && !manualMode && (
+          {scannerStatus === "scanning" && (
             <Button
               onClick={nfcReader.stopScanning}
               variant="outline"
@@ -225,28 +214,59 @@ const NFCScanner = () => {
               Stop Scanning
             </Button>
           )}
-          {(scannerStatus === "unsupported" || manualMode) && (
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={manualTagInput}
-                  onChange={(e) => setManualTagInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleManualScan()}
-                  placeholder="Enter NFC Tag ID..."
-                  className="flex-1 h-10 rounded-lg border border-border bg-card/60 px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-                <Button onClick={handleManualScan} disabled={!manualTagInput.trim() || !selectedGuard} size="default">
-                  Scan
-                </Button>
-              </div>
-              <p className="text-[10px] text-muted-foreground text-center">
-                Enter the NFC tag ID printed on the checkpoint tag
-              </p>
-            </div>
-          )}
         </div>
       </div>
+
+      {/* Manual Fallback Toggle */}
+      <div className="px-4 mb-2">
+        {!showManualFallback ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowManualFallback(true)}
+            className="w-full gap-1.5 text-xs h-8 text-muted-foreground hover:text-warning"
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Having trouble scanning NFC?
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowManualFallback(false)}
+            className="w-full gap-1.5 text-xs h-8 text-muted-foreground"
+          >
+            Hide manual fallback
+          </Button>
+        )}
+      </div>
+
+      {/* Manual Scan Form (restricted fallback) */}
+      <AnimatePresence>
+        {showManualFallback && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="px-4 mb-4 overflow-hidden"
+          >
+            <ManualScanForm
+              guards={guards}
+              checkpoints={checkpoints}
+              selectedGuard={selectedGuard}
+              onGuardChange={setSelectedGuard}
+              gps={gps}
+              gpsLoading={gpsLoading}
+              onCaptureGps={captureGps}
+              isOnline={isOnline}
+              companyId={profile?.company_id ?? null}
+              manualScanCount={manualScanCount}
+              maxManualScans={3}
+              canBypassLimit={canManage}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Bottom panel */}
       <div className="glass-card mx-4 mb-4 p-4 space-y-4 rounded-xl">

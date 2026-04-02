@@ -14,6 +14,7 @@ import {
   CalendarClock,
   UserCircle,
   X,
+  Camera,
 } from "lucide-react";
 import { useUserRole, type AppRole } from "@/hooks/useUserRole";
 

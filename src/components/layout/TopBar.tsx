@@ -1,4 +1,5 @@
 import { Search, Scan, Menu } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import NotificationCenter from "./NotificationCenter";
 
 interface TopBarProps {

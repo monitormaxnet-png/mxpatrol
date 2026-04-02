@@ -10,6 +10,7 @@ import {
   Settings,
   Radio,
   Scan,
+  CalendarClock,
   UserCircle,
   X,
 } from "lucide-react";

@@ -62,7 +62,7 @@ const Patrols = () => {
     if (error) { toast.error("Failed to create patrol: " + error.message); }
     else {
       toast.success("Patrol created");
-      setForm({ name: "", description: "", guard_id: "", duration: "480" });
+      setForm({ name: "", description: "", guard_id: "", duration: "480", verification_level: "standard" });
       setOpen(false);
       queryClient.invalidateQueries({ queryKey: ["patrols"] });
     }

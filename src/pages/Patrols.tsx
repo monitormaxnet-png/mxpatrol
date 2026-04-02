@@ -133,6 +133,11 @@ const Patrols = () => {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-heading text-sm font-semibold text-foreground">{patrol.name}</p>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${status.bg} ${status.color}`}>{status.label}</span>
+                    {(patrol as any).verification_level === "enhanced" && (
+                      <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        <ShieldCheck className="h-2.5 w-2.5" />Face ID
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {patrol.guards?.full_name ? `Guard: ${patrol.guards.full_name}` : "Unassigned"} · {formatDistanceToNow(new Date(patrol.updated_at), { addSuffix: true })}

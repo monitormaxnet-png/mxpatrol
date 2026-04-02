@@ -24,6 +24,7 @@ import NotFound from "./pages/NotFound";
 import Profile from "./pages/Profile";
 import Shifts from "./pages/Shifts";
 import ScanRecord from "./pages/ScanRecord";
+import NFCScanner from "./pages/NFCScanner";
 
 const queryClient = new QueryClient();
 

@@ -166,6 +166,17 @@ const GuardDetail = () => {
           </div>
         </div>
 
+        {/* Photo Upload (for Face ID) */}
+        {canManage && (
+          <div className="mt-4 pt-4 border-t border-border/30">
+            <GuardPhotoUpload
+              guardId={guard.id}
+              currentPhotoUrl={(guard as any).photo_url}
+              onPhotoUpdated={() => queryClient.invalidateQueries({ queryKey: ["guard", id] })}
+            />
+          </div>
+        )}
+
         {/* Quick stats */}
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-lg bg-muted/50 p-3 text-center">

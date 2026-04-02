@@ -347,6 +347,7 @@ export type Database = {
           is_active: boolean
           performance_score: number | null
           phone: string | null
+          photo_url: string | null
           updated_at: string
           user_id: string | null
         }
@@ -359,6 +360,7 @@ export type Database = {
           is_active?: boolean
           performance_score?: number | null
           phone?: string | null
+          photo_url?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -371,6 +373,7 @@ export type Database = {
           is_active?: boolean
           performance_score?: number | null
           phone?: string | null
+          photo_url?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -467,6 +470,7 @@ export type Database = {
           started_at: string | null
           status: Database["public"]["Enums"]["patrol_status"]
           updated_at: string
+          verification_level: string
         }
         Insert: {
           company_id: string
@@ -481,6 +485,7 @@ export type Database = {
           started_at?: string | null
           status?: Database["public"]["Enums"]["patrol_status"]
           updated_at?: string
+          verification_level?: string
         }
         Update: {
           company_id?: string
@@ -495,6 +500,7 @@ export type Database = {
           started_at?: string | null
           status?: Database["public"]["Enums"]["patrol_status"]
           updated_at?: string
+          verification_level?: string
         }
         Relationships: [
           {
@@ -557,6 +563,8 @@ export type Database = {
           company_id: string
           created_at: string
           device_id: string | null
+          face_confidence: number | null
+          face_verified: boolean | null
           gps_lat: number | null
           gps_lng: number | null
           guard_id: string
@@ -571,6 +579,8 @@ export type Database = {
           company_id: string
           created_at?: string
           device_id?: string | null
+          face_confidence?: number | null
+          face_verified?: boolean | null
           gps_lat?: number | null
           gps_lng?: number | null
           guard_id: string
@@ -585,6 +595,8 @@ export type Database = {
           company_id?: string
           created_at?: string
           device_id?: string | null
+          face_confidence?: number | null
+          face_verified?: boolean | null
           gps_lat?: number | null
           gps_lng?: number | null
           guard_id?: string

@@ -1,4 +1,5 @@
 import { useParams, Link } from "react-router-dom";
+import GuardPhotoUpload from "@/components/guards/GuardPhotoUpload";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -131,9 +132,13 @@ const GuardDetail = () => {
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 lg:p-6">
         <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-            <User className="h-7 w-7 text-primary" />
-          </div>
+          {(guard as any).photo_url ? (
+            <img src={(guard as any).photo_url} alt={guard.full_name} className="h-14 w-14 rounded-full object-cover border-2 border-primary/30" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <User className="h-7 w-7 text-primary" />
+            </div>
+          )}
           <div className="flex-1">
             <h2 className="font-heading text-xl font-bold text-foreground">{guard.full_name}</h2>
             <p className="text-sm text-muted-foreground">Badge: {guard.badge_number} · {guard.phone || "No phone"}</p>
@@ -160,6 +165,17 @@ const GuardDetail = () => {
             </div>
           </div>
         </div>
+
+        {/* Photo Upload (for Face ID) */}
+        {canManage && (
+          <div className="mt-4 pt-4 border-t border-border/30">
+            <GuardPhotoUpload
+              guardId={guard.id}
+              currentPhotoUrl={(guard as any).photo_url}
+              onPhotoUpdated={() => queryClient.invalidateQueries({ queryKey: ["guard", id] })}
+            />
+          </div>
+        )}
 
         {/* Quick stats */}
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">

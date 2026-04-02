@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { MapPin, Clock, CheckCircle2, Play, Loader2, Plus, Square, XCircle } from "lucide-react";
+import { MapPin, Clock, CheckCircle2, Play, Loader2, Plus, Square, XCircle, ShieldCheck } from "lucide-react";
 import { usePatrols, useGuards } from "@/hooks/useDashboardData";
 import { useUserRole } from "@/hooks/useUserRole";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,7 +39,7 @@ const Patrols = () => {
     }
   };
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", guard_id: "", duration: "480" });
+  const [form, setForm] = useState({ name: "", description: "", guard_id: "", duration: "480", verification_level: "standard" });
 
   const handleCreate = async () => {
     if (!form.name) { toast.error("Patrol name is required"); return; }
@@ -55,13 +55,14 @@ const Patrols = () => {
       guard_id: form.guard_id || null,
       expected_duration_minutes: parseInt(form.duration) || 480,
       status: "scheduled",
+      verification_level: form.verification_level,
     });
 
     setSaving(false);
     if (error) { toast.error("Failed to create patrol: " + error.message); }
     else {
       toast.success("Patrol created");
-      setForm({ name: "", description: "", guard_id: "", duration: "480" });
+      setForm({ name: "", description: "", guard_id: "", duration: "480", verification_level: "standard" });
       setOpen(false);
       queryClient.invalidateQueries({ queryKey: ["patrols"] });
     }
@@ -98,6 +99,17 @@ const Patrols = () => {
                 </Select>
               </div>
               <div><Label>Duration (minutes)</Label><Input type="number" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} /></div>
+              <div>
+                <Label>Verification Level</Label>
+                <Select value={form.verification_level} onValueChange={(v) => setForm({ ...form, verification_level: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="standard">Standard (NFC + GPS)</SelectItem>
+                    <SelectItem value="enhanced">Enhanced (NFC + GPS + Face ID)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground mt-1">Enhanced requires guards to verify identity via facial recognition</p>
+              </div>
               <Button onClick={handleCreate} disabled={saving} className="w-full">
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create Patrol
               </Button>
@@ -121,6 +133,11 @@ const Patrols = () => {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-heading text-sm font-semibold text-foreground">{patrol.name}</p>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${status.bg} ${status.color}`}>{status.label}</span>
+                    {(patrol as any).verification_level === "enhanced" && (
+                      <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        <ShieldCheck className="h-2.5 w-2.5" />Face ID
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {patrol.guards?.full_name ? `Guard: ${patrol.guards.full_name}` : "Unassigned"} · {formatDistanceToNow(new Date(patrol.updated_at), { addSuffix: true })}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { User, Star, Shield, MapPin, Plus, Loader2 } from "lucide-react";
+import { User, Star, Shield, MapPin, Plus, Loader2, ScanFace } from "lucide-react";
 import { useGuards } from "@/hooks/useDashboardData";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -120,9 +120,13 @@ const Guards = () => {
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
-                  <User className="h-5 w-5 text-primary" />
-                </div>
+                {(guard as any).photo_url ? (
+                  <img src={(guard as any).photo_url} alt={guard.full_name} className="h-11 w-11 rounded-full object-cover border-2 border-primary/20" />
+                ) : (
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
+                    <User className="h-5 w-5 text-primary" />
+                  </div>
+                )}
                 <div>
                   <p className="font-heading text-sm font-semibold text-foreground">{guard.full_name}</p>
                   <p className="text-xs text-muted-foreground">{guard.badge_number}</p>
@@ -145,6 +149,13 @@ const Guards = () => {
                 <span className="font-heading text-sm font-bold text-foreground">{guard.performance_score ?? 0}</span>
                 <span className="text-[10px] text-muted-foreground">score</span>
               </div>
+              {(guard as any).photo_url ? (
+                <span className="flex items-center gap-1 text-[10px] text-success font-medium">
+                  <ScanFace className="h-3 w-3" /> Face ID
+                </span>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">No Face ID</span>
+              )}
             </div>
           </motion.div>
         ))}

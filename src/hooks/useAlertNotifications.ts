@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -12,6 +13,7 @@ const severityStyles: Record<string, { title: string }> = {
 
 export function useAlertNotifications() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const initializedRef = useRef(false);
 
   useEffect(() => {
@@ -24,12 +26,23 @@ export function useAlertNotifications() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "alerts" },
         (payload) => {
-          const alert = payload.new as { message: string; severity: string };
+          const alert = payload.new as { message: string; severity: string; type: string };
           const style = severityStyles[alert.severity] || severityStyles.low;
-          toast.error(alert.message, {
-            description: style.title,
-            duration: alert.severity === "critical" ? 10000 : 5000,
-          });
+          const isFaceAlert = alert.message?.toLowerCase().includes("face verification");
+          
+          if (isFaceAlert) {
+            toast.error(alert.message, {
+              description: "🔐 FACE ID SECURITY ALERT",
+              duration: 12000,
+            });
+          } else {
+            toast.error(alert.message, {
+              description: style.title,
+              duration: alert.severity === "critical" ? 10000 : 5000,
+            });
+          }
+          // Refresh notification center
+          queryClient.invalidateQueries({ queryKey: ["alerts"] });
         }
       )
       .on(

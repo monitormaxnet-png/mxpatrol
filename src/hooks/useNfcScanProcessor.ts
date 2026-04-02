@@ -74,11 +74,33 @@ export function useNfcScanProcessor({
   );
 
   const processScan = useCallback(
-    async (tagId: string, gps: { lat: number; lng: number } | null) => {
+    async (tagId: string, gps: { lat: number; lng: number } | null, faceResult?: { verified: boolean; confidence: number }) => {
       const result = validateTag(tagId);
 
       if (!result.valid || !result.checkpoint) {
         onFailure?.(result);
+        return result;
+      }
+
+      // Check if patrol requires face verification
+      const patrol = result.checkpoint.patrol_id
+        ? patrols.find((p) => p.id === result.checkpoint!.patrol_id)
+        : null;
+      const requiresFace = patrol?.verification_level === "enhanced";
+
+      if (requiresFace && !faceResult && onFaceVerificationRequired) {
+        // Pause scan — need face verification first
+        recentScansRef.current.set(result.checkpoint.id, Date.now());
+        const scanData = {
+          guard_id: selectedGuardId,
+          checkpoint_id: result.checkpoint.id,
+          company_id: companyId!,
+          scanned_at: new Date().toISOString(),
+          gps_lat: gps?.lat ?? null,
+          gps_lng: gps?.lng ?? null,
+        };
+        result.requiresFaceVerification = true;
+        onFaceVerificationRequired(result, scanData);
         return result;
       }
 
@@ -92,6 +114,8 @@ export function useNfcScanProcessor({
         scanned_at: new Date().toISOString(),
         gps_lat: gps?.lat ?? null,
         gps_lng: gps?.lng ?? null,
+        face_verified: faceResult?.verified ?? null,
+        face_confidence: faceResult?.confidence ?? null,
       };
 
       if (!isOnline) {
@@ -118,7 +142,7 @@ export function useNfcScanProcessor({
 
       return result;
     },
-    [validateTag, selectedGuardId, companyId, isOnline, enqueue, onSuccess, onFailure]
+    [validateTag, selectedGuardId, companyId, isOnline, patrols, enqueue, onSuccess, onFailure, onFaceVerificationRequired]
   );
 
   return { processScan, validateTag };

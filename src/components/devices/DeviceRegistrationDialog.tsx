@@ -220,7 +220,7 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
                       {guards.map((g) => (
                         <SelectItem key={g.id} value={g.id}>
                           {g.full_name} ({g.badge_number})

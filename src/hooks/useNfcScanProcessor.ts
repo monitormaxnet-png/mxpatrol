@@ -24,11 +24,13 @@ type ProcessorOptions = {
 
 export function useNfcScanProcessor({
   checkpoints,
+  patrols,
   selectedGuardId,
   companyId,
   isOnline,
   onSuccess,
   onFailure,
+  onFaceVerificationRequired,
 }: ProcessorOptions) {
   const { user } = useAuth();
   const { enqueue } = useOfflineScanQueue();

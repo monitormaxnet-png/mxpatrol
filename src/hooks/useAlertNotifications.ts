@@ -41,6 +41,8 @@ export function useAlertNotifications() {
               duration: alert.severity === "critical" ? 10000 : 5000,
             });
           }
+          // Refresh notification center
+          queryClient.invalidateQueries({ queryKey: ["alerts"] });
         }
       )
       .on(

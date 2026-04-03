@@ -126,7 +126,7 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
               ? { rotateZ: [0, 15] }
               : status === "error"
               ? { rotateZ: [0, -5, 5, -5, 0] }
-              : {}
+              : { rotateZ: [0, 360] }
           }
           transition={
             isAnimating
@@ -135,7 +135,7 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
               ? { duration: 0.6, ease: "easeOut" }
               : status === "error"
               ? { duration: 0.5, ease: "easeOut" }
-              : {}
+              : { duration: 12, repeat: Infinity, ease: "linear" }
           }
         />
 

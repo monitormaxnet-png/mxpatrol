@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,6 +16,8 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScanLine, AlertTriangle, ShieldCheck } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 const NFCScanner = () => {
   const { user } = useAuth();
@@ -32,6 +34,8 @@ const NFCScanner = () => {
   const [lastCheckpoint, setLastCheckpoint] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [showManualFallback, setShowManualFallback] = useState(false);
+  const bgMapContainerRef = useRef<HTMLDivElement>(null);
+  const bgMapRef = useRef<L.Map | null>(null);
 
   // Face verification state
   const [pendingFaceScan, setPendingFaceScan] = useState<{
@@ -62,12 +66,67 @@ const NFCScanner = () => {
   const { data: checkpoints = [] } = useQuery({
     queryKey: ["checkpoints"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("checkpoints").select("id, name, nfc_tag_id, patrol_id").order("sort_order");
+      const { data, error } = await supabase.from("checkpoints").select("id, name, nfc_tag_id, patrol_id, location_lat, location_lng").order("sort_order");
       if (error) throw error;
       return data;
     },
     enabled: !!user,
   });
+
+  // Background map initialization
+  useEffect(() => {
+    if (!bgMapContainerRef.current || bgMapRef.current) return;
+
+    const map = L.map(bgMapContainerRef.current, {
+      center: [0, 0],
+      zoom: 2,
+      zoomControl: false,
+      attributionControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+      keyboard: false,
+    });
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: "",
+    }).addTo(map);
+
+    bgMapRef.current = map;
+
+    return () => {
+      map.remove();
+      bgMapRef.current = null;
+    };
+  }, []);
+
+  // Fit background map to checkpoints and add markers
+  useEffect(() => {
+    const map = bgMapRef.current;
+    if (!map) return;
+
+    const withCoords = checkpoints.filter(
+      (cp: any) => cp.location_lat != null && cp.location_lng != null
+    );
+
+    if (withCoords.length > 0) {
+      const bounds = L.latLngBounds(
+        withCoords.map((cp: any) => [cp.location_lat!, cp.location_lng!])
+      );
+      map.fitBounds(bounds.pad(0.5), { animate: false });
+
+      withCoords.forEach((cp: any) => {
+        const icon = L.divIcon({
+          className: "",
+          html: `<div style="width:10px;height:10px;transform:rotate(45deg);background:hsl(188,95%,50%);border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 12px hsl(188,95%,50%,0.5);opacity:0.7;"></div>`,
+          iconSize: [10, 10],
+          iconAnchor: [5, 5],
+        });
+        L.marker([cp.location_lat!, cp.location_lng!], { icon, interactive: false }).addTo(map);
+      });
+    }
+  }, [checkpoints]);
 
   // Patrols (for verification_level)
   const { data: patrols = [] } = useQuery({
@@ -246,54 +305,19 @@ const NFCScanner = () => {
 
   return (
     <div className="relative flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)] overflow-hidden">
-      {/* 3D Background layers */}
+      {/* Live map background */}
       <div className="pointer-events-none absolute inset-0 z-0">
-        {/* Deep gradient base */}
+        <div ref={bgMapContainerRef} className="absolute inset-0" style={{ opacity: 0.6 }} />
+        {/* Dark vignette overlay */}
         <div
           className="absolute inset-0"
           style={{
-            background: "radial-gradient(ellipse at 50% 20%, hsl(222 60% 12%) 0%, hsl(222 47% 4%) 70%, hsl(222 50% 2%) 100%)",
-          }}
-        />
-        {/* Perspective grid floor */}
-        <div
-          className="absolute bottom-0 left-0 right-0"
-          style={{
-            height: "60%",
             background: `
-              linear-gradient(to top, transparent 0%, hsl(222 47% 6% / 0.9) 100%),
-              repeating-linear-gradient(90deg, hsl(188 95% 50% / 0.04) 0px, transparent 1px, transparent 80px),
-              repeating-linear-gradient(0deg, hsl(188 95% 50% / 0.04) 0px, transparent 1px, transparent 80px)
+              radial-gradient(ellipse at 50% 40%, transparent 20%, hsl(222 47% 4% / 0.7) 70%),
+              linear-gradient(to bottom, hsl(222 47% 4% / 0.3) 0%, transparent 30%, transparent 70%, hsl(222 47% 4% / 0.6) 100%)
             `,
-            transform: "perspective(500px) rotateX(45deg)",
-            transformOrigin: "bottom center",
           }}
         />
-        {/* Ambient light orbs */}
-        <div
-          className="absolute top-[10%] left-[15%] h-64 w-64 rounded-full"
-          style={{
-            background: "radial-gradient(circle, hsl(188 95% 50% / 0.06) 0%, transparent 70%)",
-            filter: "blur(40px)",
-          }}
-        />
-        <div
-          className="absolute top-[30%] right-[10%] h-48 w-48 rounded-full"
-          style={{
-            background: "radial-gradient(circle, hsl(152 69% 40% / 0.05) 0%, transparent 70%)",
-            filter: "blur(40px)",
-          }}
-        />
-        {/* Floating particles */}
-        <div className="absolute inset-0 opacity-30" style={{
-          backgroundImage: `
-            radial-gradient(1px 1px at 20% 30%, hsl(188 95% 50% / 0.4) 50%, transparent 100%),
-            radial-gradient(1px 1px at 60% 60%, hsl(188 95% 50% / 0.3) 50%, transparent 100%),
-            radial-gradient(1px 1px at 80% 20%, hsl(188 95% 50% / 0.2) 50%, transparent 100%),
-            radial-gradient(1.5px 1.5px at 40% 80%, hsl(188 95% 50% / 0.3) 50%, transparent 100%),
-            radial-gradient(1px 1px at 10% 70%, hsl(152 69% 40% / 0.3) 50%, transparent 100%)
-          `,
-        }} />
       </div>
 
       {/* Header */}
@@ -368,68 +392,9 @@ const NFCScanner = () => {
             />
           </motion.div>
 
-          {/* Mini 3D Map */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.5 }}
-            className="mt-4 w-full max-w-xs"
-          >
-            <div
-              className="relative rounded-xl border border-border/30 overflow-hidden"
-              style={{
-                height: 120,
-                perspective: "600px",
-              }}
-            >
-              <div
-                className="absolute inset-0"
-                style={{
-                  background: `
-                    linear-gradient(180deg, hsl(222 40% 9% / 0.7) 0%, transparent 40%),
-                    repeating-linear-gradient(90deg, hsl(188 95% 50% / 0.08) 0px, transparent 1px, transparent 40px),
-                    repeating-linear-gradient(0deg, hsl(188 95% 50% / 0.08) 0px, transparent 1px, transparent 40px)
-                  `,
-                  transform: "rotateX(35deg) scale(1.3)",
-                  transformOrigin: "center bottom",
-                }}
-              />
-              {/* Checkpoint dots on mini map */}
-              {checkpoints.slice(0, 5).map((cp, i) => (
-                <motion.div
-                  key={cp.id}
-                  className="absolute h-2 w-2 rounded-full bg-primary/60"
-                  style={{
-                    left: `${15 + i * 18}%`,
-                    top: `${30 + (i % 3) * 20}%`,
-                    boxShadow: "0 0 6px hsl(188 95% 50% / 0.4)",
-                  }}
-                  animate={{ opacity: [0.4, 1, 0.4] }}
-                  transition={{ duration: 2, delay: i * 0.3, repeat: Infinity }}
-                />
-              ))}
-              {/* GPS indicator */}
-              {gps && (
-                <motion.div
-                  className="absolute h-3 w-3 rounded-full bg-success"
-                  style={{
-                    left: "50%",
-                    top: "50%",
-                    transform: "translate(-50%, -50%)",
-                    boxShadow: "0 0 10px hsl(152 69% 40% / 0.6)",
-                  }}
-                  animate={{ scale: [1, 1.3, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                />
-              )}
-              <div className="absolute bottom-1.5 left-2 text-[9px] font-medium text-muted-foreground/60 tracking-wider uppercase">
-                Patrol Zone
-              </div>
-            </div>
-          </motion.div>
 
           {/* Action buttons */}
-          <div className="mt-4 w-full max-w-xs space-y-3">
+          <div className="mt-6 w-full max-w-xs space-y-3">
             {scannerStatus === "idle" && (
               <Button
                 onClick={handleStartScan}

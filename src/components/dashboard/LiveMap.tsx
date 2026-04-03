@@ -48,6 +48,7 @@ const LiveMap = () => {
   const [replayProgress, setReplayProgress] = useState(0); // 0-100
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedGuardId, setSelectedGuardId] = useState<string>("all");
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -327,14 +328,14 @@ const LiveMap = () => {
             setIsPlaying(false);
             return 100;
           }
-          return Math.min(prev + 0.5, 100);
+          return Math.min(prev + 0.5 * playbackSpeed, 100);
         });
       }, 50);
     }
     return () => {
       if (playIntervalRef.current) clearInterval(playIntervalRef.current);
     };
-  }, [isPlaying, isReplaying]);
+  }, [isPlaying, isReplaying, playbackSpeed]);
 
   // Invalidate map size on fullscreen toggle
   useEffect(() => {
@@ -491,6 +492,22 @@ const LiveMap = () => {
                   </option>
                 ))}
               </select>
+              {/* Speed controls */}
+              <div className="flex shrink-0 items-center rounded-md border border-border/50 overflow-hidden">
+                {[0.5, 1, 2, 4].map((speed) => (
+                  <button
+                    key={speed}
+                    onClick={() => setPlaybackSpeed(speed)}
+                    className={`px-1.5 py-1 text-[10px] font-medium transition-colors ${
+                      playbackSpeed === speed
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {speed}x
+                  </button>
+                ))}
+              </div>
               <div className="flex-1 min-w-0">
                 <Slider
                   value={[replayProgress]}

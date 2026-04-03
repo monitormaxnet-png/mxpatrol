@@ -276,7 +276,7 @@ const LiveMap = () => {
     replayTrailsRef.current = [];
     // Keep markers but update positions
 
-    guardTrails.forEach((trail, idx) => {
+    filteredTrails.forEach((trail, idx) => {
       const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
       const visiblePoints = trail.points.filter((p) => new Date(p.scanned_at).getTime() <= currentTime);
 

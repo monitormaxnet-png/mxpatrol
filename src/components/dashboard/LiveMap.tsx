@@ -436,6 +436,16 @@ const LiveMap = () => {
             </button>
           )}
           <button
+            onClick={() => setShowGuardPanel((p) => !p)}
+            className={`flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-medium transition-colors ${
+              showGuardPanel ? "bg-success/20 text-success" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+            title="Toggle guard list"
+          >
+            <Users className="h-3.5 w-3.5" />
+            Guards
+          </button>
+          <button
             onClick={() => setIsFullscreen((f) => !f)}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -443,7 +453,8 @@ const LiveMap = () => {
           </button>
         </div>
       </div>
-      <div className="relative flex-1 min-h-[300px]">
+      <div className="relative flex-1 min-h-[300px] flex">
+        <div className={`relative flex-1 min-h-[300px] ${showGuardPanel ? 'min-w-0' : ''}`}>
         {!hasData && (
           <div className="absolute inset-0 z-10 flex items-center justify-center text-sm text-muted-foreground bg-muted/20">
             No GPS data available — add coordinates to checkpoints to see them on the map

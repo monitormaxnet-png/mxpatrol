@@ -308,13 +308,22 @@ const NFCScanner = () => {
       {/* Live map background */}
       <div className="pointer-events-none absolute inset-0 z-0">
         <div ref={bgMapContainerRef} className="absolute inset-0" style={{ opacity: 0.85 }} />
-        {/* Soft edge vignette only */}
+        {/* Steel/silver tint to match vault + soft vignette */}
         <div
           className="absolute inset-0"
           style={{
             background: `
-              radial-gradient(ellipse at 50% 40%, transparent 40%, hsl(222 47% 4% / 0.4) 90%),
-              linear-gradient(to bottom, hsl(222 47% 4% / 0.15) 0%, transparent 20%, transparent 80%, hsl(222 47% 4% / 0.3) 100%)
+              linear-gradient(180deg, hsla(210,15%,60%,0.12) 0%, hsla(210,10%,50%,0.08) 100%)
+            `,
+            mixBlendMode: "color",
+          }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `
+              radial-gradient(ellipse at 50% 40%, transparent 40%, hsl(210 15% 8% / 0.5) 90%),
+              linear-gradient(to bottom, hsl(210 15% 8% / 0.15) 0%, transparent 20%, transparent 80%, hsl(210 15% 8% / 0.3) 100%)
             `,
           }}
         />

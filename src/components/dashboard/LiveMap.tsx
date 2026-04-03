@@ -69,11 +69,17 @@ const LiveMap = () => {
 
   const hasData = checkpointsWithCoords.length > 0 || guardPositions.length > 0;
 
-  // Compute global time range from all trail points
+  // Filter trails by selected guard
+  const filteredTrails = useMemo(() => {
+    if (selectedGuardId === "all") return guardTrails;
+    return guardTrails.filter((t) => t.guard_id === selectedGuardId);
+  }, [guardTrails, selectedGuardId]);
+
+  // Compute global time range from filtered trail points
   const timeRange = useMemo(() => {
     let min = Infinity;
     let max = -Infinity;
-    guardTrails.forEach((trail) => {
+    filteredTrails.forEach((trail) => {
       trail.points.forEach((pt) => {
         const t = new Date(pt.scanned_at).getTime();
         if (t < min) min = t;
@@ -81,7 +87,7 @@ const LiveMap = () => {
       });
     });
     return { min: isFinite(min) ? min : 0, max: isFinite(max) ? max : 0 };
-  }, [guardTrails]);
+  }, [filteredTrails]);
 
   const currentTime = useMemo(() => {
     if (timeRange.max === timeRange.min) return timeRange.max;

@@ -219,7 +219,7 @@ const LiveMap = () => {
 
     if (!showTrails || isReplaying) return;
 
-    guardTrails.forEach((trail, idx) => {
+    filteredTrails.forEach((trail, idx) => {
       if (trail.points.length < 2) return;
 
       const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];

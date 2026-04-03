@@ -135,7 +135,7 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
               ? { duration: 0.6, ease: "easeOut" }
               : status === "error"
               ? { duration: 0.5, ease: "easeOut" }
-              : {}
+              : { duration: 12, repeat: Infinity, ease: "linear" }
           }
         />
 

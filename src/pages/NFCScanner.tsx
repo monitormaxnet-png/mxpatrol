@@ -18,6 +18,7 @@ import { ScanLine, AlertTriangle, ShieldCheck } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import vaultDoor from "@/assets/vault-door.png";
 
 const NFCScanner = () => {
   const { user } = useAuth();

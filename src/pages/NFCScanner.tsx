@@ -307,14 +307,14 @@ const NFCScanner = () => {
     <div className="relative flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)] overflow-hidden">
       {/* Live map background */}
       <div className="pointer-events-none absolute inset-0 z-0">
-        <div ref={bgMapContainerRef} className="absolute inset-0" style={{ opacity: 0.6 }} />
-        {/* Dark vignette overlay */}
+        <div ref={bgMapContainerRef} className="absolute inset-0" style={{ opacity: 0.85 }} />
+        {/* Soft edge vignette only */}
         <div
           className="absolute inset-0"
           style={{
             background: `
-              radial-gradient(ellipse at 50% 40%, transparent 20%, hsl(222 47% 4% / 0.7) 70%),
-              linear-gradient(to bottom, hsl(222 47% 4% / 0.3) 0%, transparent 30%, transparent 70%, hsl(222 47% 4% / 0.6) 100%)
+              radial-gradient(ellipse at 50% 40%, transparent 40%, hsl(222 47% 4% / 0.4) 90%),
+              linear-gradient(to bottom, hsl(222 47% 4% / 0.15) 0%, transparent 20%, transparent 80%, hsl(222 47% 4% / 0.3) 100%)
             `,
           }}
         />

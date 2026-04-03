@@ -492,6 +492,22 @@ const LiveMap = () => {
                   </option>
                 ))}
               </select>
+              {/* Speed controls */}
+              <div className="flex shrink-0 items-center rounded-md border border-border/50 overflow-hidden">
+                {[0.5, 1, 2, 4].map((speed) => (
+                  <button
+                    key={speed}
+                    onClick={() => setPlaybackSpeed(speed)}
+                    className={`px-1.5 py-1 text-[10px] font-medium transition-colors ${
+                      playbackSpeed === speed
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {speed}x
+                  </button>
+                ))}
+              </div>
               <div className="flex-1 min-w-0">
                 <Slider
                   value={[replayProgress]}

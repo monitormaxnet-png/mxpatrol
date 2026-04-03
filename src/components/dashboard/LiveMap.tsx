@@ -342,7 +342,7 @@ const LiveMap = () => {
     if (!map) return;
     const t = setTimeout(() => map.invalidateSize(), 300);
     return () => clearTimeout(t);
-  }, [isFullscreen]);
+  }, [isFullscreen, showGuardPanel]);
 
   // Close fullscreen on Escape
   useEffect(() => {

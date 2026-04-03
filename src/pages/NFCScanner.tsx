@@ -114,7 +114,7 @@ const NFCScanner = () => {
       const bounds = L.latLngBounds(
         withCoords.map((cp: any) => [cp.location_lat!, cp.location_lng!])
       );
-      map.fitBounds(bounds.pad(1.5), { animate: false, maxZoom: 10 });
+      map.fitBounds(bounds.pad(1.5), { animate: false, maxZoom: 3 });
 
       withCoords.forEach((cp: any) => {
         const icon = L.divIcon({

@@ -354,7 +354,7 @@ const NFCScanner = () => {
 
       {/* Scanner Area */}
       {!pendingFaceScan && (
-        <div className="flex-1 flex flex-col items-center justify-center px-4 py-6">
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-6">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -368,8 +368,68 @@ const NFCScanner = () => {
             />
           </motion.div>
 
+          {/* Mini 3D Map */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.5 }}
+            className="mt-4 w-full max-w-xs"
+          >
+            <div
+              className="relative rounded-xl border border-border/30 overflow-hidden"
+              style={{
+                height: 120,
+                perspective: "600px",
+              }}
+            >
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: `
+                    linear-gradient(180deg, hsl(222 40% 9% / 0.7) 0%, transparent 40%),
+                    repeating-linear-gradient(90deg, hsl(188 95% 50% / 0.08) 0px, transparent 1px, transparent 40px),
+                    repeating-linear-gradient(0deg, hsl(188 95% 50% / 0.08) 0px, transparent 1px, transparent 40px)
+                  `,
+                  transform: "rotateX(35deg) scale(1.3)",
+                  transformOrigin: "center bottom",
+                }}
+              />
+              {/* Checkpoint dots on mini map */}
+              {checkpoints.slice(0, 5).map((cp, i) => (
+                <motion.div
+                  key={cp.id}
+                  className="absolute h-2 w-2 rounded-full bg-primary/60"
+                  style={{
+                    left: `${15 + i * 18}%`,
+                    top: `${30 + (i % 3) * 20}%`,
+                    boxShadow: "0 0 6px hsl(188 95% 50% / 0.4)",
+                  }}
+                  animate={{ opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: 2, delay: i * 0.3, repeat: Infinity }}
+                />
+              ))}
+              {/* GPS indicator */}
+              {gps && (
+                <motion.div
+                  className="absolute h-3 w-3 rounded-full bg-success"
+                  style={{
+                    left: "50%",
+                    top: "50%",
+                    transform: "translate(-50%, -50%)",
+                    boxShadow: "0 0 10px hsl(152 69% 40% / 0.6)",
+                  }}
+                  animate={{ scale: [1, 1.3, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
+              )}
+              <div className="absolute bottom-1.5 left-2 text-[9px] font-medium text-muted-foreground/60 tracking-wider uppercase">
+                Patrol Zone
+              </div>
+            </div>
+          </motion.div>
+
           {/* Action buttons */}
-          <div className="mt-6 w-full max-w-xs space-y-3">
+          <div className="mt-4 w-full max-w-xs space-y-3">
             {scannerStatus === "idle" && (
               <Button
                 onClick={handleStartScan}

@@ -1,9 +1,15 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, Route } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useCheckpoints } from "@/hooks/useDashboardData";
-import { useGuardPositions, type GuardPosition } from "@/hooks/useGuardPositions";
+import { useGuardPositions, useGuardTrails } from "@/hooks/useGuardPositions";
+
+// Distinct colors for guard trails
+const TRAIL_COLORS = [
+  "#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6",
+  "#ec4899", "#14b8a6", "#f97316", "#06b6d4", "#84cc16",
+];
 
 function createGuardIcon() {
   return L.divIcon({
@@ -25,14 +31,18 @@ function createCheckpointIcon() {
 
 const LiveMap = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showTrails, setShowTrails] = useState(true);
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const guardMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const checkpointMarkersRef = useRef<L.Marker[]>([]);
+  const trailLinesRef = useRef<L.Polyline[]>([]);
+  const trailDotsRef = useRef<L.CircleMarker[]>([]);
   const hasFittedRef = useRef(false);
 
   const { data: checkpoints = [] } = useCheckpoints();
   const { data: guardPositions = [] } = useGuardPositions();
+  const { data: guardTrails = [] } = useGuardTrails();
 
   const checkpointsWithCoords = useMemo(
     () => checkpoints.filter((cp) => cp.location_lat != null && cp.location_lng != null),
@@ -65,6 +75,8 @@ const LiveMap = () => {
       hasFittedRef.current = false;
       guardMarkersRef.current.clear();
       checkpointMarkersRef.current = [];
+      trailLinesRef.current = [];
+      trailDotsRef.current = [];
     };
   }, []);
 
@@ -90,7 +102,6 @@ const LiveMap = () => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Remove old
     checkpointMarkersRef.current.forEach((m) => m.remove());
     checkpointMarkersRef.current = [];
 
@@ -108,7 +119,7 @@ const LiveMap = () => {
     }
   }, [checkpointsWithCoords, fitBounds, guardPositions.length]);
 
-  // Update guard markers (smoothly move existing, add new, remove stale)
+  // Update guard markers
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -116,7 +127,6 @@ const LiveMap = () => {
     const icon = createGuardIcon();
     const currentIds = new Set(guardPositions.map((g) => g.guard_id));
 
-    // Remove markers for guards no longer present
     guardMarkersRef.current.forEach((marker, id) => {
       if (!currentIds.has(id)) {
         marker.remove();
@@ -124,13 +134,11 @@ const LiveMap = () => {
       }
     });
 
-    // Add or update
     guardPositions.forEach((g) => {
       const existing = guardMarkersRef.current.get(g.guard_id);
       const popupContent = `<div class="text-xs"><strong>${g.full_name}</strong> (${g.badge_number})<br/>Last scan: ${new Date(g.scanned_at).toLocaleTimeString()}</div>`;
 
       if (existing) {
-        // Smoothly move to new position
         existing.setLatLng([g.lat, g.lng]);
         existing.setPopupContent(popupContent);
       } else {
@@ -146,6 +154,59 @@ const LiveMap = () => {
       hasFittedRef.current = true;
     }
   }, [guardPositions, fitBounds]);
+
+  // Draw patrol trail polylines
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Clear old trails
+    trailLinesRef.current.forEach((l) => l.remove());
+    trailLinesRef.current = [];
+    trailDotsRef.current.forEach((d) => d.remove());
+    trailDotsRef.current = [];
+
+    if (!showTrails) return;
+
+    guardTrails.forEach((trail, idx) => {
+      if (trail.points.length < 2) return;
+
+      const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+      const latlngs: [number, number][] = trail.points.map((p) => [p.lat, p.lng]);
+
+      // Draw polyline
+      const polyline = L.polyline(latlngs, {
+        color,
+        weight: 3,
+        opacity: 0.7,
+        dashArray: "8 6",
+        lineCap: "round",
+      }).addTo(map);
+
+      polyline.bindPopup(
+        `<div class="text-xs"><strong>${trail.full_name}</strong> (${trail.badge_number})<br/>${trail.points.length} scans</div>`
+      );
+
+      trailLinesRef.current.push(polyline);
+
+      // Draw scan point dots along the trail
+      trail.points.forEach((pt, ptIdx) => {
+        const dot = L.circleMarker([pt.lat, pt.lng], {
+          radius: 4,
+          color,
+          fillColor: color,
+          fillOpacity: 0.9,
+          weight: 1,
+        }).addTo(map);
+
+        dot.bindPopup(
+          `<div class="text-xs"><strong>${trail.full_name}</strong><br/>${pt.checkpoint_name}<br/>${new Date(pt.scanned_at).toLocaleString()}<br/>Stop ${ptIdx + 1} of ${trail.points.length}</div>`
+        );
+
+        trailDotsRef.current.push(dot);
+      });
+    });
+  }, [guardTrails, showTrails]);
 
   // Invalidate map size on fullscreen toggle
   useEffect(() => {
@@ -179,12 +240,26 @@ const LiveMap = () => {
             Live
           </span>
         </div>
-        <button
-          onClick={() => setIsFullscreen((f) => !f)}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowTrails((t) => !t)}
+            className={`flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-medium transition-colors ${
+              showTrails
+                ? "bg-primary/20 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+            title="Toggle patrol trails"
+          >
+            <Route className="h-3.5 w-3.5" />
+            Trails
+          </button>
+          <button
+            onClick={() => setIsFullscreen((f) => !f)}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
       <div className="relative flex-1 min-h-[300px]">
         {!hasData && (
@@ -195,7 +270,7 @@ const LiveMap = () => {
         <div ref={mapContainerRef} className="h-full w-full min-h-[300px]" style={{ background: "hsl(var(--muted))" }} />
 
         {hasData && (
-          <div className="absolute bottom-3 left-3 z-[1000] flex gap-4 rounded-md bg-background/80 px-3 py-1.5 backdrop-blur-sm">
+          <div className="absolute bottom-3 left-3 z-[1000] flex flex-wrap gap-3 rounded-md bg-background/80 px-3 py-1.5 backdrop-blur-sm">
             <div className="flex items-center gap-1.5">
               <div className="h-2.5 w-2.5 rounded-full bg-success" />
               <span className="text-[10px] text-muted-foreground">Guards ({guardPositions.length})</span>
@@ -204,6 +279,12 @@ const LiveMap = () => {
               <div className="h-2 w-2 rotate-45 bg-primary" />
               <span className="text-[10px] text-muted-foreground">Checkpoints ({checkpointsWithCoords.length})</span>
             </div>
+            {showTrails && guardTrails.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <div className="h-0.5 w-4 rounded bg-blue-400" style={{ borderTop: "2px dashed #3b82f6" }} />
+                <span className="text-[10px] text-muted-foreground">Trails ({guardTrails.length})</span>
+              </div>
+            )}
           </div>
         )}
       </div>

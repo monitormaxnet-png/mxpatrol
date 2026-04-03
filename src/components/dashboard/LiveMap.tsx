@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { Maximize2, Minimize2, Route, Play, Pause, RotateCcw } from "lucide-react";
+import { Maximize2, Minimize2, Route, Play, Pause, RotateCcw, Users } from "lucide-react";
+import GuardPositionsPanel from "@/components/dashboard/GuardPositionsPanel";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useCheckpoints } from "@/hooks/useDashboardData";

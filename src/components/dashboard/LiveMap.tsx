@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { Maximize2, Minimize2, Route, Play, Pause, RotateCcw } from "lucide-react";
+import { Maximize2, Minimize2, Route, Play, Pause, RotateCcw, Users } from "lucide-react";
+import GuardPositionsPanel from "@/components/dashboard/GuardPositionsPanel";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useCheckpoints } from "@/hooks/useDashboardData";
@@ -42,6 +43,7 @@ function createReplayIcon(color: string) {
 const LiveMap = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTrails, setShowTrails] = useState(true);
+  const [showGuardPanel, setShowGuardPanel] = useState(false);
   const [isReplaying, setIsReplaying] = useState(false);
   const [replayProgress, setReplayProgress] = useState(0); // 0-100
   const [isPlaying, setIsPlaying] = useState(false);
@@ -340,7 +342,7 @@ const LiveMap = () => {
     if (!map) return;
     const t = setTimeout(() => map.invalidateSize(), 300);
     return () => clearTimeout(t);
-  }, [isFullscreen]);
+  }, [isFullscreen, showGuardPanel]);
 
   // Close fullscreen on Escape
   useEffect(() => {
@@ -367,6 +369,16 @@ const LiveMap = () => {
     setReplayProgress(0);
     setIsPlaying(false);
   };
+
+  const handleFlyToGuard = useCallback((guardId: string) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const marker = guardMarkersRef.current.get(guardId);
+    if (marker) {
+      map.flyTo(marker.getLatLng(), 15, { duration: 0.8 });
+      marker.openPopup();
+    }
+  }, []);
 
   const wrapperClass = isFullscreen
     ? "fixed inset-0 z-50 flex flex-col bg-background"
@@ -424,6 +436,16 @@ const LiveMap = () => {
             </button>
           )}
           <button
+            onClick={() => setShowGuardPanel((p) => !p)}
+            className={`flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-medium transition-colors ${
+              showGuardPanel ? "bg-success/20 text-success" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+            title="Toggle guard list"
+          >
+            <Users className="h-3.5 w-3.5" />
+            Guards
+          </button>
+          <button
             onClick={() => setIsFullscreen((f) => !f)}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -431,7 +453,8 @@ const LiveMap = () => {
           </button>
         </div>
       </div>
-      <div className="relative flex-1 min-h-[300px]">
+      <div className="relative flex-1 min-h-[300px] flex">
+        <div className={`relative flex-1 min-h-[300px] ${showGuardPanel ? 'min-w-0' : ''}`}>
         {!hasData && (
           <div className="absolute inset-0 z-10 flex items-center justify-center text-sm text-muted-foreground bg-muted/20">
             No GPS data available — add coordinates to checkpoints to see them on the map
@@ -503,6 +526,12 @@ const LiveMap = () => {
                 <span className="text-[10px] text-muted-foreground">Trails ({guardTrails.length})</span>
               </div>
             )}
+          </div>
+        )}
+        </div>
+        {showGuardPanel && (
+          <div className="w-56 shrink-0 border-l border-border/50 bg-background/50">
+            <GuardPositionsPanel positions={guardPositions} onSelectGuard={handleFlyToGuard} />
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
-import { useMemo, useEffect } from "react";
-import { Maximize2 } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -23,12 +23,11 @@ const guardIcon = new L.DivIcon({
 
 const checkpointIcon = new L.DivIcon({
   className: "",
-  html: `<div style="width:14px;height:14px;transform:rotate(45deg);background:hsl(var(--primary));border:2px solid #fff;box-shadow:0 0 6px rgba(0,0,0,0.3);"></div>`,
+  html: `<div style="width:14px;height:14px;transform:rotate(45deg);background:hsl(174,100%,42%);border:2px solid #fff;box-shadow:0 0 6px rgba(0,0,0,0.3);"></div>`,
   iconSize: [14, 14],
   iconAnchor: [7, 7],
 });
 
-// Auto-fit bounds when data changes
 function FitBounds({ positions }: { positions: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
@@ -40,7 +39,16 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
   return null;
 }
 
+function InvalidateOnResize({ isFullscreen }: { isFullscreen: boolean }) {
+  const map = useMap();
+  useEffect(() => {
+    setTimeout(() => map.invalidateSize(), 300);
+  }, [isFullscreen, map]);
+  return null;
+}
+
 const LiveMap = () => {
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const { data: checkpoints = [] } = useCheckpoints();
   const { data: guardPositions = [] } = useGuardPositions();
 
@@ -49,7 +57,6 @@ const LiveMap = () => {
     [checkpoints]
   );
 
-  // Combine all coordinates to fit bounds
   const allPositions = useMemo<[number, number][]>(() => {
     const pts: [number, number][] = [];
     checkpointsWithCoords.forEach((cp) => pts.push([cp.location_lat!, cp.location_lng!]));
@@ -57,16 +64,32 @@ const LiveMap = () => {
     return pts;
   }, [checkpointsWithCoords, guardPositions]);
 
-  // Default center (fallback when no data)
   const defaultCenter: [number, number] = allPositions.length > 0 ? allPositions[0] : [0, 0];
   const hasData = allPositions.length > 0;
 
+  // Close fullscreen on Escape
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isFullscreen]);
+
+  const wrapperClass = isFullscreen
+    ? "fixed inset-0 z-50 flex flex-col bg-background"
+    : "glass-card flex flex-col overflow-hidden";
+
   return (
-    <div className="glass-card flex flex-col overflow-hidden">
+    <div className={wrapperClass}>
       <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
         <h3 className="font-heading text-sm font-semibold text-foreground">Live Patrol Map</h3>
-        <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-          <Maximize2 className="h-4 w-4" />
+        <button
+          onClick={() => setIsFullscreen((f) => !f)}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </button>
       </div>
       <div className="relative flex-1 min-h-[300px]">
@@ -87,8 +110,8 @@ const LiveMap = () => {
               url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             />
             <FitBounds positions={allPositions} />
+            <InvalidateOnResize isFullscreen={isFullscreen} />
 
-            {/* Checkpoint markers */}
             {checkpointsWithCoords.map((cp) => (
               <Marker key={cp.id} position={[cp.location_lat!, cp.location_lng!]} icon={checkpointIcon}>
                 <Popup>
@@ -101,7 +124,6 @@ const LiveMap = () => {
               </Marker>
             ))}
 
-            {/* Guard markers */}
             {guardPositions.map((g) => (
               <Marker key={g.guard_id} position={[g.lat, g.lng]} icon={guardIcon}>
                 <Popup>
@@ -116,7 +138,6 @@ const LiveMap = () => {
           </MapContainer>
         )}
 
-        {/* Legend overlay */}
         {hasData && (
           <div className="absolute bottom-3 left-3 z-[1000] flex gap-4 rounded-md bg-background/80 px-3 py-1.5 backdrop-blur-sm">
             <div className="flex items-center gap-1.5">

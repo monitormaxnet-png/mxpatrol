@@ -103,13 +103,13 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }}
           animate={
             isAnimating
-              ? { opacity: [0.6, 1, 0.6], scale: [1, 1.08, 1] }
-              : { opacity: 0.5, scale: 1 }
+              ? { opacity: [1, 0.05, 1, 0.1, 1], scale: [1, 1.08, 1, 1.05, 1] }
+              : { opacity: [0.6, 0.1, 0.6, 0.15, 0.6], scale: [1, 1.04, 1, 1.03, 1] }
           }
           transition={
             isAnimating
               ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
-              : { duration: 0.5 }
+              : { duration: 4, repeat: Infinity, ease: "easeInOut" }
           }
         />
 
@@ -124,13 +124,13 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }}
           animate={
             isAnimating
-              ? { opacity: [0.4, 0.8, 0.4], scale: [1, 1.1, 1] }
-              : { opacity: 0.5 }
+              ? { opacity: [0.4, 0.9, 0.4], scale: [1, 1.15, 1] }
+              : { opacity: [0.5, 0.15, 0.5] }
           }
           transition={
             isAnimating
               ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
-              : { duration: 0.5 }
+              : { duration: 4, repeat: Infinity, ease: "easeInOut" }
           }
         />
 
@@ -147,21 +147,21 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }}
           animate={
             isAnimating
-              ? { rotateZ: 360 }
+              ? { opacity: [1, 0.05, 1, 0.1, 1], scale: [1, 0.97, 1, 0.98, 1], rotateZ: 360 }
               : status === "success"
-              ? { scale: [1, 1.05, 1], rotateZ: 360 }
+              ? { opacity: [1, 0.2, 1], scale: [1, 1.08, 1], rotateZ: 360 }
               : status === "error"
-              ? { rotateZ: 0 }
-              : { rotateZ: 360 }
+              ? { opacity: [1, 0, 1, 0, 1, 0, 1] }
+              : { opacity: [1, 0.1, 1, 0.15, 1], rotateZ: 360 }
           }
           transition={
             isAnimating
-              ? { rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
+              ? { opacity: { duration: 2, repeat: Infinity, ease: "easeInOut" }, scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
               : status === "success"
-              ? { scale: { duration: 0.6, ease: "easeOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
+              ? { opacity: { duration: 0.8, repeat: 2, ease: "easeOut" }, scale: { duration: 0.8, repeat: 2, ease: "easeOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
               : status === "error"
-              ? { duration: 0.5 }
-              : { rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
+              ? { duration: 1, ease: "easeOut" }
+              : { opacity: { duration: 4, repeat: Infinity, ease: "easeInOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
           }
         />
 

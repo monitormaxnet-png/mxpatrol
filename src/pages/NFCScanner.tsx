@@ -34,6 +34,8 @@ const NFCScanner = () => {
   const [lastCheckpoint, setLastCheckpoint] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [showManualFallback, setShowManualFallback] = useState(false);
+  const bgMapContainerRef = useRef<HTMLDivElement>(null);
+  const bgMapRef = useRef<L.Map | null>(null);
 
   // Face verification state
   const [pendingFaceScan, setPendingFaceScan] = useState<{

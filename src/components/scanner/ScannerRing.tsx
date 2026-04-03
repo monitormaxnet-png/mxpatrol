@@ -156,12 +156,12 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }
           transition={
             isAnimating
-              ? { opacity: { duration: 2, repeat: Infinity, ease: "easeInOut" }, scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }, rotateZ: { duration: 20, repeat: Infinity, ease: "linear" } }
+              ? { opacity: { duration: 2, repeat: Infinity, ease: "easeInOut" }, scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
               : status === "success"
-              ? { opacity: { duration: 0.8, repeat: 2, ease: "easeOut" }, scale: { duration: 0.8, repeat: 2, ease: "easeOut" }, rotateZ: { duration: 20, repeat: Infinity, ease: "linear" } }
+              ? { opacity: { duration: 0.8, repeat: 2, ease: "easeOut" }, scale: { duration: 0.8, repeat: 2, ease: "easeOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
               : status === "error"
               ? { duration: 1, ease: "easeOut" }
-              : { opacity: { duration: 4, repeat: Infinity, ease: "easeInOut" }, rotateZ: { duration: 20, repeat: Infinity, ease: "linear" } }
+              : { opacity: { duration: 4, repeat: Infinity, ease: "easeInOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
           }
         />
 

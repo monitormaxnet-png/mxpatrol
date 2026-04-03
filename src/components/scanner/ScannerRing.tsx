@@ -124,13 +124,13 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }}
           animate={
             isAnimating
-              ? { opacity: [0.4, 0.9, 0.4], scale: [1, 1.15, 1] }
-              : { opacity: [0.5, 0.15, 0.5] }
+              ? { opacity: [0.4, 0.8, 0.4], scale: [1, 1.1, 1] }
+              : { opacity: 0.5 }
           }
           transition={
             isAnimating
               ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
-              : { duration: 4, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 0.5 }
           }
         />
 

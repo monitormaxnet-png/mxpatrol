@@ -442,21 +442,33 @@ const LiveMap = () => {
         {/* Replay controls overlay */}
         {isReplaying && (
           <div className="absolute bottom-12 left-3 right-3 z-[1000] rounded-lg bg-background/90 px-4 py-3 backdrop-blur-sm border border-border/50">
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-2 mb-2">
               <button
                 onClick={() => setIsPlaying((p) => !p)}
-                className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/80"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/80"
               >
                 {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
               </button>
               <button
                 onClick={handleReset}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title="Reset"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
               </button>
-              <div className="flex-1">
+              <select
+                value={selectedGuardId}
+                onChange={(e) => { setSelectedGuardId(e.target.value); setReplayProgress(0); setIsPlaying(false); }}
+                className="h-7 shrink-0 rounded-md border border-border/50 bg-muted/50 px-2 text-[10px] text-foreground outline-none focus:ring-1 focus:ring-primary max-w-[110px] truncate"
+              >
+                <option value="all">All Guards</option>
+                {guardTrails.map((trail) => (
+                  <option key={trail.guard_id} value={trail.guard_id}>
+                    {trail.badge_number} — {trail.full_name}
+                  </option>
+                ))}
+              </select>
+              <div className="flex-1 min-w-0">
                 <Slider
                   value={[replayProgress]}
                   onValueChange={([v]) => { setReplayProgress(v); setIsPlaying(false); }}

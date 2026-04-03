@@ -121,21 +121,21 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }}
           animate={
             isAnimating
-              ? { opacity: [1, 0.3, 1] }
+              ? { opacity: [1, 0.05, 1, 0.1, 1], scale: [1, 0.97, 1, 0.98, 1] }
               : status === "success"
-              ? { opacity: 1, scale: [1, 1.05, 1] }
+              ? { opacity: [1, 0.2, 1], scale: [1, 1.08, 1] }
               : status === "error"
-              ? { opacity: [1, 0.5, 1, 0.5, 1] }
-              : { opacity: [1, 0.4, 1] }
+              ? { opacity: [1, 0, 1, 0, 1, 0, 1] }
+              : { opacity: [1, 0.1, 1, 0.15, 1] }
           }
           transition={
             isAnimating
-              ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
+              ? { duration: 0.8, repeat: Infinity, ease: "easeInOut" }
               : status === "success"
-              ? { duration: 0.6, ease: "easeOut" }
+              ? { duration: 0.4, repeat: 2, ease: "easeOut" }
               : status === "error"
-              ? { duration: 0.5, ease: "easeOut" }
-              : { duration: 3, repeat: Infinity, ease: "easeInOut" }
+              ? { duration: 0.6, ease: "easeOut" }
+              : { duration: 2, repeat: Infinity, ease: "easeInOut" }
           }
         />
 

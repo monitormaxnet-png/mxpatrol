@@ -312,7 +312,7 @@ const NFCScanner = () => {
         </div>
       </div>
 
-      {/* Face Verification Overlay */}
+      {/* Face Verification Overlay (z-10) */}
       <AnimatePresence>
         {pendingFaceScan && (
           <motion.div

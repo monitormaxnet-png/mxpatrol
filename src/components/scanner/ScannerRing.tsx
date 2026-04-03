@@ -108,8 +108,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }
           transition={
             isAnimating
-              ? { duration: 0.8, repeat: Infinity, ease: "easeInOut" }
-              : { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 4, repeat: Infinity, ease: "easeInOut" }
           }
         />
 

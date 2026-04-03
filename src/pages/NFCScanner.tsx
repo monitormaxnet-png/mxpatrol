@@ -305,54 +305,19 @@ const NFCScanner = () => {
 
   return (
     <div className="relative flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)] overflow-hidden">
-      {/* 3D Background layers */}
+      {/* Live map background */}
       <div className="pointer-events-none absolute inset-0 z-0">
-        {/* Deep gradient base */}
+        <div ref={bgMapContainerRef} className="absolute inset-0" style={{ opacity: 0.6 }} />
+        {/* Dark vignette overlay */}
         <div
           className="absolute inset-0"
           style={{
-            background: "radial-gradient(ellipse at 50% 20%, hsl(222 60% 12%) 0%, hsl(222 47% 4%) 70%, hsl(222 50% 2%) 100%)",
-          }}
-        />
-        {/* Perspective grid floor */}
-        <div
-          className="absolute bottom-0 left-0 right-0"
-          style={{
-            height: "60%",
             background: `
-              linear-gradient(to top, transparent 0%, hsl(222 47% 6% / 0.9) 100%),
-              repeating-linear-gradient(90deg, hsl(188 95% 50% / 0.04) 0px, transparent 1px, transparent 80px),
-              repeating-linear-gradient(0deg, hsl(188 95% 50% / 0.04) 0px, transparent 1px, transparent 80px)
+              radial-gradient(ellipse at 50% 40%, transparent 20%, hsl(222 47% 4% / 0.7) 70%),
+              linear-gradient(to bottom, hsl(222 47% 4% / 0.3) 0%, transparent 30%, transparent 70%, hsl(222 47% 4% / 0.6) 100%)
             `,
-            transform: "perspective(500px) rotateX(45deg)",
-            transformOrigin: "bottom center",
           }}
         />
-        {/* Ambient light orbs */}
-        <div
-          className="absolute top-[10%] left-[15%] h-64 w-64 rounded-full"
-          style={{
-            background: "radial-gradient(circle, hsl(188 95% 50% / 0.06) 0%, transparent 70%)",
-            filter: "blur(40px)",
-          }}
-        />
-        <div
-          className="absolute top-[30%] right-[10%] h-48 w-48 rounded-full"
-          style={{
-            background: "radial-gradient(circle, hsl(152 69% 40% / 0.05) 0%, transparent 70%)",
-            filter: "blur(40px)",
-          }}
-        />
-        {/* Floating particles */}
-        <div className="absolute inset-0 opacity-30" style={{
-          backgroundImage: `
-            radial-gradient(1px 1px at 20% 30%, hsl(188 95% 50% / 0.4) 50%, transparent 100%),
-            radial-gradient(1px 1px at 60% 60%, hsl(188 95% 50% / 0.3) 50%, transparent 100%),
-            radial-gradient(1px 1px at 80% 20%, hsl(188 95% 50% / 0.2) 50%, transparent 100%),
-            radial-gradient(1.5px 1.5px at 40% 80%, hsl(188 95% 50% / 0.3) 50%, transparent 100%),
-            radial-gradient(1px 1px at 10% 70%, hsl(152 69% 40% / 0.3) 50%, transparent 100%)
-          `,
-        }} />
       </div>
 
       {/* Header */}

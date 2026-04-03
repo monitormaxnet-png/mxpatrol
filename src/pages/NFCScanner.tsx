@@ -485,7 +485,7 @@ const NFCScanner = () => {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="px-4 mb-4 overflow-hidden"
+            className="relative z-10 px-4 mb-4 overflow-hidden"
           >
             <ManualScanForm
               guards={guards}

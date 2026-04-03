@@ -48,6 +48,7 @@ const LiveMap = () => {
   const [replayProgress, setReplayProgress] = useState(0); // 0-100
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedGuardId, setSelectedGuardId] = useState<string>("all");
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);

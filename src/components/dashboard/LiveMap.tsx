@@ -43,6 +43,7 @@ function createReplayIcon(color: string) {
 const LiveMap = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTrails, setShowTrails] = useState(true);
+  const [showGuardPanel, setShowGuardPanel] = useState(false);
   const [isReplaying, setIsReplaying] = useState(false);
   const [replayProgress, setReplayProgress] = useState(0); // 0-100
   const [isPlaying, setIsPlaying] = useState(false);

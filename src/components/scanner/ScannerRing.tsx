@@ -108,8 +108,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }
           transition={
             isAnimating
-              ? { duration: 0.8, repeat: Infinity, ease: "easeInOut" }
-              : { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 4, repeat: Infinity, ease: "easeInOut" }
           }
         />
 
@@ -129,8 +129,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }
           transition={
             isAnimating
-              ? { duration: 0.8, repeat: Infinity, ease: "easeInOut" }
-              : { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 4, repeat: Infinity, ease: "easeInOut" }
           }
         />
 
@@ -156,12 +156,12 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }
           transition={
             isAnimating
-              ? { duration: 0.8, repeat: Infinity, ease: "easeInOut" }
+              ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
               : status === "success"
-              ? { duration: 0.4, repeat: 2, ease: "easeOut" }
+              ? { duration: 0.8, repeat: 2, ease: "easeOut" }
               : status === "error"
-              ? { duration: 0.6, ease: "easeOut" }
-              : { duration: 2, repeat: Infinity, ease: "easeInOut" }
+              ? { duration: 1, ease: "easeOut" }
+              : { duration: 4, repeat: Infinity, ease: "easeInOut" }
           }
         />
 

@@ -73,6 +73,61 @@ const NFCScanner = () => {
     enabled: !!user,
   });
 
+  // Background map initialization
+  useEffect(() => {
+    if (!bgMapContainerRef.current || bgMapRef.current) return;
+
+    const map = L.map(bgMapContainerRef.current, {
+      center: [0, 0],
+      zoom: 2,
+      zoomControl: false,
+      attributionControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+      keyboard: false,
+    });
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: "",
+    }).addTo(map);
+
+    bgMapRef.current = map;
+
+    return () => {
+      map.remove();
+      bgMapRef.current = null;
+    };
+  }, []);
+
+  // Fit background map to checkpoints and add markers
+  useEffect(() => {
+    const map = bgMapRef.current;
+    if (!map) return;
+
+    const withCoords = checkpoints.filter(
+      (cp: any) => cp.location_lat != null && cp.location_lng != null
+    );
+
+    if (withCoords.length > 0) {
+      const bounds = L.latLngBounds(
+        withCoords.map((cp: any) => [cp.location_lat!, cp.location_lng!])
+      );
+      map.fitBounds(bounds.pad(0.5), { animate: false });
+
+      withCoords.forEach((cp: any) => {
+        const icon = L.divIcon({
+          className: "",
+          html: `<div style="width:10px;height:10px;transform:rotate(45deg);background:hsl(188,95%,50%);border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 12px hsl(188,95%,50%,0.5);opacity:0.7;"></div>`,
+          iconSize: [10, 10],
+          iconAnchor: [5, 5],
+        });
+        L.marker([cp.location_lat!, cp.location_lng!], { icon, interactive: false }).addTo(map);
+      });
+    }
+  }, [checkpoints]);
+
   // Patrols (for verification_level)
   const { data: patrols = [] } = useQuery({
     queryKey: ["patrols-verification"],

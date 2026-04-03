@@ -305,8 +305,18 @@ const NFCScanner = () => {
 
   return (
     <div className="relative flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)] overflow-hidden">
+      {/* Vault door behind map */}
+      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center" style={{ opacity: 0.15 }}>
+        <img
+          src={vaultDoor}
+          alt=""
+          className="w-[500px] h-[500px] object-contain"
+          style={{ filter: "blur(1px) saturate(0.5)" }}
+        />
+      </div>
+
       {/* Live map background */}
-      <div className="pointer-events-none absolute inset-0 z-0">
+      <div className="pointer-events-none absolute inset-0 z-[1]">
         <div ref={bgMapContainerRef} className="absolute inset-0" style={{ opacity: 0.85 }} />
         {/* Steel/silver tint to match vault + soft vignette */}
         <div

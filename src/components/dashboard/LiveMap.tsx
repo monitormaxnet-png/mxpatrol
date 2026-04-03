@@ -370,6 +370,16 @@ const LiveMap = () => {
     setIsPlaying(false);
   };
 
+  const handleFlyToGuard = useCallback((guardId: string) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const marker = guardMarkersRef.current.get(guardId);
+    if (marker) {
+      map.flyTo(marker.getLatLng(), 15, { duration: 0.8 });
+      marker.openPopup();
+    }
+  }, []);
+
   const wrapperClass = isFullscreen
     ? "fixed inset-0 z-50 flex flex-col bg-background"
     : "glass-card flex flex-col overflow-hidden";

@@ -528,6 +528,12 @@ const LiveMap = () => {
             )}
           </div>
         )}
+        </div>
+        {showGuardPanel && (
+          <div className="w-56 shrink-0 border-l border-border/50 bg-background/50">
+            <GuardPositionsPanel positions={guardPositions} onSelectGuard={handleFlyToGuard} />
+          </div>
+        )}
       </div>
     </div>
   );

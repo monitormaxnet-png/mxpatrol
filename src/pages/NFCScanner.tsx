@@ -455,7 +455,7 @@ const NFCScanner = () => {
       )}
 
       {/* Manual Fallback Toggle */}
-      <div className="px-4 mb-2">
+      <div className="relative z-10 px-4 mb-2">
         {!showManualFallback ? (
           <Button
             variant="ghost"

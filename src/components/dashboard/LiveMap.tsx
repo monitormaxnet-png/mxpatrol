@@ -328,14 +328,14 @@ const LiveMap = () => {
             setIsPlaying(false);
             return 100;
           }
-          return Math.min(prev + 0.5, 100);
+          return Math.min(prev + 0.5 * playbackSpeed, 100);
         });
       }, 50);
     }
     return () => {
       if (playIntervalRef.current) clearInterval(playIntervalRef.current);
     };
-  }, [isPlaying, isReplaying]);
+  }, [isPlaying, isReplaying, playbackSpeed]);
 
   // Invalidate map size on fullscreen toggle
   useEffect(() => {

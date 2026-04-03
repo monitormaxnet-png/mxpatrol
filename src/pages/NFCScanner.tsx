@@ -506,7 +506,7 @@ const NFCScanner = () => {
       </AnimatePresence>
 
       {/* Bottom panel */}
-      <div className="glass-card mx-4 mb-4 p-4 space-y-4 rounded-xl">
+      <div className="relative z-10 glass-card mx-4 mb-4 p-4 space-y-4 rounded-xl">
         <ScannerControls
           guards={guards}
           selectedGuard={selectedGuard}

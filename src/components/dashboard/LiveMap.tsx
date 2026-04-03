@@ -257,7 +257,7 @@ const LiveMap = () => {
         trailDotsRef.current.push(dot);
       });
     });
-  }, [guardTrails, showTrails, isReplaying]);
+  }, [filteredTrails, showTrails, isReplaying]);
 
   // Replay rendering: draw trails up to currentTime and position replay markers
   useEffect(() => {

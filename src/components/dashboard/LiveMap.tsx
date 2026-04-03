@@ -271,10 +271,15 @@ const LiveMap = () => {
       return;
     }
 
-    // Clear previous replay layers
+    // Clear previous replay trails
     replayTrailsRef.current.forEach((l) => l.remove());
     replayTrailsRef.current = [];
-    // Keep markers but update positions
+
+    // Remove markers not in current filter
+    const filteredIds = new Set(filteredTrails.map((t) => t.guard_id));
+    replayMarkersRef.current.forEach((m, id) => {
+      if (!filteredIds.has(id)) { m.remove(); replayMarkersRef.current.delete(id); }
+    });
 
     filteredTrails.forEach((trail, idx) => {
       const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];

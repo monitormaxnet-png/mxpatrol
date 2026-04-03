@@ -1,9 +1,10 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { Maximize2, Minimize2, Route } from "lucide-react";
+import { Maximize2, Minimize2, Route, Play, Pause, RotateCcw } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useCheckpoints } from "@/hooks/useDashboardData";
 import { useGuardPositions, useGuardTrails } from "@/hooks/useGuardPositions";
+import { Slider } from "@/components/ui/slider";
 
 // Distinct colors for guard trails
 const TRAIL_COLORS = [
@@ -29,15 +30,31 @@ function createCheckpointIcon() {
   });
 }
 
+function createReplayIcon(color: string) {
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 10px ${color}80;"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
 const LiveMap = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTrails, setShowTrails] = useState(true);
+  const [isReplaying, setIsReplaying] = useState(false);
+  const [replayProgress, setReplayProgress] = useState(0); // 0-100
+  const [isPlaying, setIsPlaying] = useState(false);
+
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const guardMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const checkpointMarkersRef = useRef<L.Marker[]>([]);
   const trailLinesRef = useRef<L.Polyline[]>([]);
   const trailDotsRef = useRef<L.CircleMarker[]>([]);
+  const replayMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  const replayTrailsRef = useRef<L.Polyline[]>([]);
+  const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasFittedRef = useRef(false);
 
   const { data: checkpoints = [] } = useCheckpoints();
@@ -50,6 +67,25 @@ const LiveMap = () => {
   );
 
   const hasData = checkpointsWithCoords.length > 0 || guardPositions.length > 0;
+
+  // Compute global time range from all trail points
+  const timeRange = useMemo(() => {
+    let min = Infinity;
+    let max = -Infinity;
+    guardTrails.forEach((trail) => {
+      trail.points.forEach((pt) => {
+        const t = new Date(pt.scanned_at).getTime();
+        if (t < min) min = t;
+        if (t > max) max = t;
+      });
+    });
+    return { min: isFinite(min) ? min : 0, max: isFinite(max) ? max : 0 };
+  }, [guardTrails]);
+
+  const currentTime = useMemo(() => {
+    if (timeRange.max === timeRange.min) return timeRange.max;
+    return timeRange.min + (replayProgress / 100) * (timeRange.max - timeRange.min);
+  }, [replayProgress, timeRange]);
 
   // Initialize map
   useEffect(() => {
@@ -155,6 +191,14 @@ const LiveMap = () => {
     }
   }, [guardPositions, fitBounds]);
 
+  // Toggle guard marker visibility during replay
+  useEffect(() => {
+    guardMarkersRef.current.forEach((marker) => {
+      const el = marker.getElement();
+      if (el) el.style.display = isReplaying ? "none" : "";
+    });
+  }, [isReplaying, guardPositions]);
+
   // Draw patrol trail polylines
   useEffect(() => {
     const map = mapRef.current;
@@ -166,7 +210,7 @@ const LiveMap = () => {
     trailDotsRef.current.forEach((d) => d.remove());
     trailDotsRef.current = [];
 
-    if (!showTrails) return;
+    if (!showTrails || isReplaying) return;
 
     guardTrails.forEach((trail, idx) => {
       if (trail.points.length < 2) return;
@@ -206,7 +250,77 @@ const LiveMap = () => {
         trailDotsRef.current.push(dot);
       });
     });
-  }, [guardTrails, showTrails]);
+  }, [guardTrails, showTrails, isReplaying]);
+
+  // Replay rendering: draw trails up to currentTime and position replay markers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isReplaying) {
+      // Clean up replay layers when not replaying
+      replayMarkersRef.current.forEach((m) => m.remove());
+      replayMarkersRef.current.clear();
+      replayTrailsRef.current.forEach((l) => l.remove());
+      replayTrailsRef.current = [];
+      return;
+    }
+
+    // Clear previous replay layers
+    replayTrailsRef.current.forEach((l) => l.remove());
+    replayTrailsRef.current = [];
+    // Keep markers but update positions
+
+    guardTrails.forEach((trail, idx) => {
+      const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+      const visiblePoints = trail.points.filter((p) => new Date(p.scanned_at).getTime() <= currentTime);
+
+      if (visiblePoints.length === 0) {
+        // Remove marker if guard hasn't appeared yet
+        const existing = replayMarkersRef.current.get(trail.guard_id);
+        if (existing) { existing.remove(); replayMarkersRef.current.delete(trail.guard_id); }
+        return;
+      }
+
+      // Draw trail up to current time
+      if (visiblePoints.length >= 2) {
+        const latlngs: [number, number][] = visiblePoints.map((p) => [p.lat, p.lng]);
+        const polyline = L.polyline(latlngs, { color, weight: 3, opacity: 0.8, lineCap: "round" }).addTo(map);
+        replayTrailsRef.current.push(polyline);
+      }
+
+      // Position the guard replay marker at latest visible point
+      const lastPt = visiblePoints[visiblePoints.length - 1];
+      const existing = replayMarkersRef.current.get(trail.guard_id);
+      const popupContent = `<div class="text-xs"><strong>${trail.full_name}</strong> (${trail.badge_number})<br/>${lastPt.checkpoint_name}<br/>${new Date(lastPt.scanned_at).toLocaleTimeString()}<br/>Scan ${visiblePoints.length} of ${trail.points.length}</div>`;
+
+      if (existing) {
+        existing.setLatLng([lastPt.lat, lastPt.lng]);
+        existing.setPopupContent(popupContent);
+      } else {
+        const marker = L.marker([lastPt.lat, lastPt.lng], { icon: createReplayIcon(color) })
+          .addTo(map)
+          .bindPopup(popupContent);
+        replayMarkersRef.current.set(trail.guard_id, marker);
+      }
+    });
+  }, [isReplaying, currentTime, guardTrails]);
+
+  // Auto-play interval
+  useEffect(() => {
+    if (isPlaying && isReplaying) {
+      playIntervalRef.current = setInterval(() => {
+        setReplayProgress((prev) => {
+          if (prev >= 100) {
+            setIsPlaying(false);
+            return 100;
+          }
+          return Math.min(prev + 0.5, 100);
+        });
+      }, 50);
+    }
+    return () => {
+      if (playIntervalRef.current) clearInterval(playIntervalRef.current);
+    };
+  }, [isPlaying, isReplaying]);
 
   // Invalidate map size on fullscreen toggle
   useEffect(() => {
@@ -226,33 +340,77 @@ const LiveMap = () => {
     return () => window.removeEventListener("keydown", handler);
   }, [isFullscreen]);
 
+  const handleToggleReplay = () => {
+    if (isReplaying) {
+      setIsReplaying(false);
+      setIsPlaying(false);
+      setReplayProgress(0);
+    } else {
+      setIsReplaying(true);
+      setReplayProgress(0);
+    }
+  };
+
+  const handleReset = () => {
+    setReplayProgress(0);
+    setIsPlaying(false);
+  };
+
   const wrapperClass = isFullscreen
     ? "fixed inset-0 z-50 flex flex-col bg-background"
     : "glass-card flex flex-col overflow-hidden";
+
+  const formatTime = (ts: number) => {
+    if (!ts) return "";
+    const d = new Date(ts);
+    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
 
   return (
     <div className={wrapperClass}>
       <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
         <div className="flex items-center gap-2">
           <h3 className="font-heading text-sm font-semibold text-foreground">Live Patrol Map</h3>
-          <span className="flex items-center gap-1 rounded-full bg-success/20 px-2 py-0.5 text-[10px] font-medium text-success">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
-            Live
-          </span>
+          {!isReplaying && (
+            <span className="flex items-center gap-1 rounded-full bg-success/20 px-2 py-0.5 text-[10px] font-medium text-success">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
+              Live
+            </span>
+          )}
+          {isReplaying && (
+            <span className="flex items-center gap-1 rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <Play className="h-2.5 w-2.5" />
+              Replay
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowTrails((t) => !t)}
-            className={`flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-medium transition-colors ${
-              showTrails
-                ? "bg-primary/20 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-            title="Toggle patrol trails"
-          >
-            <Route className="h-3.5 w-3.5" />
-            Trails
-          </button>
+          {guardTrails.length > 0 && (
+            <button
+              onClick={handleToggleReplay}
+              className={`flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-medium transition-colors ${
+                isReplaying
+                  ? "bg-primary/20 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              title={isReplaying ? "Exit replay" : "Replay patrols"}
+            >
+              <Play className="h-3.5 w-3.5" />
+              Replay
+            </button>
+          )}
+          {!isReplaying && (
+            <button
+              onClick={() => setShowTrails((t) => !t)}
+              className={`flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-medium transition-colors ${
+                showTrails ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              title="Toggle patrol trails"
+            >
+              <Route className="h-3.5 w-3.5" />
+              Trails
+            </button>
+          )}
           <button
             onClick={() => setIsFullscreen((f) => !f)}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -269,8 +427,44 @@ const LiveMap = () => {
         )}
         <div ref={mapContainerRef} className="h-full w-full min-h-[300px]" style={{ background: "hsl(var(--muted))" }} />
 
+        {/* Replay controls overlay */}
+        {isReplaying && (
+          <div className="absolute bottom-12 left-3 right-3 z-[1000] rounded-lg bg-background/90 px-4 py-3 backdrop-blur-sm border border-border/50">
+            <div className="flex items-center gap-3 mb-2">
+              <button
+                onClick={() => setIsPlaying((p) => !p)}
+                className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/80"
+              >
+                {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                onClick={handleReset}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="Reset"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+              <div className="flex-1">
+                <Slider
+                  value={[replayProgress]}
+                  onValueChange={([v]) => { setReplayProgress(v); setIsPlaying(false); }}
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+              <span>{formatTime(timeRange.min)}</span>
+              <span className="font-medium text-foreground">{formatTime(currentTime)}</span>
+              <span>{formatTime(timeRange.max)}</span>
+            </div>
+          </div>
+        )}
+
         {hasData && (
-          <div className="absolute bottom-3 left-3 z-[1000] flex flex-wrap gap-3 rounded-md bg-background/80 px-3 py-1.5 backdrop-blur-sm">
+          <div className={`absolute ${isReplaying ? "bottom-28" : "bottom-3"} left-3 z-[1000] flex flex-wrap gap-3 rounded-md bg-background/80 px-3 py-1.5 backdrop-blur-sm transition-all`}>
             <div className="flex items-center gap-1.5">
               <div className="h-2.5 w-2.5 rounded-full bg-success" />
               <span className="text-[10px] text-muted-foreground">Guards ({guardPositions.length})</span>
@@ -279,9 +473,9 @@ const LiveMap = () => {
               <div className="h-2 w-2 rotate-45 bg-primary" />
               <span className="text-[10px] text-muted-foreground">Checkpoints ({checkpointsWithCoords.length})</span>
             </div>
-            {showTrails && guardTrails.length > 0 && (
+            {(showTrails || isReplaying) && guardTrails.length > 0 && (
               <div className="flex items-center gap-1.5">
-                <div className="h-0.5 w-4 rounded bg-blue-400" style={{ borderTop: "2px dashed #3b82f6" }} />
+                <div className="h-0.5 w-4 rounded" style={{ borderTop: "2px dashed #3b82f6" }} />
                 <span className="text-[10px] text-muted-foreground">Trails ({guardTrails.length})</span>
               </div>
             )}

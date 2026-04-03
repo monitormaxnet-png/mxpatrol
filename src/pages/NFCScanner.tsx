@@ -66,7 +66,7 @@ const NFCScanner = () => {
   const { data: checkpoints = [] } = useQuery({
     queryKey: ["checkpoints"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("checkpoints").select("id, name, nfc_tag_id, patrol_id").order("sort_order");
+      const { data, error } = await supabase.from("checkpoints").select("id, name, nfc_tag_id, patrol_id, location_lat, location_lng").order("sort_order");
       if (error) throw error;
       return data;
     },

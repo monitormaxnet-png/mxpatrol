@@ -91,6 +91,28 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           )}
         </AnimatePresence>
 
+        {/* Glowing ring pulse synced with blinking */}
+        <motion.div
+          className="absolute rounded-full"
+          style={{
+            width: 230,
+            height: 230,
+            border: `3px solid`,
+            borderColor: config.glowColor,
+            boxShadow: `0 0 20px ${config.glowColor}, inset 0 0 20px ${config.glowColor}`,
+          }}
+          animate={
+            isAnimating
+              ? { opacity: [1, 0.05, 1, 0.1, 1], scale: [1, 1.08, 1, 1.05, 1] }
+              : { opacity: [0.6, 0.1, 0.6, 0.15, 0.6], scale: [1, 1.04, 1, 1.03, 1] }
+          }
+          transition={
+            isAnimating
+              ? { duration: 0.8, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 2, repeat: Infinity, ease: "easeInOut" }
+          }
+        />
+
         {/* Glow behind vault */}
         <motion.div
           className="absolute rounded-full"
@@ -102,10 +124,14 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }}
           animate={
             isAnimating
-              ? { opacity: [0.4, 0.8, 0.4], scale: [1, 1.1, 1] }
-              : { opacity: 0.5 }
+              ? { opacity: [0.4, 0.9, 0.4], scale: [1, 1.15, 1] }
+              : { opacity: [0.5, 0.15, 0.5] }
           }
-          transition={isAnimating ? { duration: 2, repeat: Infinity } : { duration: 0.5 }}
+          transition={
+            isAnimating
+              ? { duration: 0.8, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 2, repeat: Infinity, ease: "easeInOut" }
+          }
         />
 
         {/* Vault door image */}

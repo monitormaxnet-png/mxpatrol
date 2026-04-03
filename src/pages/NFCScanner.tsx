@@ -319,7 +319,7 @@ const NFCScanner = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="mx-4 mb-4"
+            className="relative z-10 mx-4 mb-4"
           >
             <div className="rounded-xl border border-primary/30 bg-card p-4 space-y-3">
               <div className="flex items-center gap-2">

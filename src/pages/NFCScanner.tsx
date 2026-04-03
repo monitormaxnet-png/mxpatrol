@@ -245,9 +245,59 @@ const NFCScanner = () => {
   const hasEnhancedPatrol = patrols.some((p) => p.verification_level === "enhanced");
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)]">
+    <div className="relative flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)] overflow-hidden">
+      {/* 3D Background layers */}
+      <div className="pointer-events-none absolute inset-0 z-0">
+        {/* Deep gradient base */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: "radial-gradient(ellipse at 50% 20%, hsl(222 60% 12%) 0%, hsl(222 47% 4%) 70%, hsl(222 50% 2%) 100%)",
+          }}
+        />
+        {/* Perspective grid floor */}
+        <div
+          className="absolute bottom-0 left-0 right-0"
+          style={{
+            height: "60%",
+            background: `
+              linear-gradient(to top, transparent 0%, hsl(222 47% 6% / 0.9) 100%),
+              repeating-linear-gradient(90deg, hsl(188 95% 50% / 0.04) 0px, transparent 1px, transparent 80px),
+              repeating-linear-gradient(0deg, hsl(188 95% 50% / 0.04) 0px, transparent 1px, transparent 80px)
+            `,
+            transform: "perspective(500px) rotateX(45deg)",
+            transformOrigin: "bottom center",
+          }}
+        />
+        {/* Ambient light orbs */}
+        <div
+          className="absolute top-[10%] left-[15%] h-64 w-64 rounded-full"
+          style={{
+            background: "radial-gradient(circle, hsl(188 95% 50% / 0.06) 0%, transparent 70%)",
+            filter: "blur(40px)",
+          }}
+        />
+        <div
+          className="absolute top-[30%] right-[10%] h-48 w-48 rounded-full"
+          style={{
+            background: "radial-gradient(circle, hsl(152 69% 40% / 0.05) 0%, transparent 70%)",
+            filter: "blur(40px)",
+          }}
+        />
+        {/* Floating particles */}
+        <div className="absolute inset-0 opacity-30" style={{
+          backgroundImage: `
+            radial-gradient(1px 1px at 20% 30%, hsl(188 95% 50% / 0.4) 50%, transparent 100%),
+            radial-gradient(1px 1px at 60% 60%, hsl(188 95% 50% / 0.3) 50%, transparent 100%),
+            radial-gradient(1px 1px at 80% 20%, hsl(188 95% 50% / 0.2) 50%, transparent 100%),
+            radial-gradient(1.5px 1.5px at 40% 80%, hsl(188 95% 50% / 0.3) 50%, transparent 100%),
+            radial-gradient(1px 1px at 10% 70%, hsl(152 69% 40% / 0.3) 50%, transparent 100%)
+          `,
+        }} />
+      </div>
+
       {/* Header */}
-      <div className="px-4 pt-4 pb-2">
+      <div className="relative z-10 px-4 pt-4 pb-2">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-heading text-xl font-bold text-foreground">NFC Scanner</h2>
@@ -262,14 +312,14 @@ const NFCScanner = () => {
         </div>
       </div>
 
-      {/* Face Verification Overlay */}
+      {/* Face Verification Overlay (z-10) */}
       <AnimatePresence>
         {pendingFaceScan && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="mx-4 mb-4"
+            className="relative z-10 mx-4 mb-4"
           >
             <div className="rounded-xl border border-primary/30 bg-card p-4 space-y-3">
               <div className="flex items-center gap-2">
@@ -304,7 +354,7 @@ const NFCScanner = () => {
 
       {/* Scanner Area */}
       {!pendingFaceScan && (
-        <div className="flex-1 flex flex-col items-center justify-center px-4 py-6">
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-6">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -318,8 +368,68 @@ const NFCScanner = () => {
             />
           </motion.div>
 
+          {/* Mini 3D Map */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.5 }}
+            className="mt-4 w-full max-w-xs"
+          >
+            <div
+              className="relative rounded-xl border border-border/30 overflow-hidden"
+              style={{
+                height: 120,
+                perspective: "600px",
+              }}
+            >
+              <div
+                className="absolute inset-0"
+                style={{
+                  background: `
+                    linear-gradient(180deg, hsl(222 40% 9% / 0.7) 0%, transparent 40%),
+                    repeating-linear-gradient(90deg, hsl(188 95% 50% / 0.08) 0px, transparent 1px, transparent 40px),
+                    repeating-linear-gradient(0deg, hsl(188 95% 50% / 0.08) 0px, transparent 1px, transparent 40px)
+                  `,
+                  transform: "rotateX(35deg) scale(1.3)",
+                  transformOrigin: "center bottom",
+                }}
+              />
+              {/* Checkpoint dots on mini map */}
+              {checkpoints.slice(0, 5).map((cp, i) => (
+                <motion.div
+                  key={cp.id}
+                  className="absolute h-2 w-2 rounded-full bg-primary/60"
+                  style={{
+                    left: `${15 + i * 18}%`,
+                    top: `${30 + (i % 3) * 20}%`,
+                    boxShadow: "0 0 6px hsl(188 95% 50% / 0.4)",
+                  }}
+                  animate={{ opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: 2, delay: i * 0.3, repeat: Infinity }}
+                />
+              ))}
+              {/* GPS indicator */}
+              {gps && (
+                <motion.div
+                  className="absolute h-3 w-3 rounded-full bg-success"
+                  style={{
+                    left: "50%",
+                    top: "50%",
+                    transform: "translate(-50%, -50%)",
+                    boxShadow: "0 0 10px hsl(152 69% 40% / 0.6)",
+                  }}
+                  animate={{ scale: [1, 1.3, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
+              )}
+              <div className="absolute bottom-1.5 left-2 text-[9px] font-medium text-muted-foreground/60 tracking-wider uppercase">
+                Patrol Zone
+              </div>
+            </div>
+          </motion.div>
+
           {/* Action buttons */}
-          <div className="mt-6 w-full max-w-xs space-y-3">
+          <div className="mt-4 w-full max-w-xs space-y-3">
             {scannerStatus === "idle" && (
               <Button
                 onClick={handleStartScan}
@@ -345,7 +455,7 @@ const NFCScanner = () => {
       )}
 
       {/* Manual Fallback Toggle */}
-      <div className="px-4 mb-2">
+      <div className="relative z-10 px-4 mb-2">
         {!showManualFallback ? (
           <Button
             variant="ghost"
@@ -375,7 +485,7 @@ const NFCScanner = () => {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="px-4 mb-4 overflow-hidden"
+            className="relative z-10 px-4 mb-4 overflow-hidden"
           >
             <ManualScanForm
               guards={guards}
@@ -396,7 +506,7 @@ const NFCScanner = () => {
       </AnimatePresence>
 
       {/* Bottom panel */}
-      <div className="glass-card mx-4 mb-4 p-4 space-y-4 rounded-xl">
+      <div className="relative z-10 glass-card mx-4 mb-4 p-4 space-y-4 rounded-xl">
         <ScannerControls
           guards={guards}
           selectedGuard={selectedGuard}

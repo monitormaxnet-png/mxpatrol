@@ -309,7 +309,7 @@ const LiveMap = () => {
         replayMarkersRef.current.set(trail.guard_id, marker);
       }
     });
-  }, [isReplaying, currentTime, guardTrails]);
+  }, [isReplaying, currentTime, filteredTrails]);
 
   // Auto-play interval
   useEffect(() => {

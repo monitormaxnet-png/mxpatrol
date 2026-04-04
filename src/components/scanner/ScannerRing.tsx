@@ -182,7 +182,6 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
 
         {/* Status text centered inside vault */}
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center pointer-events-none">
@@ -204,6 +203,7 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
             {status === "error" && errorReason ? errorReason : config.sublabel}
           </motion.p>
         </div>
+      </div>
     </div>
   );
 };

@@ -63,7 +63,7 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
   return (
     <div className="flex flex-col items-center gap-6" onClick={onClick}>
       {/* Vault container */}
-      <div className="relative flex items-center justify-center" style={{ width: 260, height: 260 }}>
+      <div className="relative flex items-center justify-center" style={{ width: 420, height: 420 }}>
         {/* Radar pulse rings for scanning */}
         <AnimatePresence>
           {isAnimating && (
@@ -73,8 +73,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
                   key={`pulse-${i}`}
                   className="absolute rounded-full"
                   style={{
-                    width: 260,
-                    height: 260,
+                    width: 420,
+                    height: 420,
                     border: `2px solid ${config.glowColor}`,
                   }}
                   initial={{ scale: 0.85, opacity: 0.6 }}
@@ -95,8 +95,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
         <motion.div
           className="absolute rounded-full"
           style={{
-            width: 230,
-            height: 230,
+            width: 380,
+            height: 380,
             border: `3px solid`,
             borderColor: config.glowColor,
             boxShadow: `0 0 20px ${config.glowColor}, inset 0 0 20px ${config.glowColor}`,
@@ -117,8 +117,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
         <motion.div
           className="absolute rounded-full"
           style={{
-            width: 220,
-            height: 220,
+            width: 370,
+            height: 370,
             background: `radial-gradient(circle, ${config.glowColor} 0%, transparent 70%)`,
             filter: "blur(20px)",
           }}
@@ -140,9 +140,10 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           alt="Vault Scanner"
           className="relative z-10 drop-shadow-2xl"
           style={{
-            width: 200,
-            height: 200,
+            width: 360,
+            height: 360,
             objectFit: "contain",
+            opacity: 0.25,
             filter: `drop-shadow(0 0 20px ${config.glowColor})`,
           }}
           animate={
@@ -181,27 +182,27 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
 
-      {/* Status text */}
-      <div className="text-center space-y-1">
-        <motion.p
-          key={`label-${status}`}
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="font-heading text-lg font-bold text-foreground"
-        >
-          {status === "success" && checkpointName ? `✓ ${checkpointName}` : config.label}
-        </motion.p>
-        <motion.p
-          key={`sub-${status}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="text-sm text-muted-foreground"
-        >
-          {status === "error" && errorReason ? errorReason : config.sublabel}
-        </motion.p>
+        {/* Status text centered inside vault */}
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center pointer-events-none">
+          <motion.p
+            key={`label-${status}`}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="font-heading text-xl font-bold text-foreground drop-shadow-lg"
+          >
+            {status === "success" && checkpointName ? `✓ ${checkpointName}` : config.label}
+          </motion.p>
+          <motion.p
+            key={`sub-${status}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="text-sm text-muted-foreground drop-shadow-md mt-1"
+          >
+            {status === "error" && errorReason ? errorReason : config.sublabel}
+          </motion.p>
+        </div>
       </div>
     </div>
   );

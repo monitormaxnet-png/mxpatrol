@@ -95,8 +95,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
         <motion.div
           className="absolute rounded-full"
           style={{
-            width: 230,
-            height: 230,
+            width: 380,
+            height: 380,
             border: `3px solid`,
             borderColor: config.glowColor,
             boxShadow: `0 0 20px ${config.glowColor}, inset 0 0 20px ${config.glowColor}`,

@@ -185,7 +185,12 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
 
         {/* Status text centered inside vault */}
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center pointer-events-none">
-          <ScanLine className="h-10 w-10 text-primary drop-shadow-lg mb-2" strokeWidth={1.5} />
+          <motion.div
+            animate={{ scale: [1, 1.15, 1], opacity: [0.7, 1, 0.7] }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <ScanLine className="h-10 w-10 text-primary drop-shadow-lg mb-2" strokeWidth={1.5} />
+          </motion.div>
           <motion.p
             key={`label-${status}`}
             initial={{ opacity: 0, y: 5 }}

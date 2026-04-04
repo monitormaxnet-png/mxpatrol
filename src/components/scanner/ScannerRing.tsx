@@ -191,23 +191,6 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           >
             <ScanLine className="h-10 w-10 text-primary drop-shadow-lg mb-2" strokeWidth={1.5} />
           </motion.div>
-          <motion.p
-            key={`label-${status}`}
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="font-heading text-xl font-bold text-foreground drop-shadow-lg"
-          >
-            {status === "success" && checkpointName ? `✓ ${checkpointName}` : config.label}
-          </motion.p>
-          <motion.p
-            key={`sub-${status}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="text-sm text-muted-foreground drop-shadow-md mt-1"
-          >
-            {status === "error" && errorReason ? errorReason : config.sublabel}
-          </motion.p>
         </div>
       </div>
     </div>

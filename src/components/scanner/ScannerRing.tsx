@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, XCircle, WifiOff } from "lucide-react";
+import { CheckCircle2, XCircle, WifiOff, ScanLine } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
 import vaultDoor from "@/assets/vault-door.png";
 

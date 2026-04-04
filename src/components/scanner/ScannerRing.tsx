@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, XCircle, WifiOff } from "lucide-react";
+import { CheckCircle2, XCircle, WifiOff, ScanLine } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
 import vaultDoor from "@/assets/vault-door.png";
 
@@ -185,6 +185,7 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
 
         {/* Status text centered inside vault */}
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center pointer-events-none">
+          <ScanLine className="h-10 w-10 text-primary drop-shadow-lg mb-2" strokeWidth={1.5} />
           <motion.p
             key={`label-${status}`}
             initial={{ opacity: 0, y: 5 }}

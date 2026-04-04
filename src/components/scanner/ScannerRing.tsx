@@ -140,9 +140,10 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           alt="Vault Scanner"
           className="relative z-10 drop-shadow-2xl"
           style={{
-            width: 200,
-            height: 200,
+            width: 360,
+            height: 360,
             objectFit: "contain",
+            opacity: 0.25,
             filter: `drop-shadow(0 0 20px ${config.glowColor})`,
           }}
           animate={

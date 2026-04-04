@@ -73,8 +73,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
                   key={`pulse-${i}`}
                   className="absolute rounded-full"
                   style={{
-                    width: 260,
-                    height: 260,
+                    width: 420,
+                    height: 420,
                     border: `2px solid ${config.glowColor}`,
                   }}
                   initial={{ scale: 0.85, opacity: 0.6 }}

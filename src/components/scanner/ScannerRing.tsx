@@ -61,9 +61,9 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
   const isAnimating = status === "scanning";
 
   return (
-    <div className="flex flex-col items-center gap-6" onClick={onClick}>
-      {/* Vault container */}
-      <div className="relative flex items-center justify-center" style={{ width: 420, height: 420 }}>
+    <div className="flex flex-col items-center gap-4" onClick={onClick}>
+      {/* Vault container - responsive sizing */}
+      <div className="relative flex items-center justify-center w-[280px] h-[280px] sm:w-[360px] sm:h-[360px] md:w-[420px] md:h-[420px]">
         {/* Radar pulse rings for scanning */}
         <AnimatePresence>
           {isAnimating && (
@@ -71,10 +71,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
               {[0, 1, 2].map((i) => (
                 <motion.div
                   key={`pulse-${i}`}
-                  className="absolute rounded-full"
+                  className="absolute rounded-full w-full h-full"
                   style={{
-                    width: 420,
-                    height: 420,
                     border: `2px solid ${config.glowColor}`,
                   }}
                   initial={{ scale: 0.85, opacity: 0.6 }}
@@ -95,8 +93,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
         <motion.div
           className="absolute rounded-full"
           style={{
-            width: 380,
-            height: 380,
+            width: "90%",
+            height: "90%",
             border: `3px solid`,
             borderColor: config.glowColor,
             boxShadow: `0 0 20px ${config.glowColor}, inset 0 0 20px ${config.glowColor}`,
@@ -117,8 +115,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
         <motion.div
           className="absolute rounded-full"
           style={{
-            width: 370,
-            height: 370,
+            width: "88%",
+            height: "88%",
             background: `radial-gradient(circle, ${config.glowColor} 0%, transparent 70%)`,
             filter: "blur(20px)",
           }}
@@ -138,10 +136,8 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
         <motion.img
           src={vaultDoor}
           alt="Vault Scanner"
-          className="relative z-10 drop-shadow-2xl"
+          className="relative z-10 drop-shadow-2xl w-[85%] h-[85%]"
           style={{
-            width: 360,
-            height: 360,
             objectFit: "contain",
             opacity: 0.25,
             filter: `drop-shadow(0 0 20px ${config.glowColor})`,
@@ -176,20 +172,20 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
               exit={{ scale: 0, opacity: 0 }}
               transition={{ type: "spring", damping: 12 }}
             >
-              <div className="rounded-full bg-background/80 p-3 backdrop-blur-sm">
-                <OverlayIcon className={`h-10 w-10 ${config.iconColor}`} strokeWidth={2} />
+              <div className="rounded-full bg-background/80 p-2 sm:p-3 backdrop-blur-sm">
+                <OverlayIcon className={`h-8 w-8 sm:h-10 sm:w-10 ${config.iconColor}`} strokeWidth={2} />
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Status text centered inside vault */}
+        {/* Scan icon centered inside vault */}
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center pointer-events-none">
           <motion.div
             animate={{ scale: [1, 1.15, 1], opacity: [0.7, 1, 0.7] }}
             transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
           >
-            <ScanLine className="h-10 w-10 text-primary drop-shadow-lg mb-2" strokeWidth={1.5} />
+            <ScanLine className="h-8 w-8 sm:h-10 sm:w-10 text-primary drop-shadow-lg mb-2" strokeWidth={1.5} />
           </motion.div>
         </div>
       </div>

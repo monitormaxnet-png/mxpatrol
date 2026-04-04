@@ -184,26 +184,26 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
         </AnimatePresence>
       </div>
 
-      {/* Status text */}
-      <div className="text-center space-y-1">
-        <motion.p
-          key={`label-${status}`}
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="font-heading text-lg font-bold text-foreground"
-        >
-          {status === "success" && checkpointName ? `✓ ${checkpointName}` : config.label}
-        </motion.p>
-        <motion.p
-          key={`sub-${status}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="text-sm text-muted-foreground"
-        >
-          {status === "error" && errorReason ? errorReason : config.sublabel}
-        </motion.p>
-      </div>
+        {/* Status text centered inside vault */}
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center pointer-events-none">
+          <motion.p
+            key={`label-${status}`}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="font-heading text-xl font-bold text-foreground drop-shadow-lg"
+          >
+            {status === "success" && checkpointName ? `✓ ${checkpointName}` : config.label}
+          </motion.p>
+          <motion.p
+            key={`sub-${status}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="text-sm text-muted-foreground drop-shadow-md mt-1"
+          >
+            {status === "error" && errorReason ? errorReason : config.sublabel}
+          </motion.p>
+        </div>
     </div>
   );
 };

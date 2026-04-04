@@ -63,7 +63,7 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
   return (
     <div className="flex flex-col items-center gap-6" onClick={onClick}>
       {/* Vault container */}
-      <div className="relative flex items-center justify-center" style={{ width: 260, height: 260 }}>
+      <div className="relative flex items-center justify-center" style={{ width: 420, height: 420 }}>
         {/* Radar pulse rings for scanning */}
         <AnimatePresence>
           {isAnimating && (

@@ -148,21 +148,21 @@ const ScannerRing = ({ status, checkpointName, errorReason, onClick }: ScannerRi
           }}
           animate={
             isAnimating
-              ? { opacity: [1, 0.05, 1, 0.1, 1], scale: [1, 0.97, 1, 0.98, 1], rotateZ: 360 }
+              ? { scale: [1, 0.97, 1, 0.98, 1], rotateZ: 360 }
               : status === "success"
-              ? { opacity: [1, 0.2, 1], scale: [1, 1.08, 1], rotateZ: 360 }
+              ? { scale: [1, 1.08, 1], rotateZ: 360 }
               : status === "error"
-              ? { opacity: [1, 0, 1, 0, 1, 0, 1] }
-              : { opacity: [1, 0.1, 1, 0.15, 1], rotateZ: 360 }
+              ? {}
+              : { rotateZ: 360 }
           }
           transition={
             isAnimating
-              ? { opacity: { duration: 2, repeat: Infinity, ease: "easeInOut" }, scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
+              ? { scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
               : status === "success"
-              ? { opacity: { duration: 0.8, repeat: 2, ease: "easeOut" }, scale: { duration: 0.8, repeat: 2, ease: "easeOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
+              ? { scale: { duration: 0.8, repeat: 2, ease: "easeOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
               : status === "error"
-              ? { duration: 1, ease: "easeOut" }
-              : { opacity: { duration: 4, repeat: Infinity, ease: "easeInOut" }, rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
+              ? {}
+              : { rotateZ: { duration: 60, repeat: Infinity, ease: "linear" } }
           }
         />
 

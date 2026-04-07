@@ -11,8 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Separator } from "@/components/ui/separator";
 import {
   Shield, Camera, CameraOff, CheckCircle2, XCircle, Loader2,
-  Smartphone, Wifi, WifiOff, QrCode, ArrowLeft, RefreshCw,
+  Smartphone, Wifi, WifiOff, QrCode, ArrowLeft, RefreshCw, CloudUpload,
 } from "lucide-react";
+import { useOfflineEnrollQueue } from "@/hooks/useOfflineEnrollQueue";
 
 type EnrollState = "scanning" | "processing" | "success" | "error" | "offline-queued" | "manual";
 
@@ -38,7 +39,7 @@ export default function EnrollPage() {
   });
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef(false);
-
+  const { enqueue, syncQueue, syncing, pendingCount } = useOfflineEnrollQueue();
   // Auto-populate device metadata from browser
   useEffect(() => {
     const ua = navigator.userAgent;
@@ -102,10 +103,7 @@ export default function EnrollPage() {
       };
 
       if (!isOnline) {
-        // Queue offline
-        const queue = JSON.parse(localStorage.getItem("enroll_queue") || "[]");
-        queue.push({ ...enrollPayload, queued_at: new Date().toISOString() });
-        localStorage.setItem("enroll_queue", JSON.stringify(queue));
+        enqueue(enrollPayload);
         setState("offline-queued");
         processingRef.current = false;
         return;
@@ -406,9 +404,21 @@ export default function EnrollPage() {
                     <p className="text-sm text-muted-foreground text-center">
                       Your enrollment request has been saved locally. It will be submitted automatically when you reconnect to the internet.
                     </p>
-                    <Button variant="outline" onClick={resetScanner}>
-                      Scan Another
-                    </Button>
+                    {pendingCount > 0 && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <CloudUpload className="h-3 w-3" />
+                        <span>{pendingCount} pending enrollment{pendingCount > 1 ? "s" : ""} in queue</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={resetScanner}>
+                        Scan Another
+                      </Button>
+                      <Button variant="outline" onClick={syncQueue} disabled={syncing || !isOnline}>
+                        {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                        Sync Now
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </motion.div>

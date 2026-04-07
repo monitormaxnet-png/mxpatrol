@@ -11,8 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Separator } from "@/components/ui/separator";
 import {
   Shield, Camera, CameraOff, CheckCircle2, XCircle, Loader2,
-  Smartphone, Wifi, WifiOff, QrCode, ArrowLeft, RefreshCw,
+  Smartphone, Wifi, WifiOff, QrCode, ArrowLeft, RefreshCw, CloudUpload,
 } from "lucide-react";
+import { useOfflineEnrollQueue } from "@/hooks/useOfflineEnrollQueue";
 
 type EnrollState = "scanning" | "processing" | "success" | "error" | "offline-queued" | "manual";
 

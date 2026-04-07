@@ -30,6 +30,7 @@ import CameraLive from "./pages/CameraLive";
 import CameraEvents from "./pages/CameraEvents";
 import WhatsApp from "./pages/WhatsApp";
 import EnrollPage from "./pages/EnrollPage";
+import CommandCenter from "./pages/CommandCenter";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,7 @@ const App = () => (
               <Route path="/cameras/events" element={<CameraEvents />} />
               <Route path="/whatsapp" element={<WhatsApp />} />
               <Route path="/devices" element={<Devices />} />
+              <Route path="/command-center" element={<CommandCenter />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/profile" element={<Profile />} />
             </Route>

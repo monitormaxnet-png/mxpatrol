@@ -16,6 +16,7 @@ import {
   X,
   Camera,
   MessageSquare,
+  Terminal,
 } from "lucide-react";
 import { useUserRole, type AppRole } from "@/hooks/useUserRole";
 
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { to: "/cameras", icon: Camera, label: "CCTV Cameras", minRole: ["admin", "supervisor"] },
   { to: "/whatsapp", icon: MessageSquare, label: "WhatsApp AI", minRole: ["admin", "supervisor"] },
   { to: "/devices", icon: Radio, label: "Devices", minRole: ["admin"] },
+  { to: "/command-center", icon: Terminal, label: "Command Center", minRole: ["admin"] },
   { to: "/profile", icon: UserCircle, label: "My Profile" },
   { to: "/settings", icon: Settings, label: "Settings", minRole: ["admin"] },
 ];

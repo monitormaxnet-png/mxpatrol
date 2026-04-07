@@ -404,9 +404,21 @@ export default function EnrollPage() {
                     <p className="text-sm text-muted-foreground text-center">
                       Your enrollment request has been saved locally. It will be submitted automatically when you reconnect to the internet.
                     </p>
-                    <Button variant="outline" onClick={resetScanner}>
-                      Scan Another
-                    </Button>
+                    {pendingCount > 0 && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <CloudUpload className="h-3 w-3" />
+                        <span>{pendingCount} pending enrollment{pendingCount > 1 ? "s" : ""} in queue</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={resetScanner}>
+                        Scan Another
+                      </Button>
+                      <Button variant="outline" onClick={syncQueue} disabled={syncing || !isOnline}>
+                        {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                        Sync Now
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </motion.div>

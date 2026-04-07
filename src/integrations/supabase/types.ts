@@ -355,14 +355,230 @@ export type Database = {
         }
         Relationships: []
       }
-      devices: {
+      compliance_scores: {
         Row: {
+          company_id: string
+          created_at: string
+          details: Json | null
+          device_id: string
+          heartbeat_score: number | null
+          id: string
+          overall_score: number | null
+          patrol_score: number | null
+          policy_score: number | null
+          scored_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          details?: Json | null
+          device_id: string
+          heartbeat_score?: number | null
+          id?: string
+          overall_score?: number | null
+          patrol_score?: number | null
+          policy_score?: number | null
+          scored_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          details?: Json | null
+          device_id?: string
+          heartbeat_score?: number | null
+          id?: string
+          overall_score?: number | null
+          patrol_score?: number | null
+          policy_score?: number | null
+          scored_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "compliance_scores_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compliance_scores_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_activity_logs: {
+        Row: {
+          action: Database["public"]["Enums"]["device_action"]
+          company_id: string
+          created_at: string
+          device_id: string
+          id: string
+          metadata: Json | null
+          performed_by: string | null
+        }
+        Insert: {
+          action: Database["public"]["Enums"]["device_action"]
+          company_id: string
+          created_at?: string
+          device_id: string
+          id?: string
+          metadata?: Json | null
+          performed_by?: string | null
+        }
+        Update: {
+          action?: Database["public"]["Enums"]["device_action"]
+          company_id?: string
+          created_at?: string
+          device_id?: string
+          id?: string
+          metadata?: Json | null
+          performed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_activity_logs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_activity_logs_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_commands: {
+        Row: {
+          command_type: Database["public"]["Enums"]["command_type"]
+          company_id: string
+          created_at: string
+          device_id: string
+          executed_at: string | null
+          id: string
+          issued_at: string
+          issued_by: string | null
+          payload: Json | null
+          result: Json | null
+          retry_count: number | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["command_status"]
+        }
+        Insert: {
+          command_type: Database["public"]["Enums"]["command_type"]
+          company_id: string
+          created_at?: string
+          device_id: string
+          executed_at?: string | null
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          payload?: Json | null
+          result?: Json | null
+          retry_count?: number | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["command_status"]
+        }
+        Update: {
+          command_type?: Database["public"]["Enums"]["command_type"]
+          company_id?: string
+          created_at?: string
+          device_id?: string
+          executed_at?: string | null
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          payload?: Json | null
+          result?: Json | null
+          retry_count?: number | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["command_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_commands_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_commands_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_heartbeats: {
+        Row: {
+          app_version: string | null
           battery_level: number | null
           company_id: string
+          created_at: string
+          device_id: string
+          id: string
+          ip_address: string | null
+          is_online: boolean | null
+          metadata: Json | null
+        }
+        Insert: {
+          app_version?: string | null
+          battery_level?: number | null
+          company_id: string
+          created_at?: string
+          device_id: string
+          id?: string
+          ip_address?: string | null
+          is_online?: boolean | null
+          metadata?: Json | null
+        }
+        Update: {
+          app_version?: string | null
+          battery_level?: number | null
+          company_id?: string
+          created_at?: string
+          device_id?: string
+          id?: string
+          ip_address?: string | null
+          is_online?: boolean | null
+          metadata?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_heartbeats_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_heartbeats_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      devices: {
+        Row: {
+          app_type: Database["public"]["Enums"]["app_type"] | null
+          battery_level: number | null
+          company_id: string
+          compliance_score: number | null
           created_at: string
           device_identifier: string
           device_name: string | null
           device_type: string
+          enrolled_via: string | null
           guard_id: string | null
           id: string
           last_seen_at: string | null
@@ -377,12 +593,15 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          app_type?: Database["public"]["Enums"]["app_type"] | null
           battery_level?: number | null
           company_id: string
+          compliance_score?: number | null
           created_at?: string
           device_identifier: string
           device_name?: string | null
           device_type?: string
+          enrolled_via?: string | null
           guard_id?: string | null
           id?: string
           last_seen_at?: string | null
@@ -397,12 +616,15 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          app_type?: Database["public"]["Enums"]["app_type"] | null
           battery_level?: number | null
           company_id?: string
+          compliance_score?: number | null
           created_at?: string
           device_identifier?: string
           device_name?: string | null
           device_type?: string
+          enrolled_via?: string | null
           guard_id?: string | null
           id?: string
           last_seen_at?: string | null
@@ -429,6 +651,60 @@ export type Database = {
             columns: ["guard_id"]
             isOneToOne: false
             referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enrollment_tokens: {
+        Row: {
+          app_type: Database["public"]["Enums"]["app_type"]
+          company_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          nonce: string
+          token: string
+          used: boolean
+          used_by_device_id: string | null
+        }
+        Insert: {
+          app_type?: Database["public"]["Enums"]["app_type"]
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          expires_at: string
+          id?: string
+          nonce: string
+          token: string
+          used?: boolean
+          used_by_device_id?: string | null
+        }
+        Update: {
+          app_type?: Database["public"]["Enums"]["app_type"]
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          nonce?: string
+          token?: string
+          used?: boolean
+          used_by_device_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrollment_tokens_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enrollment_tokens_used_by_device_id_fkey"
+            columns: ["used_by_device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
             referencedColumns: ["id"]
           },
         ]
@@ -973,6 +1249,24 @@ export type Database = {
         | "device_offline"
         | "anomaly"
       app_role: "admin" | "supervisor" | "guard"
+      app_type: "admin_app" | "guard_device"
+      command_status: "pending" | "sent" | "executed" | "failed"
+      command_type:
+        | "lock_device"
+        | "wipe_device"
+        | "set_kiosk_mode"
+        | "update_policy"
+        | "install_app"
+        | "uninstall_app"
+      device_action:
+        | "enrolled"
+        | "activated"
+        | "suspended"
+        | "revoked"
+        | "replaced"
+        | "heartbeat"
+        | "command_sent"
+        | "command_executed"
       device_status: "online" | "offline" | "low_battery"
       incident_severity: "low" | "medium" | "high" | "critical"
       patrol_status: "scheduled" | "in_progress" | "completed" | "missed"
@@ -1111,6 +1405,26 @@ export const Constants = {
         "anomaly",
       ],
       app_role: ["admin", "supervisor", "guard"],
+      app_type: ["admin_app", "guard_device"],
+      command_status: ["pending", "sent", "executed", "failed"],
+      command_type: [
+        "lock_device",
+        "wipe_device",
+        "set_kiosk_mode",
+        "update_policy",
+        "install_app",
+        "uninstall_app",
+      ],
+      device_action: [
+        "enrolled",
+        "activated",
+        "suspended",
+        "revoked",
+        "replaced",
+        "heartbeat",
+        "command_sent",
+        "command_executed",
+      ],
       device_status: ["online", "offline", "low_battery"],
       incident_severity: ["low", "medium", "high", "critical"],
       patrol_status: ["scheduled", "in_progress", "completed", "missed"],

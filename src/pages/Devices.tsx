@@ -2,10 +2,11 @@ import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Battery, Wifi, WifiOff, Smartphone, Tablet, ScanLine, Monitor,
-  RefreshCw, Loader2, Plus, Search, Trash2, Power, PowerOff, MoreHorizontal, Pencil, Eye, MapPin,
+  RefreshCw, Loader2, Plus, Search, Trash2, Power, PowerOff, MoreHorizontal, Pencil, Eye, MapPin, QrCode, Shield,
 } from "lucide-react";
 import { useDevices } from "@/hooks/useDashboardData";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useDeviceRealtime } from "@/hooks/useDeviceRealtime";
 import { formatDistanceToNow } from "date-fns";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +28,7 @@ import DeviceAnalytics from "@/components/devices/DeviceAnalytics";
 import DeviceRegistrationDialog from "@/components/devices/DeviceRegistrationDialog";
 import DeviceDetailSheet from "@/components/devices/DeviceDetailSheet";
 import DevicePairingCard from "@/components/devices/DevicePairingCard";
+import QRGenerateDialog from "@/components/devices/QRGenerateDialog";
 
 const typeIcons: Record<string, typeof Smartphone> = {
   mobile: Smartphone, tablet: Tablet, nfc_reader: ScanLine, pda: Monitor,
@@ -39,12 +41,14 @@ const Devices = () => {
   const { data: devices = [], isLoading } = useDevices();
   const { isAdmin } = useUserRole();
   const queryClient = useQueryClient();
+  useDeviceRealtime();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const [editDevice, setEditDevice] = useState<any>(null);
   const [detailDevice, setDetailDevice] = useState<any>(null);
 
@@ -106,9 +110,14 @@ const Devices = () => {
           <p className="text-sm text-muted-foreground">Register, pair, and monitor patrol devices</p>
         </div>
         {isAdmin && (
-          <Button onClick={() => { setEditDevice(null); setRegisterOpen(true); }}>
-            <Plus className="mr-2 h-4 w-4" /> Register Device
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setQrOpen(true)}>
+              <QrCode className="mr-2 h-4 w-4" /> QR Enroll
+            </Button>
+            <Button onClick={() => { setEditDevice(null); setRegisterOpen(true); }}>
+              <Plus className="mr-2 h-4 w-4" /> Register Device
+            </Button>
+          </div>
         )}
       </div>
 
@@ -293,6 +302,8 @@ const Devices = () => {
         onOpenChange={setRegisterOpen}
         editDevice={editDevice}
       />
+
+      <QRGenerateDialog open={qrOpen} onOpenChange={setQrOpen} />
 
       <DeviceDetailSheet
         device={detailDevice}

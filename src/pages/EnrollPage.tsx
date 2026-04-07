@@ -39,7 +39,7 @@ export default function EnrollPage() {
   });
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef(false);
-
+  const { enqueue, syncQueue, syncing, pendingCount } = useOfflineEnrollQueue();
   // Auto-populate device metadata from browser
   useEffect(() => {
     const ua = navigator.userAgent;
@@ -103,10 +103,7 @@ export default function EnrollPage() {
       };
 
       if (!isOnline) {
-        // Queue offline
-        const queue = JSON.parse(localStorage.getItem("enroll_queue") || "[]");
-        queue.push({ ...enrollPayload, queued_at: new Date().toISOString() });
-        localStorage.setItem("enroll_queue", JSON.stringify(queue));
+        enqueue(enrollPayload);
         setState("offline-queued");
         processingRef.current = false;
         return;

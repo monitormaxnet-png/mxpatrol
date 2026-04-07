@@ -1,40 +1,75 @@
 
 
-## Add Twilio Secrets for WhatsApp Integration
+# Implementation Plan: PWA + Admin Onboarding + Device Onboarding
 
-The project already has the edge functions (`whatsapp-send` and `whatsapp-webhook`) built and deployed. Two secrets are needed to activate the integration:
+## Overview
 
-### Secrets to Add
+Three features to build: (1) Full PWA with offline support, (2) Admin tenant onboarding wizard for new signups, (3) Improved device onboarding flow.
 
-1. **TWILIO_API_KEY** — This is provided when you connect Twilio via a connector. Since the connector approach was declined, you'll need to provide your Twilio credentials manually.
+---
 
-2. **TWILIO_WHATSAPP_NUMBER** — Your Twilio WhatsApp-enabled phone number (e.g., `+14155238886` for the sandbox).
+## 1. PWA with Offline Support
 
-### How to Get These Values
+**What**: Make the app installable with service worker caching and offline fallback.
 
-**TWILIO_API_KEY:**
-- Go to [Twilio Console](https://console.twilio.com/)
-- Your Account SID and Auth Token are on the dashboard
-- The value should be your Auth Token (used for API authentication through the gateway)
+**Steps**:
+- Install `vite-plugin-pwa` and configure in `vite.config.ts` with `registerType: "autoUpdate"`, `devOptions: { enabled: false }`, and `navigateFallbackDenylist: [/^\/~oauth/]`
+- Create `public/manifest.json` with app name "SENTINEL Patrol Intelligence", theme colors matching the dark theme, and PWA icons
+- Generate PWA icons (192x192, 512x512) in `public/`
+- Add mobile meta tags to `index.html` (`theme-color`, `apple-mobile-web-app-capable`, etc.)
+- Add iframe/preview guard in `src/main.tsx` to prevent service worker registration in Lovable preview
+- Create `/install` page with install prompt trigger and instructions for iOS (Share > Add to Home Screen)
+- Add route to `App.tsx` as a public route
 
-**TWILIO_WHATSAPP_NUMBER:**
-- Go to Twilio Console → Messaging → Try it out → Send a WhatsApp message
-- For sandbox testing, Twilio provides a number like `+14155238886`
-- For production, use your purchased Twilio WhatsApp-enabled number
+**Offline strategy**: Cache app shell and static assets. API calls fail gracefully with existing offline queue patterns.
 
-### Implementation Steps
+---
 
-1. Switch to default mode and use the `add_secret` tool to prompt you for `TWILIO_API_KEY`
-2. Use the `add_secret` tool to prompt you for `TWILIO_WHATSAPP_NUMBER`
-3. Deploy both edge functions to pick up the new secrets
-4. Test the integration by calling the `whatsapp-send` function
+## 2. Admin Tenant Onboarding Wizard
 
-### After Secrets Are Added
+**What**: A multi-step guided setup that appears after a new admin's first login, walking them through company configuration, team invites, checkpoint setup, first device enrollment, and first patrol creation.
 
-You'll also need to configure your Twilio WhatsApp webhook URL in the Twilio console:
-```
-https://ksbfgwawfqamtofapdty.supabase.co/functions/v1/whatsapp-webhook
-```
+**Database changes**:
+- Add `onboarding_completed` boolean column to `profiles` table (default `false`)
 
-This URL receives incoming WhatsApp messages and triggers the AI assistant responses.
+**New components**:
+- `src/components/onboarding/OnboardingWizard.tsx` — Full-screen modal wizard with 5 steps
+- Step 1: **Company Setup** — Name, logo upload, domain
+- Step 2: **Invite Team** — Add supervisor/guard emails (stores invites, sends via auth invite or displays signup links)
+- Step 3: **Create Checkpoints** — Add 2-3 NFC checkpoint locations with names and coordinates
+- Step 4: **Enroll First Device** — Generate a QR enrollment token inline, show QR code to scan with a guard device
+- Step 5: **Create First Patrol** — Name, assign guard, pick checkpoints, set schedule
+
+**Integration**:
+- In `AppLayout.tsx` or `Index.tsx`, check if `profiles.onboarding_completed` is `false` for admin users — if so, show the wizard
+- On wizard completion, update `profiles.onboarding_completed = true`
+- Add "Skip" option on each step and a "Complete Later" button
+
+---
+
+## 3. Device Onboarding Flow Improvements
+
+**What**: Enhance the existing `/enroll` page into a polished step-by-step wizard.
+
+**Steps**:
+- Refactor `EnrollPage.tsx` into a 3-step flow:
+  - Step 1: **Scan or Enter Token** — Camera QR scanner with manual fallback (already exists, polish UI)
+  - Step 2: **Confirm Device Info** — Show auto-detected metadata, allow editing device name/type
+  - Step 3: **Success + Next Steps** — Show enrolled device details, link to download app or return to dashboard
+- Add progress indicator (step dots) at the top
+- Improve offline state with clearer messaging and pending count badge
+- Add animated transitions between steps
+
+---
+
+## Technical Details
+
+| Area | Files Changed |
+|------|--------------|
+| PWA | `vite.config.ts`, `index.html`, `src/main.tsx`, new `public/manifest.json`, new `src/pages/InstallPage.tsx` |
+| Onboarding | New migration (add `onboarding_completed`), new `src/components/onboarding/OnboardingWizard.tsx` + sub-step components, edit `src/pages/Index.tsx` or `AppLayout.tsx` |
+| Device flow | Edit `src/pages/EnrollPage.tsx` |
+| Routing | `src/App.tsx` — add `/install` route |
+
+**Dependencies to add**: `vite-plugin-pwa`
 

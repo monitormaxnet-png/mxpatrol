@@ -31,6 +31,7 @@ import CameraEvents from "./pages/CameraEvents";
 import WhatsApp from "./pages/WhatsApp";
 import EnrollPage from "./pages/EnrollPage";
 import CommandCenter from "./pages/CommandCenter";
+import InstallPage from "./pages/InstallPage";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/enroll" element={<EnrollPage />} />
+            <Route path="/install" element={<InstallPage />} />
 
             {/* Protected routes */}
             <Route

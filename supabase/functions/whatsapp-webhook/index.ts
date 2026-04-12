@@ -181,6 +181,9 @@ For general messages: Be helpful and security-focused.`;
           const aiData = await aiResp.json();
           aiResponse =
             aiData.choices?.[0]?.message?.content || aiResponse;
+        } else {
+          const errText = await aiResp.text();
+          console.error("AI gateway error:", aiResp.status, errText);
         }
       } catch (e) {
         console.error("AI error:", e);

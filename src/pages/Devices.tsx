@@ -237,6 +237,9 @@ const Devices = () => {
                         <div>
                           <p className="text-sm font-medium text-foreground">{device.device_name || device.device_identifier}</p>
                           <p className="text-xs text-muted-foreground">{device.device_identifier}</p>
+                          <div className="mt-1 lg:hidden">
+                            <DevicePairingCard device={device} />
+                          </div>
                         </div>
                       </div>
                     </TableCell>

@@ -117,7 +117,7 @@ export default function EnrollPage() {
         body: enrollPayload,
       });
       if (fnError) throw fnError;
-      if (data?.error) throw new Error(data.error);
+      if (!data?.ok) throw new Error(data?.error || "Enrollment failed");
       setResult(data);
       setProcessState("idle");
       setWizardStep(2);

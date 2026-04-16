@@ -6,6 +6,22 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+function respond(ok: boolean, payload: Record<string, unknown>, status = 200): Response {
+  return new Response(
+    JSON.stringify({ ok, ...payload }),
+    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+/** Decode base64 that may be standard or URL-safe */
+function safeAtob(str: string): string {
+  // Normalize URL-safe base64 to standard
+  let s = str.replace(/-/g, "+").replace(/_/g, "/");
+  // Add padding if needed
+  while (s.length % 4 !== 0) s += "=";
+  return atob(s);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -16,10 +32,7 @@ Deno.serve(async (req) => {
     const { qr_token, device_metadata } = body;
 
     if (!qr_token || !device_metadata?.device_identifier) {
-      return new Response(
-        JSON.stringify({ error: "qr_token and device_metadata.device_identifier are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond(false, { error: "qr_token and device_metadata.device_identifier are required" });
     }
 
     const serviceClient = createClient(
@@ -30,10 +43,7 @@ Deno.serve(async (req) => {
     // Parse and verify token
     const parts = qr_token.split(".");
     if (parts.length !== 2) {
-      return new Response(
-        JSON.stringify({ error: "Invalid token format" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond(false, { error: "Invalid token format" });
     }
 
     const [payloadB64, sigB64] = parts;
@@ -48,7 +58,14 @@ Deno.serve(async (req) => {
       ["verify"]
     );
 
-    const sigBytes = Uint8Array.from(atob(sigB64), (c) => c.charCodeAt(0));
+    let sigBytes: Uint8Array;
+    try {
+      sigBytes = Uint8Array.from(safeAtob(sigB64), (c) => c.charCodeAt(0));
+    } catch (e) {
+      console.error("Signature decode error:", e);
+      return respond(false, { error: "Invalid token signature encoding" });
+    }
+
     const valid = await crypto.subtle.verify(
       "HMAC",
       key,
@@ -57,28 +74,19 @@ Deno.serve(async (req) => {
     );
 
     if (!valid) {
-      return new Response(
-        JSON.stringify({ error: "Invalid token signature" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond(false, { error: "Invalid token signature" });
     }
 
     let payload: { tid: string; app: string; nonce: string; exp: number };
     try {
-      payload = JSON.parse(atob(payloadB64));
+      payload = JSON.parse(safeAtob(payloadB64));
     } catch {
-      return new Response(
-        JSON.stringify({ error: "Malformed token payload" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond(false, { error: "Malformed token payload" });
     }
 
     // Check expiry
     if (payload.exp < Math.floor(Date.now() / 1000)) {
-      return new Response(
-        JSON.stringify({ error: "Token expired" }),
-        { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond(false, { error: "Token expired" });
     }
 
     // Find and validate token in DB
@@ -90,17 +98,11 @@ Deno.serve(async (req) => {
       .single();
 
     if (tokenErr || !tokenRecord) {
-      return new Response(
-        JSON.stringify({ error: "Token not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond(false, { error: "Token not found" });
     }
 
     if (tokenRecord.used) {
-      return new Response(
-        JSON.stringify({ error: "Token already used" }),
-        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond(false, { error: "Token already used" });
     }
 
     // Check if device already exists
@@ -168,19 +170,13 @@ Deno.serve(async (req) => {
       },
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        device_id: deviceId,
-        company_id: payload.tid,
-        app_type: payload.app,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return respond(true, {
+      device_id: deviceId,
+      company_id: payload.tid,
+      app_type: payload.app,
     });
+  } catch (err: any) {
+    console.error("Device enroll error:", err);
+    return respond(false, { error: err.message || "Internal server error" });
   }
 });

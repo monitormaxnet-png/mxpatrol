@@ -1,75 +1,79 @@
 
 
-# Implementation Plan: PWA + Admin Onboarding + Device Onboarding
+## Diagnosis: Why NFC Scanning Fails on the RG360
 
-## Overview
+The NFC scanner relies on the **Web NFC API (`NDEFReader`)**, which has very strict requirements. Looking at `src/hooks/useNfcReader.ts`:
 
-Three features to build: (1) Full PWA with offline support, (2) Admin tenant onboarding wizard for new signups, (3) Improved device onboarding flow.
+```ts
+const supported = typeof window !== "undefined" && "NDEFReader" in window;
+```
 
----
+If `NDEFReader` isn't on `window`, the hook immediately returns `unsupported` and refuses to scan. This is almost certainly what's happening on the RG360.
 
-## 1. PWA with Offline Support
+### Root causes (in order of likelihood)
 
-**What**: Make the app installable with service worker caching and offline fallback.
+1. **Web NFC is Chrome-on-Android only.** It does NOT work in:
+   - Native APK WebViews (including Capacitor's default `WebView`) — even though the device has NFC hardware, the WebView doesn't expose `NDEFReader`.
+   - Firefox, Samsung Internet, or any non-Chromium browser.
+   - iOS (Safari has no Web NFC).
+   
+   The RG360 is being accessed via the **Lovable APK / Capacitor WebView**, which is why `NDEFReader` is `undefined` → status falls to `unsupported` → no scanning happens.
 
-**Steps**:
-- Install `vite-plugin-pwa` and configure in `vite.config.ts` with `registerType: "autoUpdate"`, `devOptions: { enabled: false }`, and `navigateFallbackDenylist: [/^\/~oauth/]`
-- Create `public/manifest.json` with app name "SENTINEL Patrol Intelligence", theme colors matching the dark theme, and PWA icons
-- Generate PWA icons (192x192, 512x512) in `public/`
-- Add mobile meta tags to `index.html` (`theme-color`, `apple-mobile-web-app-capable`, etc.)
-- Add iframe/preview guard in `src/main.tsx` to prevent service worker registration in Lovable preview
-- Create `/install` page with install prompt trigger and instructions for iOS (Share > Add to Home Screen)
-- Add route to `App.tsx` as a public route
+2. **Requires HTTPS + Chrome 89+**. The published URL `https://mxpatrol.lovable.app` is HTTPS ✓, so that's fine in a real Chrome browser — but irrelevant inside a WebView.
 
-**Offline strategy**: Cache app shell and static assets. API calls fail gracefully with existing offline queue patterns.
+3. **No native NFC bridge.** The app currently has no Capacitor plugin (e.g. `@capacitor-community/nfc` or a custom Android intent handler) to read NFC tags from native code and forward them to the WebView.
 
----
+### What you're seeing
 
-## 2. Admin Tenant Onboarding Wizard
-
-**What**: A multi-step guided setup that appears after a new admin's first login, walking them through company configuration, team invites, checkpoint setup, first device enrollment, and first patrol creation.
-
-**Database changes**:
-- Add `onboarding_completed` boolean column to `profiles` table (default `false`)
-
-**New components**:
-- `src/components/onboarding/OnboardingWizard.tsx` — Full-screen modal wizard with 5 steps
-- Step 1: **Company Setup** — Name, logo upload, domain
-- Step 2: **Invite Team** — Add supervisor/guard emails (stores invites, sends via auth invite or displays signup links)
-- Step 3: **Create Checkpoints** — Add 2-3 NFC checkpoint locations with names and coordinates
-- Step 4: **Enroll First Device** — Generate a QR enrollment token inline, show QR code to scan with a guard device
-- Step 5: **Create First Patrol** — Name, assign guard, pick checkpoints, set schedule
-
-**Integration**:
-- In `AppLayout.tsx` or `Index.tsx`, check if `profiles.onboarding_completed` is `false` for admin users — if so, show the wizard
-- On wizard completion, update `profiles.onboarding_completed = true`
-- Add "Skip" option on each step and a "Complete Later" button
+The scanner ring shows "NFC Not Available — Use manual scan mode instead" (the `unsupported` status branch in `ScannerRing.tsx`), even though the RG360 has working NFC hardware.
 
 ---
 
-## 3. Device Onboarding Flow Improvements
+## Fix Plan
 
-**What**: Enhance the existing `/enroll` page into a polished step-by-step wizard.
+Two options — pick one. I recommend **Option A** for the RG360 since it's a dedicated patrol device.
 
-**Steps**:
-- Refactor `EnrollPage.tsx` into a 3-step flow:
-  - Step 1: **Scan or Enter Token** — Camera QR scanner with manual fallback (already exists, polish UI)
-  - Step 2: **Confirm Device Info** — Show auto-detected metadata, allow editing device name/type
-  - Step 3: **Success + Next Steps** — Show enrolled device details, link to download app or return to dashboard
-- Add progress indicator (step dots) at the top
-- Improve offline state with clearer messaging and pending count badge
-- Add animated transitions between steps
+### Option A — Native NFC bridge via Capacitor plugin (recommended)
+
+Build a thin native NFC reader that pushes tag IDs into the existing scan pipeline:
+
+1. **Add Capacitor + NFC plugin** to the project:
+   - Install `@capacitor/core`, `@capacitor/cli`, `@capacitor/android`
+   - Install `@capawesome-team/capacitor-nfc` (maintained, supports tag UID reading on Android)
+   - Initialize Capacitor with `appId: app.lovable.7a762bd665c04e6d941783744dd932b0`, `appName: mxpatrol`
+   - Configure `capacitor.config.ts` to point `server.url` at `https://mxpatrol.lovable.app`
+
+2. **Extend `useNfcReader.ts`** with a runtime check:
+   - Detect Capacitor (`window.Capacitor?.isNativePlatform()`)
+   - If native → use the Capacitor NFC plugin's `addListener('nfcTagScanned', ...)` and call `startScanSession()`
+   - If browser with `NDEFReader` → keep current path
+   - Otherwise → `unsupported`
+   - Both branches emit the same `{ serialNumber, timestamp }` payload, so `useNfcScanProcessor` and the UI need no other changes.
+
+3. **Update `ScannerRing` copy** for the `unsupported` state to mention "Open in Chrome on Android, or use the native APK build."
+
+4. **Document for the user**: After this lands, they'll need to git-pull, run `npx cap sync android`, rebuild the APK, and reinstall on the RG360.
+
+### Option B — Document the limitation (no code change)
+
+If they don't want to maintain a native build:
+- Tell guards to open `https://mxpatrol.lovable.app` directly in **Chrome for Android** (not the APK).
+- Update the `unsupported` message to say exactly that.
+- Keep the manual fallback as the primary entry path inside the APK.
 
 ---
 
-## Technical Details
+## Files to change (Option A)
 
-| Area | Files Changed |
-|------|--------------|
-| PWA | `vite.config.ts`, `index.html`, `src/main.tsx`, new `public/manifest.json`, new `src/pages/InstallPage.tsx` |
-| Onboarding | New migration (add `onboarding_completed`), new `src/components/onboarding/OnboardingWizard.tsx` + sub-step components, edit `src/pages/Index.tsx` or `AppLayout.tsx` |
-| Device flow | Edit `src/pages/EnrollPage.tsx` |
-| Routing | `src/App.tsx` — add `/install` route |
+- `package.json` — add Capacitor + NFC plugin deps
+- `capacitor.config.ts` (new) — appId/appName/server URL
+- `src/hooks/useNfcReader.ts` — add native branch
+- `src/components/scanner/ScannerRing.tsx` — clearer `unsupported` copy
+- Memory updates — document the dual-mode reader
 
-**Dependencies to add**: `vite-plugin-pwa`
+---
+
+## Question before I proceed
+
+Which path do you want?
 

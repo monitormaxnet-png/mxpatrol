@@ -33,8 +33,8 @@ const statusConfig = {
     overlayIcon: XCircle,
   },
   unsupported: {
-    label: "NFC Not Available",
-    sublabel: "Use manual scan mode instead",
+    label: "NFC Not Available Here",
+    sublabel: "Open in Chrome on Android, install the native APK, or use manual scan",
     glowColor: "rgba(245,158,11,0.4)",
     iconColor: "text-warning",
     overlayIcon: WifiOff,

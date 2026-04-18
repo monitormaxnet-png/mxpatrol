@@ -7,9 +7,11 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://mxpatrol.lovable.app',
     cleartext: true,
+    androidScheme: 'https',
   },
   android: {
     allowMixedContent: true,
+    webContentsDebuggingEnabled: true,
   },
 };
 

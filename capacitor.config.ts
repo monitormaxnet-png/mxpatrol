@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.7a762bd665c04e6d941783744dd932b0',
+  appId: 'com.monitormaxnet.mxpatrol',
   appName: 'mxpatrol',
   webDir: 'dist',
   server: {

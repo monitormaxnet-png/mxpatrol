@@ -67,14 +67,36 @@ export function useNfcReader({ onScan, debounceMs = 3000 }: UseNfcReaderOptions 
       setErrorMessage(null);
 
       // Lazy import so web bundle doesn't crash if plugin missing
-      const mod: any = await import("@exxili/capacitor-nfc");
+      let mod: any;
+      try {
+        mod = await import("@exxili/capacitor-nfc");
+      } catch (importErr: any) {
+        console.error("[NFC] Failed to import @exxili/capacitor-nfc:", importErr);
+        setStatus("unsupported");
+        setErrorMessage(
+          "NFC plugin missing from this APK build. Rebuild with `npx cap sync android` and reinstall."
+        );
+        return;
+      }
       const NFC = mod.NFC ?? mod.default ?? mod;
 
-      const supportedRes = await NFC.isSupported?.();
-      if (supportedRes && supportedRes.supported === false) {
-        setStatus("unsupported");
-        setErrorMessage("This device does not support NFC.");
-        return;
+      try {
+        const supportedRes = await NFC.isSupported?.();
+        if (supportedRes && supportedRes.supported === false) {
+          setStatus("unsupported");
+          setErrorMessage("This device does not support NFC.");
+          return;
+        }
+      } catch (supErr: any) {
+        const msg = String(supErr?.message || supErr || "");
+        console.error("[NFC] isSupported() failed:", supErr);
+        if (/not implemented|UNIMPLEMENTED/i.test(msg)) {
+          setStatus("unsupported");
+          setErrorMessage(
+            "NFC plugin missing from this APK build. Rebuild with `npx cap sync android` and reinstall."
+          );
+          return;
+        }
       }
 
       // Clean any prior listeners
@@ -84,10 +106,14 @@ export function useNfcReader({ onScan, debounceMs = 3000 }: UseNfcReaderOptions 
       // onRead returns an unsubscribe
       const offRead = NFC.onRead((data: any) => {
         try {
+          console.log("[NFC] onRead payload:", data);
           const parsed = data?.string?.() ?? data;
-          const uid = parsed?.tagInfo?.uid;
-          // Prefer tag UID; fall back to first text record payload
-          let tag = uid;
+          // Try multiple shapes for tag UID across plugin versions
+          let tag =
+            parsed?.tagInfo?.uid ??
+            parsed?.uid ??
+            data?.tagInfo?.uid ??
+            data?.uid;
           if (!tag) {
             const records = parsed?.messages?.[0]?.records;
             if (records && records.length) {
@@ -95,24 +121,53 @@ export function useNfcReader({ onScan, debounceMs = 3000 }: UseNfcReaderOptions 
               if (typeof payload === "string") tag = payload;
             }
           }
-          if (tag) handleTag(String(tag));
+          if (tag) {
+            handleTag(String(tag));
+          } else {
+            console.warn("[NFC] Read event but no UID found in payload", parsed);
+          }
         } catch (e) {
-          // Ignore parse errors per scan
+          console.error("[NFC] Failed to parse read event:", e);
         }
       });
       nativeUnsubsRef.current.push(offRead);
 
       const offError = NFC.onError((err: any) => {
+        console.error("[NFC] onError:", err);
         setStatus("error");
         setErrorMessage(err?.error || "NFC read failed");
         setTimeout(() => setStatus("scanning"), 2000);
       });
       nativeUnsubsRef.current.push(offError);
 
-      await NFC.startScan({ mode: "auto" });
+      try {
+        await NFC.startScan({ mode: "auto" });
+        console.log("[NFC] startScan invoked successfully");
+      } catch (startErr: any) {
+        const msg = String(startErr?.message || startErr || "");
+        console.error("[NFC] startScan failed:", startErr);
+        if (/not implemented|UNIMPLEMENTED/i.test(msg)) {
+          setStatus("unsupported");
+          setErrorMessage(
+            "NFC plugin missing from this APK build. Rebuild with `npx cap sync android` and reinstall."
+          );
+        } else {
+          setStatus("error");
+          setErrorMessage(msg || "Failed to start NFC scan");
+        }
+      }
     } catch (err: any) {
-      setStatus("error");
-      setErrorMessage(err?.message || "Failed to start native NFC scan");
+      const msg = String(err?.message || err || "");
+      console.error("[NFC] startNative fatal:", err);
+      if (/not implemented|UNIMPLEMENTED/i.test(msg)) {
+        setStatus("unsupported");
+        setErrorMessage(
+          "NFC plugin missing from this APK build. Rebuild with `npx cap sync android` and reinstall."
+        );
+      } else {
+        setStatus("error");
+        setErrorMessage(msg || "Failed to start native NFC scan");
+      }
     }
   }, [handleTag]);
 

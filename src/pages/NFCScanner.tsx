@@ -35,6 +35,7 @@ const NFCScanner = () => {
   const [lastCheckpoint, setLastCheckpoint] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [showManualFallback, setShowManualFallback] = useState(false);
+  const debugMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1";
   const bgMapContainerRef = useRef<HTMLDivElement>(null);
   const bgMapRef = useRef<L.Map | null>(null);
 
@@ -355,6 +356,22 @@ const NFCScanner = () => {
           )}
         </div>
       </div>
+
+      {/* Debug Overlay (?debug=1) */}
+      {debugMode && (
+        <div className="relative z-20 mx-4 mb-2 rounded-lg border border-primary/40 bg-background/95 p-3 font-mono text-[11px] text-foreground">
+          <div className="mb-1 font-bold text-primary">NFC DIAGNOSTIC</div>
+          <div>isNative (Capacitor): <span className="text-accent">{String(nfcReader.isNative)}</span></div>
+          <div>NDEFReader in window: <span className="text-accent">{String(typeof window !== "undefined" && "NDEFReader" in window)}</span></div>
+          <div>supported: <span className="text-accent">{String(nfcReader.supported)}</span></div>
+          <div>reader.status: <span className="text-accent">{nfcReader.status}</span></div>
+          <div>reader.errorMessage: <span className="text-warning break-all">{nfcReader.errorMessage ?? "—"}</span></div>
+          <div>scannerStatus: <span className="text-accent">{scannerStatus}</span></div>
+          <div>lastTag: <span className="text-accent break-all">{nfcReader.lastTag ?? "—"}</span></div>
+          <div>online: <span className="text-accent">{String(isOnline)}</span></div>
+          <div className="mt-1 text-muted-foreground">Capacitor bridge: {typeof window !== "undefined" && (window as any).Capacitor ? "present" : "missing"}</div>
+        </div>
+      )}
 
       {/* Face Verification Overlay (z-10) */}
       <AnimatePresence>

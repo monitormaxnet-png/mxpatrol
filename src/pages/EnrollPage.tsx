@@ -118,6 +118,13 @@ export default function EnrollPage() {
       });
       if (fnError) throw fnError;
       if (!data?.ok) throw new Error(data?.error || "Enrollment failed");
+      // Persist per-device auth token securely on the device for future heartbeats
+      if (data.device_auth_token && data.device_id) {
+        try {
+          localStorage.setItem(`device_auth_token:${data.device_id}`, data.device_auth_token);
+          localStorage.setItem("current_device_id", data.device_id);
+        } catch {}
+      }
       setResult(data);
       setProcessState("idle");
       setWizardStep(2);

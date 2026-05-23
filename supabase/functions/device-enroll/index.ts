@@ -115,8 +115,14 @@ Deno.serve(async (req) => {
 
     let deviceId: string;
 
+    // Generate per-device auth token + sha256 hash
+    const tokenBytes = new Uint8Array(32);
+    crypto.getRandomValues(tokenBytes);
+    const deviceAuthToken = Array.from(tokenBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    const hashBuf = await crypto.subtle.digest("SHA-256", encoder.encode(deviceAuthToken));
+    const authTokenHash = Array.from(new Uint8Array(hashBuf), (b) => b.toString(16).padStart(2, "0")).join("");
+
     if (existingDevice) {
-      // Update existing device
       const { error: updateErr } = await serviceClient
         .from("devices")
         .update({
@@ -126,12 +132,12 @@ Deno.serve(async (req) => {
           status: "online",
           enrolled_via: "qr",
           last_seen_at: new Date().toISOString(),
+          auth_token_hash: authTokenHash,
         })
         .eq("id", existingDevice.id);
       if (updateErr) throw updateErr;
       deviceId = existingDevice.id;
     } else {
-      // Create new device
       const { data: newDevice, error: insertErr } = await serviceClient
         .from("devices")
         .insert({
@@ -145,6 +151,7 @@ Deno.serve(async (req) => {
           enrolled_via: "qr",
           pairing_status: "paired",
           last_seen_at: new Date().toISOString(),
+          auth_token_hash: authTokenHash,
         })
         .select("id")
         .single();
@@ -152,13 +159,11 @@ Deno.serve(async (req) => {
       deviceId = newDevice.id;
     }
 
-    // Mark token as used
     await serviceClient
       .from("enrollment_tokens")
       .update({ used: true, used_by_device_id: deviceId })
       .eq("id", tokenRecord.id);
 
-    // Log activity
     await serviceClient.from("device_activity_logs").insert({
       device_id: deviceId,
       company_id: payload.tid,
@@ -174,6 +179,7 @@ Deno.serve(async (req) => {
       device_id: deviceId,
       company_id: payload.tid,
       app_type: payload.app,
+      device_auth_token: deviceAuthToken,
     });
   } catch (err: any) {
     console.error("Device enroll error:", err);

@@ -6,22 +6,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-function respond(ok: boolean, payload: Record<string, unknown>, status = 200): Response {
-  return new Response(
-    JSON.stringify({ ok, ...payload }),
-    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-}
-
-/** Decode base64 that may be standard or URL-safe */
-function safeAtob(str: string): string {
-  // Normalize URL-safe base64 to standard
-  let s = str.replace(/-/g, "+").replace(/_/g, "/");
-  // Add padding if needed
-  while (s.length % 4 !== 0) s += "=";
-  return atob(s);
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -32,7 +16,10 @@ Deno.serve(async (req) => {
     const { qr_token, device_metadata } = body;
 
     if (!qr_token || !device_metadata?.device_identifier) {
-      return respond(false, { error: "qr_token and device_metadata.device_identifier are required" });
+      return new Response(
+        JSON.stringify({ error: "qr_token and device_metadata.device_identifier are required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const serviceClient = createClient(
@@ -43,7 +30,10 @@ Deno.serve(async (req) => {
     // Parse and verify token
     const parts = qr_token.split(".");
     if (parts.length !== 2) {
-      return respond(false, { error: "Invalid token format" });
+      return new Response(
+        JSON.stringify({ error: "Invalid token format" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const [payloadB64, sigB64] = parts;
@@ -58,14 +48,7 @@ Deno.serve(async (req) => {
       ["verify"]
     );
 
-    let sigBytes: Uint8Array;
-    try {
-      sigBytes = Uint8Array.from(safeAtob(sigB64), (c) => c.charCodeAt(0));
-    } catch (e) {
-      console.error("Signature decode error:", e);
-      return respond(false, { error: "Invalid token signature encoding" });
-    }
-
+    const sigBytes = Uint8Array.from(atob(sigB64), (c) => c.charCodeAt(0));
     const valid = await crypto.subtle.verify(
       "HMAC",
       key,
@@ -74,19 +57,28 @@ Deno.serve(async (req) => {
     );
 
     if (!valid) {
-      return respond(false, { error: "Invalid token signature" });
+      return new Response(
+        JSON.stringify({ error: "Invalid token signature" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     let payload: { tid: string; app: string; nonce: string; exp: number };
     try {
-      payload = JSON.parse(safeAtob(payloadB64));
+      payload = JSON.parse(atob(payloadB64));
     } catch {
-      return respond(false, { error: "Malformed token payload" });
+      return new Response(
+        JSON.stringify({ error: "Malformed token payload" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Check expiry
     if (payload.exp < Math.floor(Date.now() / 1000)) {
-      return respond(false, { error: "Token expired" });
+      return new Response(
+        JSON.stringify({ error: "Token expired" }),
+        { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Find and validate token in DB
@@ -98,11 +90,17 @@ Deno.serve(async (req) => {
       .single();
 
     if (tokenErr || !tokenRecord) {
-      return respond(false, { error: "Token not found" });
+      return new Response(
+        JSON.stringify({ error: "Token not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     if (tokenRecord.used) {
-      return respond(false, { error: "Token already used" });
+      return new Response(
+        JSON.stringify({ error: "Token already used" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Check if device already exists
@@ -115,14 +113,8 @@ Deno.serve(async (req) => {
 
     let deviceId: string;
 
-    // Generate per-device auth token + sha256 hash
-    const tokenBytes = new Uint8Array(32);
-    crypto.getRandomValues(tokenBytes);
-    const deviceAuthToken = Array.from(tokenBytes, (b) => b.toString(16).padStart(2, "0")).join("");
-    const hashBuf = await crypto.subtle.digest("SHA-256", encoder.encode(deviceAuthToken));
-    const authTokenHash = Array.from(new Uint8Array(hashBuf), (b) => b.toString(16).padStart(2, "0")).join("");
-
     if (existingDevice) {
+      // Update existing device
       const { error: updateErr } = await serviceClient
         .from("devices")
         .update({
@@ -132,12 +124,12 @@ Deno.serve(async (req) => {
           status: "online",
           enrolled_via: "qr",
           last_seen_at: new Date().toISOString(),
-          auth_token_hash: authTokenHash,
         })
         .eq("id", existingDevice.id);
       if (updateErr) throw updateErr;
       deviceId = existingDevice.id;
     } else {
+      // Create new device
       const { data: newDevice, error: insertErr } = await serviceClient
         .from("devices")
         .insert({
@@ -151,7 +143,6 @@ Deno.serve(async (req) => {
           enrolled_via: "qr",
           pairing_status: "paired",
           last_seen_at: new Date().toISOString(),
-          auth_token_hash: authTokenHash,
         })
         .select("id")
         .single();
@@ -159,11 +150,13 @@ Deno.serve(async (req) => {
       deviceId = newDevice.id;
     }
 
+    // Mark token as used
     await serviceClient
       .from("enrollment_tokens")
       .update({ used: true, used_by_device_id: deviceId })
       .eq("id", tokenRecord.id);
 
+    // Log activity
     await serviceClient.from("device_activity_logs").insert({
       device_id: deviceId,
       company_id: payload.tid,
@@ -175,14 +168,19 @@ Deno.serve(async (req) => {
       },
     });
 
-    return respond(true, {
-      device_id: deviceId,
-      company_id: payload.tid,
-      app_type: payload.app,
-      device_auth_token: deviceAuthToken,
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        device_id: deviceId,
+        company_id: payload.tid,
+        app_type: payload.app,
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (err: any) {
-    console.error("Device enroll error:", err);
-    return respond(false, { error: err.message || "Internal server error" });
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

@@ -1,67 +1,75 @@
 
 
-## What the logs actually tell us
+# Implementation Plan: PWA + Admin Onboarding + Device Onboarding
 
-The logs you pasted are **Android system surface/rendering messages** from the OS — not from our NFC code. Specifically:
-- `surfaceflinger ... No local sync point found` — harmless WindowManager animation noise.
-- `GED ged_boost_gpu_freq` — GPU frequency boost during animation.
+## Overview
 
-There is **no NFC log line at all**. That means one of two things:
-1. The native NFC plugin was never bundled into the APK you installed, OR
-2. `nfcReader.startScanning()` is never being called (button blocked because no guard is selected, or the hook short-circuits to `unsupported`).
+Three features to build: (1) Full PWA with offline support, (2) Admin tenant onboarding wizard for new signups, (3) Improved device onboarding flow.
 
-## Most likely root cause
+---
 
-Looking at `package.json` from our last change, we added `@exxili/capacitor-nfc`. **But the APK currently installed on the RG360 (`com.monitormaxnet.mxpatrol`) was built before that plugin was added.** Capacitor plugins must be present at native build time — they cannot be hot-reloaded from the server URL.
+## 1. PWA with Offline Support
 
-Your current `capacitor.config.ts` points `server.url` at `https://mxpatrol.lovable.app`, so the WebView loads the latest JS — but the **native bridge for NFC doesn't exist in the APK binary**. When `useNfcReader` calls `import("@exxili/capacitor-nfc")` and then `NFC.startScan(...)`, Capacitor responds with "plugin not implemented" and the catch block sets `status = "error"` silently.
+**What**: Make the app installable with service worker caching and offline fallback.
 
-There's also a second issue: the package name in your logs is `com.monitormaxnet.mxpatrol`, but our `capacitor.config.ts` has `appId: app.lovable.7a762bd665c04e6d941783744dd932b0`. So the APK on your device was built from a **different Capacitor project** (likely an earlier/separate setup), not from the config we just committed.
+**Steps**:
+- Install `vite-plugin-pwa` and configure in `vite.config.ts` with `registerType: "autoUpdate"`, `devOptions: { enabled: false }`, and `navigateFallbackDenylist: [/^\/~oauth/]`
+- Create `public/manifest.json` with app name "SENTINEL Patrol Intelligence", theme colors matching the dark theme, and PWA icons
+- Generate PWA icons (192x192, 512x512) in `public/`
+- Add mobile meta tags to `index.html` (`theme-color`, `apple-mobile-web-app-capable`, etc.)
+- Add iframe/preview guard in `src/main.tsx` to prevent service worker registration in Lovable preview
+- Create `/install` page with install prompt trigger and instructions for iOS (Share > Add to Home Screen)
+- Add route to `App.tsx` as a public route
 
-## Plan to fix
+**Offline strategy**: Cache app shell and static assets. API calls fail gracefully with existing offline queue patterns.
 
-### Step 1 — Add visible diagnostics (so we stop guessing)
-Add a small debug panel to the NFC Scanner page (toggle behind a long-press or `?debug=1` query) that shows:
-- `isNative` (Capacitor detected?)
-- `supported` value
-- `nfcReader.status`
-- `nfcReader.errorMessage`
-- Plugin import success/failure
+---
 
-This will let you tell us in one screenshot exactly where the chain breaks on the RG360.
+## 2. Admin Tenant Onboarding Wizard
 
-### Step 2 — Confirm correct APK build steps
-Whoever builds the APK must, **after pulling the latest code**:
-```bash
-npm install
-npx cap sync android      # critical — copies the plugin native code into android/
-cd android && ./gradlew assembleDebug
-```
-If they skip `cap sync`, the new plugin never enters the APK.
+**What**: A multi-step guided setup that appears after a new admin's first login, walking them through company configuration, team invites, checkpoint setup, first device enrollment, and first patrol creation.
 
-### Step 3 — Align the Android package name
-Decide whether the production APK should be `com.monitormaxnet.mxpatrol` (current installed binary) or `app.lovable.7a762bd665c04e6d941783744dd932b0` (our config). I recommend keeping `com.monitormaxnet.mxpatrol` — update `capacitor.config.ts` to match so future builds stay on the same package and don't show up as a separate app on the device.
+**Database changes**:
+- Add `onboarding_completed` boolean column to `profiles` table (default `false`)
 
-### Step 4 — Harden `useNfcReader` for native failures
-Currently when the native plugin isn't available, the catch block sets `status = "error"` with a generic message. Change it to:
-- Detect "plugin not implemented" specifically and set `status = "unsupported"` with message: *"NFC plugin missing from this APK build. Rebuild with `npx cap sync android`."*
-- Log the underlying error to console so it shows up in `adb logcat | grep -i nfc`.
+**New components**:
+- `src/components/onboarding/OnboardingWizard.tsx` — Full-screen modal wizard with 5 steps
+- Step 1: **Company Setup** — Name, logo upload, domain
+- Step 2: **Invite Team** — Add supervisor/guard emails (stores invites, sends via auth invite or displays signup links)
+- Step 3: **Create Checkpoints** — Add 2-3 NFC checkpoint locations with names and coordinates
+- Step 4: **Enroll First Device** — Generate a QR enrollment token inline, show QR code to scan with a guard device
+- Step 5: **Create First Patrol** — Name, assign guard, pick checkpoints, set schedule
 
-### Step 5 — Verify NDEF vs. tag UID format on RG360
-The RG360 is typically used with MIFARE Classic / NTAG tags. The `@exxili/capacitor-nfc` plugin returns tag info under `tagInfo.uid`. Our hook already reads that, but we should also add a fallback path for `data.uid` (some plugin versions flatten it) so we don't silently drop reads.
+**Integration**:
+- In `AppLayout.tsx` or `Index.tsx`, check if `profiles.onboarding_completed` is `false` for admin users — if so, show the wizard
+- On wizard completion, update `profiles.onboarding_completed = true`
+- Add "Skip" option on each step and a "Complete Later" button
 
-## Files to change
+---
 
-- `capacitor.config.ts` — change `appId` to `com.monitormaxnet.mxpatrol`
-- `src/hooks/useNfcReader.ts` — better error classification + log to console
-- `src/pages/NFCScanner.tsx` — add `?debug=1` diagnostic overlay
-- Memory: update `mem://features/nfc-hardware-scanner` with the rebuild requirement
+## 3. Device Onboarding Flow Improvements
 
-## What we need from you after the change
+**What**: Enhance the existing `/enroll` page into a polished step-by-step wizard.
 
-1. Pull → `npm install` → `npx cap sync android` → rebuild APK → reinstall.
-2. Open the scanner with `https://mxpatrol.lovable.app/nfc-scanner?debug=1`.
-3. Send a screenshot of the diagnostic panel + the output of `adb logcat | grep -iE "nfc|capacitor"` while tapping a tag.
+**Steps**:
+- Refactor `EnrollPage.tsx` into a 3-step flow:
+  - Step 1: **Scan or Enter Token** — Camera QR scanner with manual fallback (already exists, polish UI)
+  - Step 2: **Confirm Device Info** — Show auto-detected metadata, allow editing device name/type
+  - Step 3: **Success + Next Steps** — Show enrolled device details, link to download app or return to dashboard
+- Add progress indicator (step dots) at the top
+- Improve offline state with clearer messaging and pending count badge
+- Add animated transitions between steps
 
-That will tell us definitively whether the plugin is registered and what it's seeing from the hardware.
+---
+
+## Technical Details
+
+| Area | Files Changed |
+|------|--------------|
+| PWA | `vite.config.ts`, `index.html`, `src/main.tsx`, new `public/manifest.json`, new `src/pages/InstallPage.tsx` |
+| Onboarding | New migration (add `onboarding_completed`), new `src/components/onboarding/OnboardingWizard.tsx` + sub-step components, edit `src/pages/Index.tsx` or `AppLayout.tsx` |
+| Device flow | Edit `src/pages/EnrollPage.tsx` |
+| Routing | `src/App.tsx` — add `/install` route |
+
+**Dependencies to add**: `vite-plugin-pwa`
 

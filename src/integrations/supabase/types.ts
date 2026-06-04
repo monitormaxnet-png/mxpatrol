@@ -571,7 +571,6 @@ export type Database = {
       devices: {
         Row: {
           app_type: Database["public"]["Enums"]["app_type"] | null
-          auth_token_hash: string | null
           battery_level: number | null
           company_id: string
           compliance_score: number | null
@@ -595,7 +594,6 @@ export type Database = {
         }
         Insert: {
           app_type?: Database["public"]["Enums"]["app_type"] | null
-          auth_token_hash?: string | null
           battery_level?: number | null
           company_id: string
           compliance_score?: number | null
@@ -619,7 +617,6 @@ export type Database = {
         }
         Update: {
           app_type?: Database["public"]["Enums"]["app_type"] | null
-          auth_token_hash?: string | null
           battery_level?: number | null
           company_id?: string
           compliance_score?: number | null

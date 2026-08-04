@@ -74,7 +74,7 @@ export const startSosSiren = () => {
   if (active) return;
   active = true;
   playPulse();
-  timer = window.setInterval(playPulse, 1850);
+  timer = window.setInterval(playPulse, 1850) as unknown as ReturnType<typeof setInterval>;
 };
 
 export const stopSosSiren = () => {

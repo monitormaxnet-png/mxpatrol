@@ -14,6 +14,10 @@ export type ScannerUiState =
   | "duplicate"
   | "save_failed"
   | "device_unassigned"
+  | "patrol_started"
+  | "patrol_completed"
+  | "no_active_patrol"
+  | "out_of_order"
   | "sos";
 
 type GpsStatus = "idle" | "capturing" | "available" | "pending" | "unavailable";
@@ -44,6 +48,10 @@ const statusConfig: Record<ScannerUiState, {
   unsupported: { label: "NFC HARDWARE ERROR", sublabel: "Use the RG360 native app", tone: "offline", icon: WifiOff },
   disabled: { label: "NFC DISABLED", sublabel: "Enable NFC in device settings", tone: "offline", icon: WifiOff },
   device_unassigned: { label: "DEVICE NOT ASSIGNED", sublabel: "Contact supervisor", tone: "offline", icon: AlertTriangle },
+  patrol_started: { label: "PATROL STARTED", sublabel: "Checkpoint accepted", tone: "success", icon: CheckCircle2 },
+  patrol_completed: { label: "PATROL COMPLETED", sublabel: "All required checkpoints scanned", tone: "success", icon: CheckCircle2 },
+  no_active_patrol: { label: "CHECKPOINT RECORDED", sublabel: "No active patrol matched", tone: "progress", icon: CheckCircle2 },
+  out_of_order: { label: "OUT OF ORDER", sublabel: "Follow the route order", tone: "offline", icon: AlertTriangle },
   sos: { label: "SOS ACTIVATED", sublabel: "Alert sent to control room", tone: "sos", icon: ShieldAlert },
 };
 

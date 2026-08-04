@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getPatrolDeviceInfo } from "@/lib/deviceInfo";
 import { saveDeviceScan } from "@/lib/deviceScan";
 import { normalizeNfcUid } from "@/lib/nfcUid";
+import type { StructuredScanResult } from "@/lib/scanResult";
 
 export type ScanValidationResult = {
   valid: boolean;
@@ -16,6 +17,7 @@ export type ScanValidationResult = {
   tagStatus?: "registered" | "unregistered" | "pending_registration" | "rejected";
   reason?: string;
   requiresFaceVerification?: boolean;
+  structured?: StructuredScanResult | null;
 };
 
 type ScanGps = { lat: number; lng: number; accuracy?: number | null } | null;
@@ -94,14 +96,14 @@ export function useNfcScanProcessor({
 
       const scanKey = checkpoint?.id ?? normalizedTag;
       const lastScan = recentScansRef.current.get(scanKey);
-      if (lastScan && Date.now() - lastScan < 60_000) {
+      if (lastScan && Date.now() - lastScan < 3_000) {
         return {
           valid: false,
           checkpoint,
           checkpointName: checkpoint?.name,
           tagId: normalizedTag || tagId,
           tagStatus: checkpoint ? "registered" : "unregistered",
-          reason: "Duplicate scan recorded less than 1 minute ago",
+          reason: "Duplicate NFC read ignored (within 3 second debounce window)",
         };
       }
 
@@ -131,7 +133,10 @@ export function useNfcScanProcessor({
       const requiresFace = patrol?.verification_level === "enhanced";
       const device = getPatrolDeviceInfo();
 
+      const clientScanId = crypto.randomUUID();
+
       const scanData: QueuedScanInput = {
+        client_scan_id: clientScanId,
         guard_id: selectedGuardId,
         guard_name: guardName ?? null,
         scanned_by: user?.id ?? null,
@@ -175,6 +180,7 @@ export function useNfcScanProcessor({
         const { guard_name: _guardName, ...scanLogData } = scanData;
         const savedScan = await saveDeviceScan({
           ...scanLogData,
+          client_scan_id: clientScanId,
           is_offline_sync: false,
         });
 
@@ -187,6 +193,7 @@ export function useNfcScanProcessor({
         });
 
         result.scanLogId = savedScan.scanLogId ?? undefined;
+        result.structured = savedScan.structured ?? null;
         if (savedScan.checkpoint) {
           result.checkpoint = {
             id: savedScan.checkpoint.id,

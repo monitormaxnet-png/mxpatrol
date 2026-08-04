@@ -264,10 +264,10 @@ const Reports = () => {
             </FilterBox>
           </div>
           <div className="flex gap-2">
-            <button onClick={handleGenerate} disabled={generating} className="inline-flex h-11 items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 text-sm font-bold text-sky-200 disabled:opacity-50">
+            <button onClick={() => void handleGenerate()} disabled={generating} className="inline-flex h-11 items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 text-sm font-bold text-sky-200 disabled:opacity-50">
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Generate Report
             </button>
-            <button onClick={handleGenerate} disabled={generating} className="inline-flex h-11 items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 text-sm font-bold text-emerald-100 disabled:opacity-50">
+            <button onClick={() => void handleGenerate()} disabled={generating} className="inline-flex h-11 items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 text-sm font-bold text-emerald-100 disabled:opacity-50">
               <Plus className="h-4 w-4" /> New Report
             </button>
           </div>

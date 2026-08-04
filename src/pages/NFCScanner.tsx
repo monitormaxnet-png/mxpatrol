@@ -502,7 +502,6 @@ const NFCScanner = () => {
               companyId,
               userId: null,
               gps: nextGps,
-              battery,
             });
           }
 

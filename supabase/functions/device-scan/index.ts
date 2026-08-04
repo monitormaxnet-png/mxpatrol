@@ -42,6 +42,7 @@ const removeMissingColumns = (payload: Record<string, unknown>, error: unknown) 
     "face_confidence",
     "is_offline_sync",
     "nfc_tag_id",
+    "client_scan_id",
     "actor_user_id",
     "actor_guard_id",
     "performed_by",
@@ -126,6 +127,71 @@ async function upsertSelectWithFallback(client: any, table: string, payload: Rec
   };
 }
 
+
+async function buildPatrolResult(client: any, sessionId: string | null) {
+  if (!sessionId) return null;
+  const { data, error } = await client
+    .from("patrol_sessions")
+    .select("id, schedule_id, status, checkpoint_completed, checkpoint_total, progress_percent, meta, patrol_routes(name), patrol_schedules(name)")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const schedule = Array.isArray((data as any).patrol_schedules) ? (data as any).patrol_schedules[0] : (data as any).patrol_schedules;
+  const route = Array.isArray((data as any).patrol_routes) ? (data as any).patrol_routes[0] : (data as any).patrol_routes;
+  return {
+    session_id: data.id,
+    schedule_id: data.schedule_id ?? null,
+    name: schedule?.name ?? route?.name ?? null,
+    status: data.status ?? null,
+    completed: data.checkpoint_completed ?? 0,
+    required: data.checkpoint_total ?? 0,
+    progress_percent: Number(data.progress_percent ?? 0),
+    selection_reason: (data as any).meta?.match_selection_reason ?? null,
+  };
+}
+
+async function buildStructuredResult(
+  client: any,
+  scanLogId: string | null,
+  checkpoint: { id: string; name: string | null } | null,
+  patrolMatch: Record<string, unknown> | null,
+  offlineReplay: boolean,
+  pending: boolean,
+) {
+  const rpcCode = stringOrNull(patrolMatch?.code);
+  const sessionId = stringOrNull(patrolMatch?.session_id);
+  const patrol = await buildPatrolResult(client, sessionId);
+
+  let code = rpcCode ?? (checkpoint ? "NO_ACTIVE_PATROL" : "UNREGISTERED_CHECKPOINT");
+  if (!checkpoint) code = "UNREGISTERED_CHECKPOINT";
+
+  const nextCheckpointId = stringOrNull(patrolMatch?.next_checkpoint_id);
+  const nextCheckpointName = stringOrNull(patrolMatch?.next_checkpoint_name);
+
+  const message = (() => {
+    switch (code) {
+      case "PATROL_COMPLETED": return `${patrol?.name ?? "Patrol"} completed`;
+      case "PATROL_STARTED": return `${patrol?.name ?? "Patrol"} started`;
+      case "CHECKPOINT_ACCEPTED": return `${checkpoint?.name ?? "Checkpoint"} accepted`;
+      case "CHECKPOINT_ALREADY_SCANNED": return "Checkpoint already counted for this patrol";
+      case "UNREGISTERED_CHECKPOINT": return pending ? "Tag submitted for supervisor review" : "Tag is not registered";
+      default: return "Checkpoint recorded, no active patrol matched";
+    }
+  })();
+
+  return {
+    success: true,
+    code,
+    scan_id: scanLogId,
+    checkpoint,
+    patrol,
+    next_checkpoint: nextCheckpointId ? { id: nextCheckpointId, name: nextCheckpointName } : null,
+    duplicate: code === "CHECKPOINT_ALREADY_SCANNED",
+    offline_replay: offlineReplay,
+    message,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return respond(false, { code: "METHOD_NOT_ALLOWED", error: "Method not allowed" }, 405);
@@ -154,8 +220,53 @@ Deno.serve(async (req) => {
     );
 
     if (deviceError) throw deviceError;
-    if (!device?.company_id) return respond(false, { code: "DEVICE_NOT_PAIRED", error: "Device is not paired" });
+    if (!device?.company_id) return respond(false, { code: "DEVICE_NOT_ENROLLED", error: "Device is not enrolled for patrol scanning" });
     if (device.company_id !== requestedCompanyId) return respond(false, { code: "COMPANY_MISMATCH", error: "Device company mismatch" });
+
+    const clientScanId = stringOrNull(scan.client_scan_id ?? body.client_scan_id) ?? stringOrNull(scan.id);
+    const offlineReplay = Boolean(scan.is_offline_sync);
+
+    if (clientScanId) {
+      const { data: existing, error: existingError } = await serviceClient
+        .from("scan_logs")
+        .select("id, checkpoint_id, tag_status, patrol_match_status, patrol_session_id, checkpoints(id, name, site_id)")
+        .eq("company_id", device.company_id)
+        .eq("client_scan_id", clientScanId)
+        .maybeSingle();
+
+      if (existingError && existingError.code !== "42703" && existingError.code !== "PGRST204") {
+        console.warn("device-scan idempotency lookup failed", existingError);
+      }
+
+      if (existing?.id) {
+        const existingCheckpoint = Array.isArray((existing as any).checkpoints)
+          ? (existing as any).checkpoints[0]
+          : (existing as any).checkpoints;
+        const replayResult = await buildPatrolResult(serviceClient, existing.patrol_session_id ?? null);
+        console.info("[Scan] Idempotent replay", { clientScanId, scanLogId: existing.id });
+        return respond(true, {
+          scan_log: { id: existing.id },
+          checkpoint: existing.checkpoint_id
+            ? { id: existing.checkpoint_id, name: existingCheckpoint?.name ?? null, site_id: existingCheckpoint?.site_id ?? null }
+            : null,
+          pending_tag: null,
+          alert: null,
+          tag_status: existing.tag_status ?? (existing.checkpoint_id ? "registered" : "unregistered"),
+          patrol_match: null,
+          result: {
+            success: true,
+            code: "CHECKPOINT_ALREADY_SCANNED",
+            scan_id: existing.id,
+            checkpoint: existing.checkpoint_id ? { id: existing.checkpoint_id, name: existingCheckpoint?.name ?? null } : null,
+            patrol: replayResult,
+            next_checkpoint: null,
+            duplicate: true,
+            offline_replay: offlineReplay,
+            message: "This scan was already recorded",
+          },
+        });
+      }
+    }
 
     const now = new Date().toISOString();
     const scannedAt = stringOrNull(scan.scanned_at) ?? now;
@@ -301,7 +412,8 @@ Deno.serve(async (req) => {
       device_metadata: deviceMetadata,
       face_verified: typeof scan.face_verified === "boolean" ? scan.face_verified : null,
       face_confidence: numberOrNull(scan.face_confidence),
-      is_offline_sync: Boolean(scan.is_offline_sync),
+      is_offline_sync: offlineReplay,
+      client_scan_id: clientScanId,
     };
 
     let scanLog: { id: string } | null = null;
@@ -460,7 +572,27 @@ Deno.serve(async (req) => {
       scannedAt,
     });
 
+    const structured = await buildStructuredResult(
+      serviceClient,
+      scanLog?.id ?? null,
+      checkpointId ? { id: checkpointId, name: checkpointName } : null,
+      patrolMatch,
+      offlineReplay,
+      Boolean(pendingTag),
+    );
+
+    console.info("[Scan] Structured result", {
+      scanLogId: scanLog?.id ?? null,
+      code: structured.code,
+      sessionId: structured.patrol?.session_id ?? null,
+      completed: structured.patrol?.completed ?? null,
+      required: structured.patrol?.required ?? null,
+      selectionReason: structured.patrol?.selection_reason ?? null,
+      offlineReplay,
+    });
+
     return respond(true, {
+      result: structured,
       scan_log: scanLog,
       checkpoint: checkpointId ? { id: checkpointId, name: checkpointName, site_id: siteId } : null,
       pending_tag: pendingTag,

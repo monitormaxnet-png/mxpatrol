@@ -31,11 +31,16 @@ type Shift = {
   specific_date: string | null;
   notes: string | null;
   created_at: string;
+  site_id?: string | null;
+  device_identifier?: string | null;
+  sites?: { name: string } | null;
   guards?: { full_name: string; badge_number: string } | null;
 };
 
 const defaultForm = {
   guard_id: "",
+  site_id: "" as string,
+  device_identifier: "" as string,
   day_of_week: 1,
   start_time: "08:00",
   end_time: "16:00",
@@ -138,6 +143,7 @@ const Shifts = () => {
   const openEdit = (shift: Shift) => {
     setEditingShift(shift);
     setForm({
+      ...defaultForm,
       guard_id: shift.guard_id,
       day_of_week: shift.day_of_week,
       start_time: shift.start_time.slice(0, 5),

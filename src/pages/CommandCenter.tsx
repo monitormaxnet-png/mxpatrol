@@ -16,7 +16,7 @@ import { patrolSessionLabel, patrolSessionProgress, usePatrolSessions } from "@/
 type DateRange = "today" | "7d" | "30d";
 type Severity = "normal" | "info" | "warning" | "critical" | "offline";
 type IconComponent = ComponentType<{ className?: string }>;
-type AnyRow = Record<string, unknown>;
+type AnyRow = Record<string, any>;
 type QueryResponse = { data?: unknown; error?: { message?: string } | null };
 type QueryBuilder = PromiseLike<QueryResponse> & { select: (columns: string) => QueryBuilder; eq: (column: string, value: unknown) => QueryBuilder; gte: (column: string, value: string) => QueryBuilder; order: (column: string, options?: { ascending?: boolean }) => QueryBuilder; limit: (count: number) => QueryBuilder; maybeSingle: () => QueryBuilder };
 type SupabaseQueryClient = { from: (table: string) => QueryBuilder };

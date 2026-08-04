@@ -91,7 +91,7 @@ export async function reviewPendingNfcTag({
   checkpointName?: string;
   rejectionReason?: string;
 }) {
-  const { data, error } = await supabase.rpc("review_pending_nfc_tag", {
+  const { data, error } = await (supabase as any).rpc("review_pending_nfc_tag", {
     p_pending_tag_id: pendingTagId,
     p_decision: decision,
     p_checkpoint_name: checkpointName ?? null,
@@ -206,7 +206,7 @@ export async function recordUnknownNfcTag({
     console.warn("[NFC] Pending tag alert insert failed; continuing pending tag sync", alertError);
   }
 
-  const { data: pendingTag, error: pendingError } = await supabase
+  const { data: pendingTag, error: pendingError } = await (supabase as any)
     .from("pending_nfc_tags")
     .upsert(
       {

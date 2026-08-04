@@ -257,7 +257,7 @@ function buildKpis(sessions: SessionRow[]) {
 }
 function uniqueOptions(values: string[]) { return Array.from(new Set(values.filter(Boolean).filter((value) => value !== "-"))).sort(); }
 function sortedCheckpoints(session: SessionRow) { return [...(session?.patrol_session_checkpoints ?? [])].sort((a, b) => Number(a.sequence_order ?? a.scheduled_order ?? 0) - Number(b.sequence_order ?? b.scheduled_order ?? 0)); }
-function displaySessionId(session: SessionRow) { const start = session.scheduled_start ? format(new Date(session.scheduled_start), "yyyy-MMdd") : "unknown"; const suffix = String(session.id ?? "").replaceAll("-", "").slice(0, 4).toUpperCase(); return `PAT-${start}-${suffix}`; }
+function displaySessionId(session: SessionRow) { const start = session.scheduled_start ? format(new Date(session.scheduled_start), "yyyy-MMdd") : "unknown"; const suffix = String(session.id ?? "").replace(/-/g, "").slice(0, 4).toUpperCase(); return `PAT-${start}-${suffix}`; }
 function routeName(session: SessionRow) { return session.patrol_routes?.name || session.route_name || "No route"; }
 function scheduleName(session: SessionRow) { return session.patrol_schedules?.name || session.schedule_name || "No schedule"; }
 function siteName(session: SessionRow) { return session.sites?.name || session.site_name || "Unassigned site"; }
@@ -271,4 +271,4 @@ function dotTone(tone: SessionStatusTone) { if (tone === "green") return "bg-eme
 function formatDateTime(value?: string | null) { if (!value) return "-"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "-" : format(date, "MMM d, yyyy HH:mm"); }
 function formatTime(value?: string | null) { if (!value) return "-"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "-" : format(date, "HH:mm"); }
 function timeBucket(hour: number) { if (!Number.isFinite(hour)) return "all"; if (hour >= 5 && hour < 12) return "morning"; if (hour >= 12 && hour < 18) return "afternoon"; return "night"; }
-function prettify(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()); }
+function prettify(value: string) { return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()); }

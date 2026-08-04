@@ -22,6 +22,7 @@ import {
   MessageCircle,
   Navigation,
   Phone,
+  Plus,
   Radio,
   RefreshCw,
   Route,
@@ -420,7 +421,7 @@ const SosAlerts = () => {
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold tracking-tight text-white">SOS Alerts</h1>
-            <Badge className={`${realtime.status === "connected" ? "border-red-500/50 bg-red-500/15 text-red-200" : "border-amber-500/50 bg-amber-500/15 text-amber-200"}`}>
+            <Badge className={`${realtime.status === "live" ? "border-red-500/50 bg-red-500/15 text-red-200" : "border-amber-500/50 bg-amber-500/15 text-amber-200"}`}>
               <span className="mr-1.5 h-2 w-2 animate-pulse rounded-full bg-current" /> {realtimeStatusLabel(realtime.status)}
             </Badge>
           </div>

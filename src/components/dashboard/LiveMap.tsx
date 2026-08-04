@@ -276,7 +276,7 @@ const LiveMap = ({
     deviceTrails.forEach((trail, index) => {
       if (trail.points.length < 2) return;
       const color = TRAIL_COLORS[index % TRAIL_COLORS.length];
-      const line = L.polyline(trail.points.map((point) => [point.lat, point.lng]), { color, weight: 3, opacity: 0.75, dashArray: "8 6", lineCap: "round" }).addTo(map);
+      const line = L.polyline(trail.points.map((point) => [point.lat, point.lng] as [number, number]), { color, weight: 3, opacity: 0.75, dashArray: "8 6", lineCap: "round" }).addTo(map);
       line.bindPopup(`<div class="text-xs"><strong>${trail.device_name}</strong><br/>Device ID: ${trail.device_id}<br/>${trail.points.length} GPS scan points</div>`);
       trailLinesRef.current.push(line);
     });

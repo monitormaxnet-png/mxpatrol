@@ -391,7 +391,7 @@ const Incidents = () => {
       const selectedPhotoNotes = incidentPhotos.filter((photo) => selectedPhotoIds.includes(photo.id)).map((photo) => `Evidence photo | ${photo.storage_path}`);
       const selectedSosNotes = sosAlerts.filter((alert) => selectedSosAlertIds.includes(alert.id)).map((alert) => `SOS alert | ${alert.id} | ${alert.message}`);
       const description = [form.description.trim(), selectedSite ? `Reporting site: ${selectedSite.name}` : "", ...selectedPhotoNotes, ...selectedSosNotes].filter(Boolean).join("\n");
-      const { error: insertError } = await supabase.from("incidents").insert({
+      const { error: insertError } = await (supabase as any).from("incidents").insert({
         title: form.title.trim(),
         description,
         severity: form.severity,

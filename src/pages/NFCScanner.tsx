@@ -512,7 +512,6 @@ const NFCScanner = () => {
               scanLogId,
               tagId,
               gps: nextGps,
-              battery,
             });
           }
 

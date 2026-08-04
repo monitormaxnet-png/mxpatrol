@@ -143,6 +143,7 @@ const Shifts = () => {
   const openEdit = (shift: Shift) => {
     setEditingShift(shift);
     setForm({
+      ...defaultForm,
       guard_id: shift.guard_id,
       day_of_week: shift.day_of_week,
       start_time: shift.start_time.slice(0, 5),

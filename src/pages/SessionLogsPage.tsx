@@ -271,4 +271,4 @@ function dotTone(tone: SessionStatusTone) { if (tone === "green") return "bg-eme
 function formatDateTime(value?: string | null) { if (!value) return "-"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "-" : format(date, "MMM d, yyyy HH:mm"); }
 function formatTime(value?: string | null) { if (!value) return "-"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "-" : format(date, "HH:mm"); }
 function timeBucket(hour: number) { if (!Number.isFinite(hour)) return "all"; if (hour >= 5 && hour < 12) return "morning"; if (hour >= 12 && hour < 18) return "afternoon"; return "night"; }
-function prettify(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()); }
+function prettify(value: string) { return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()); }

@@ -26,6 +26,7 @@ export type QueuedScan = {
   face_verified?: boolean | null;
   face_confidence?: number | null;
   guard_name?: string | null;
+  client_scan_id?: string | null;
 };
 
 const STORAGE_KEY = "offline_scan_queue";
@@ -55,7 +56,8 @@ export function useOfflineScanQueue() {
   const [syncing, setSyncing] = useState(false);
 
   const enqueue = useCallback((scan: Omit<QueuedScan, "id">) => {
-    const entry: QueuedScan = { ...scan, id: crypto.randomUUID() };
+    const id = crypto.randomUUID();
+    const entry: QueuedScan = { ...scan, id, client_scan_id: scan.client_scan_id ?? id };
     setQueue((prev) => {
       const next = [...prev, entry];
       saveQueue(next);
@@ -116,7 +118,15 @@ export function useOfflineScanQueue() {
           device_metadata: scan.device_metadata ?? {},
           face_verified: scan.face_verified ?? null,
           face_confidence: scan.face_confidence ?? null,
+          client_scan_id: scan.client_scan_id ?? scan.id,
           is_offline_sync: true,
+        });
+
+        console.info("[Scan] Offline replay result", {
+          clientScanId: scan.client_scan_id ?? scan.id,
+          code: savedScan.structured?.code ?? null,
+          duplicate: savedScan.structured?.duplicate ?? false,
+          patrolSession: savedScan.structured?.patrol?.session_id ?? null,
         });
 
         console.info("[Scan] Inserted into scan_logs", {

@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
+import type { StructuredScanResult } from "@/lib/scanResult";
 
 export type DeviceScanPayload = {
   id?: string;
@@ -21,6 +22,7 @@ export type DeviceScanPayload = {
   face_verified?: boolean | null;
   face_confidence?: number | null;
   is_offline_sync?: boolean;
+  client_scan_id?: string | null;
 };
 
 export type DeviceScanResult = {
@@ -29,6 +31,7 @@ export type DeviceScanResult = {
   pendingTag: { id: string; status: string } | null;
   tagStatus: "registered" | "unregistered" | "pending_registration" | "rejected" | string;
   patrolMatch?: Record<string, unknown> | null;
+  structured?: StructuredScanResult | null;
 };
 
 const asObject = (value: unknown): Record<string, unknown> | null =>
@@ -85,7 +88,7 @@ export async function saveDeviceScan(scan: DeviceScanPayload): Promise<DeviceSca
     throw new Error(data?.error || "Device scan save failed");
   }
 
-  const body = asObject(data.result) ?? asObject(data) ?? {};
+  const body = asObject(data) ?? {};
   const scanLog = firstObject(body.scan_log) ?? firstObject(body.scanLog);
   const checkpoint = normalizeCheckpoint(body.checkpoint ?? scanLog?.checkpoints);
   const scanLogCheckpointId = typeof scanLog?.checkpoint_id === "string" ? scanLog.checkpoint_id : null;
@@ -99,5 +102,6 @@ export async function saveDeviceScan(scan: DeviceScanPayload): Promise<DeviceSca
     pendingTag: firstObject(body.pending_tag) as DeviceScanResult["pendingTag"],
     tagStatus: derivedStatus,
     patrolMatch: firstObject(body.patrol_match) ?? null,
+    structured: (firstObject(body.result) as unknown as StructuredScanResult | null) ?? null,
   };
 }

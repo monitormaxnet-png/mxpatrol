@@ -21,6 +21,7 @@ import { updatePatrolDevicePresence } from "@/lib/devicePresence";
 import { backfillNfcScanGps } from "@/lib/nfcWorkflow";
 import { getLocalDeviceIdentifier, resolveDeviceCompany } from "@/lib/deviceCompany";
 import { batteryMetadata } from "@/lib/deviceBattery";
+import { playFeedbackSound } from "@/lib/feedbackSound";
 import HardwareSosListener from "@/components/devices/HardwareSosListener";
 import TTechMxPatrolLogo from "@/components/branding/TTechMxPatrolLogo";
 

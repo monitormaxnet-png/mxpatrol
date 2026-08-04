@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Shield, Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -13,7 +14,6 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,9 +22,9 @@ const Login = () => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      toast({ title: "Login failed", description: error.message, variant: "destructive" });
+      toast.error("Login failed", { description: error.message });
     } else {
-      navigate("/");
+      navigate("/dashboard");
     }
     setLoading(false);
   };
@@ -40,13 +40,7 @@ const Login = () => {
       >
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 glow-primary">
-            <Shield className="h-7 w-7 text-primary" />
-          </div>
-          <div className="text-center">
-            <h1 className="font-heading text-2xl font-bold text-foreground">SENTINEL</h1>
-            <p className="text-xs tracking-widest text-muted-foreground">PATROL INTELLIGENCE</p>
-          </div>
+          <TTechMxPatrolLogo variant="login" priority className="w-72" />
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">

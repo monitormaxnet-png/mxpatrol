@@ -576,6 +576,10 @@ export type Database = {
           company_id: string
           compliance_score: number | null
           created_at: string
+          current_gps_accuracy: number | null
+          current_gps_at: string | null
+          current_gps_lat: number | null
+          current_gps_lng: number | null
           device_identifier: string
           device_name: string | null
           device_type: string
@@ -583,6 +587,7 @@ export type Database = {
           guard_id: string | null
           id: string
           last_seen_at: string | null
+          metadata: Json
           notes: string | null
           pairing_code: string | null
           pairing_expires_at: string | null
@@ -592,6 +597,7 @@ export type Database = {
           site_location: string | null
           status: Database["public"]["Enums"]["device_status"]
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           app_type?: Database["public"]["Enums"]["app_type"] | null
@@ -600,6 +606,10 @@ export type Database = {
           company_id: string
           compliance_score?: number | null
           created_at?: string
+          current_gps_accuracy?: number | null
+          current_gps_at?: string | null
+          current_gps_lat?: number | null
+          current_gps_lng?: number | null
           device_identifier: string
           device_name?: string | null
           device_type?: string
@@ -607,6 +617,7 @@ export type Database = {
           guard_id?: string | null
           id?: string
           last_seen_at?: string | null
+          metadata?: Json
           notes?: string | null
           pairing_code?: string | null
           pairing_expires_at?: string | null
@@ -616,6 +627,7 @@ export type Database = {
           site_location?: string | null
           status?: Database["public"]["Enums"]["device_status"]
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           app_type?: Database["public"]["Enums"]["app_type"] | null
@@ -624,6 +636,10 @@ export type Database = {
           company_id?: string
           compliance_score?: number | null
           created_at?: string
+          current_gps_accuracy?: number | null
+          current_gps_at?: string | null
+          current_gps_lat?: number | null
+          current_gps_lng?: number | null
           device_identifier?: string
           device_name?: string | null
           device_type?: string
@@ -631,6 +647,7 @@ export type Database = {
           guard_id?: string | null
           id?: string
           last_seen_at?: string | null
+          metadata?: Json
           notes?: string | null
           pairing_code?: string | null
           pairing_expires_at?: string | null
@@ -640,6 +657,7 @@ export type Database = {
           site_location?: string | null
           status?: Database["public"]["Enums"]["device_status"]
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -989,54 +1007,198 @@ export type Database = {
           },
         ]
       }
-      scan_logs: {
+      pending_nfc_tags: {
         Row: {
-          checkpoint_id: string
+          alert_id: string | null
+          checkpoint_id: string | null
           company_id: string
           created_at: string
           device_id: string | null
-          face_confidence: number | null
-          face_verified: boolean | null
+          device_identifier: string | null
+          device_metadata: Json
+          first_seen_at: string
+          gps_accuracy: number | null
           gps_lat: number | null
           gps_lng: number | null
-          guard_id: string
+          id: string
+          last_seen_at: string
+          metadata: Json
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          scan_log_id: string | null
+          status: string
+          tag_uid: string
+          updated_at: string
+        }
+        Insert: {
+          alert_id?: string | null
+          checkpoint_id?: string | null
+          company_id: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          device_metadata?: Json
+          first_seen_at?: string
+          gps_accuracy?: number | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scan_log_id?: string | null
+          status?: string
+          tag_uid: string
+          updated_at?: string
+        }
+        Update: {
+          alert_id?: string | null
+          checkpoint_id?: string | null
+          company_id?: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          device_metadata?: Json
+          first_seen_at?: string
+          gps_accuracy?: number | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scan_log_id?: string | null
+          status?: string
+          tag_uid?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      nfc_tag_audit_logs: {
+        Row: {
+          action: string
+          checkpoint_id: string | null
+          company_id: string
+          created_at: string
+          device_id: string | null
+          device_identifier: string | null
+          gps_lat: number | null
+          gps_lng: number | null
+          id: string
+          metadata: Json
+          pending_tag_id: string | null
+          performed_by: string | null
+          scan_log_id: string | null
+          tag_uid: string
+        }
+        Insert: {
+          action: string
+          checkpoint_id?: string | null
+          company_id: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          metadata?: Json
+          pending_tag_id?: string | null
+          performed_by?: string | null
+          scan_log_id?: string | null
+          tag_uid: string
+        }
+        Update: {
+          action?: string
+          checkpoint_id?: string | null
+          company_id?: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          metadata?: Json
+          pending_tag_id?: string | null
+          performed_by?: string | null
+          scan_log_id?: string | null
+          tag_uid?: string
+        }
+        Relationships: []
+      }
+      scan_logs: {
+        Row: {
+          checkpoint_id: string | null
+          company_id: string
+          created_at: string
+          device_id: string | null
+          device_identifier: string | null
+          device_metadata: Json
+          face_confidence: number | null
+          face_verified: boolean | null
+          gps_accuracy: number | null
+          gps_lat: number | null
+          gps_lng: number | null
+          guard_id: string | null
           id: string
           is_manual: boolean
           is_offline_sync: boolean | null
           manual_scan_reason: string | null
           scanned_at: string
+          scanned_by: string | null
+          tag_status: string
+          tag_uid: string | null
+          user_id: string | null
         }
         Insert: {
-          checkpoint_id: string
+          checkpoint_id?: string | null
           company_id: string
           created_at?: string
           device_id?: string | null
+          device_identifier?: string | null
+          device_metadata?: Json
           face_confidence?: number | null
           face_verified?: boolean | null
+          gps_accuracy?: number | null
           gps_lat?: number | null
           gps_lng?: number | null
-          guard_id: string
+          guard_id?: string | null
           id?: string
           is_manual?: boolean
           is_offline_sync?: boolean | null
           manual_scan_reason?: string | null
           scanned_at?: string
+          scanned_by?: string | null
+          tag_status?: string
+          tag_uid?: string | null
+          user_id?: string | null
         }
         Update: {
-          checkpoint_id?: string
+          checkpoint_id?: string | null
           company_id?: string
           created_at?: string
           device_id?: string | null
+          device_identifier?: string | null
+          device_metadata?: Json
           face_confidence?: number | null
           face_verified?: boolean | null
+          gps_accuracy?: number | null
           gps_lat?: number | null
           gps_lng?: number | null
-          guard_id?: string
+          guard_id?: string | null
           id?: string
           is_manual?: boolean
           is_offline_sync?: boolean | null
           manual_scan_reason?: string | null
           scanned_at?: string
+          scanned_by?: string | null
+          tag_status?: string
+          tag_uid?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -1245,6 +1407,15 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      review_pending_nfc_tag: {
+        Args: {
+          p_checkpoint_name?: string | null
+          p_decision: string
+          p_pending_tag_id: string
+          p_rejection_reason?: string | null
+        }
+        Returns: Json
       }
     }
     Enums: {

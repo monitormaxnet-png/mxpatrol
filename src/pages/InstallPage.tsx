@@ -54,7 +54,7 @@ export default function InstallPage() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
             <Shield className="h-8 w-8 text-primary" />
           </div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">Install SENTINEL</h1>
+          <h1 className="text-2xl font-heading font-bold text-foreground">Install TTECH</h1>
           <p className="text-sm text-muted-foreground">
             Install the app on your device for quick access, offline support, and a native experience.
           </p>
@@ -68,7 +68,7 @@ export default function InstallPage() {
               </div>
               <p className="text-lg font-bold text-foreground">Already Installed!</p>
               <p className="text-sm text-muted-foreground text-center">
-                SENTINEL is installed on this device. Open it from your home screen.
+                TTECH is installed on this device. Open it from your home screen.
               </p>
             </CardContent>
           </Card>
@@ -77,7 +77,7 @@ export default function InstallPage() {
             {/* Direct install button (Chrome/Edge/Android) */}
             {deferredPrompt && (
               <Button size="lg" className="w-full text-base gap-2" onClick={handleInstall}>
-                <Download className="h-5 w-5" /> Install SENTINEL
+                <Download className="h-5 w-5" /> Install TTECH
               </Button>
             )}
 
@@ -131,7 +131,7 @@ export default function InstallPage() {
                     </li>
                     <li className="flex items-start gap-3">
                       <Badge variant="secondary" className="mt-0.5 shrink-0">2</Badge>
-                      <span>Click <strong className="text-foreground">"Install"</strong> to add SENTINEL to your desktop</span>
+                      <span>Click <strong className="text-foreground">"Install"</strong> to add TTECH to your desktop</span>
                     </li>
                   </ol>
                 )}

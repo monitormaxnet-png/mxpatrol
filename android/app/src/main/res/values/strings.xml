@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">mxpatrol</string>
+    <string name="title_activity_main">mxpatrol</string>
+    <string name="package_name">com.monitormaxnet.mxpatrol</string>
+    <string name="custom_url_scheme">com.monitormaxnet.mxpatrol</string>
+</resources>

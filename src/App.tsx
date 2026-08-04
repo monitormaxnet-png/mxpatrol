@@ -1,86 +1,144 @@
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
-import Index from "./pages/Index";
-import GuardDetail from "./pages/GuardDetail";
-import Patrols from "./pages/Patrols";
-import Guards from "./pages/Guards";
-import Checkpoints from "./pages/Checkpoints";
-import Incidents from "./pages/Incidents";
-import AIInsights from "./pages/AIInsights";
-import Reports from "./pages/Reports";
-import Devices from "./pages/Devices";
-import SettingsPage from "./pages/SettingsPage";
-import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import NotFound from "./pages/NotFound";
-import Profile from "./pages/Profile";
-import Shifts from "./pages/Shifts";
-import ScanRecord from "./pages/ScanRecord";
-import NFCScanner from "./pages/NFCScanner";
-import Cameras from "./pages/Cameras";
-import CameraLive from "./pages/CameraLive";
-import CameraEvents from "./pages/CameraEvents";
-import WhatsApp from "./pages/WhatsApp";
-import EnrollPage from "./pages/EnrollPage";
-import CommandCenter from "./pages/CommandCenter";
-import InstallPage from "./pages/InstallPage";
+import DevicePresenceHeartbeat from "@/components/devices/DevicePresenceHeartbeat";
+import HardwareSosListener from "@/components/devices/HardwareSosListener";
+import IncidentPhotoListener from "@/components/devices/IncidentPhotoListener";
+import SystemFeedbackOverlay from "@/components/feedback/SystemFeedbackOverlay";
+import PageTransition from "@/components/feedback/PageTransition";
+import { LoadingState } from "@/components/feedback/FeedbackPrimitives";
+import ErrorBoundary from "@/components/layout/ErrorBoundary";
+
+const GuardDetail = lazy(() => import("./pages/GuardDetail"));
+const Patrols = lazy(() => import("./pages/Patrols"));
+const Guards = lazy(() => import("./pages/Guards"));
+const Checkpoints = lazy(() => import("./pages/Checkpoints"));
+const Incidents = lazy(() => import("./pages/Incidents"));
+const AIInsights = lazy(() => import("./pages/AIInsights"));
+const Reports = lazy(() => import("./pages/Reports"));
+const Devices = lazy(() => import("./pages/Devices"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const Login = lazy(() => import("./pages/Login"));
+const Signup = lazy(() => import("./pages/Signup"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Shifts = lazy(() => import("./pages/Shifts"));
+const ScanRecord = lazy(() => import("./pages/ScanRecord"));
+const NFCScanner = lazy(() => import("./pages/NFCScanner"));
+const Cameras = lazy(() => import("./pages/Cameras"));
+const CameraLive = lazy(() => import("./pages/CameraLive"));
+const CameraEvents = lazy(() => import("./pages/CameraEvents"));
+const WhatsApp = lazy(() => import("./pages/WhatsApp"));
+const EnrollPage = lazy(() => import("./pages/EnrollPage"));
+const CommandCenter = lazy(() => import("./pages/CommandCenter"));
+const LivePatrol = lazy(() => import("./pages/LivePatrol"));
+const LiveMapPage = lazy(() => import("./pages/LiveMapPage"));
+const SessionLogsPage = lazy(() => import("./pages/SessionLogsPage"));
+const ScanLogs = lazy(() => import("./pages/ScanLogs"));
+const SosAlerts = lazy(() => import("./pages/SosAlerts"));
+const Companies = lazy(() => import("./pages/Companies"));
+const InstallPage = lazy(() => import("./pages/InstallPage"));
 
 const queryClient = new QueryClient();
+
+const RouteLoading = () => (
+  <div className="mx-auto w-full max-w-xl py-10">
+    <LoadingState label="Loading page..." />
+  </div>
+);
+
+const lazyRoute = (element: ReactNode) => (
+  <ErrorBoundary label="route"><Suspense fallback={<RouteLoading />}><PageTransition>{element}</PageTransition></Suspense></ErrorBoundary>
+);
+const NativeScannerRouteGuard = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || loading || user) return;
+
+    const scannerSafePaths = new Set(["/", "/nfc-scanner", "/enroll", "/install"]);
+    const supervisorLogin = location.pathname === "/login" && new URLSearchParams(location.search).get("supervisor") === "1";
+    if (scannerSafePaths.has(location.pathname) || supervisorLogin) return;
+
+    navigate("/nfc-scanner", { replace: true });
+  }, [loading, location.pathname, location.search, navigate, user]);
+
+  return null;
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TooltipProvider>
-        <Toaster />
         <Sonner />
         <BrowserRouter>
+          <NativeScannerRouteGuard />
+          <IncidentPhotoListener />
+          <SystemFeedbackOverlay />
           <Routes>
             {/* Public routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/enroll" element={<EnrollPage />} />
-            <Route path="/install" element={<InstallPage />} />
+            <Route path="/login" element={lazyRoute(<Login />)} />
+            <Route path="/signup" element={lazyRoute(<Signup />)} />
+            <Route path="/forgot-password" element={lazyRoute(<ForgotPassword />)} />
+            <Route path="/reset-password" element={lazyRoute(<ResetPassword />)} />
+            <Route path="/" element={lazyRoute(<NFCScanner />)} />
+            <Route path="/nfc-scanner" element={lazyRoute(<NFCScanner />)} />
+            <Route path="/enroll" element={lazyRoute(<EnrollPage />)} />
+            <Route path="/install" element={lazyRoute(<InstallPage />)} />
 
             {/* Protected routes */}
             <Route
               element={
                 <ProtectedRoute>
-                  <AppLayout />
+                  <>
+                    <DevicePresenceHeartbeat />
+                    <HardwareSosListener />
+                    <ErrorBoundary label="app-layout"><AppLayout /></ErrorBoundary>
+                  </>
                 </ProtectedRoute>
               }
             >
-              <Route path="/" element={<Index />} />
-              <Route path="/patrols" element={<Patrols />} />
-              <Route path="/guards" element={<Guards />} />
-              <Route path="/guards/:id" element={<GuardDetail />} />
-              <Route path="/checkpoints" element={<Checkpoints />} />
-              <Route path="/shifts" element={<Shifts />} />
-              <Route path="/incidents" element={<Incidents />} />
-              <Route path="/scan" element={<ScanRecord />} />
-              <Route path="/nfc-scanner" element={<NFCScanner />} />
-              <Route path="/ai-insights" element={<AIInsights />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/cameras" element={<Cameras />} />
-              <Route path="/cameras/live" element={<CameraLive />} />
-              <Route path="/cameras/events" element={<CameraEvents />} />
-              <Route path="/whatsapp" element={<WhatsApp />} />
-              <Route path="/devices" element={<Devices />} />
-              <Route path="/command-center" element={<CommandCenter />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/profile" element={<Profile />} />
+              <Route path="/dashboard" element={lazyRoute(<CommandCenter />)} />
+              <Route path="/live-patrol" element={lazyRoute(<LivePatrol />)} />
+              <Route path="/session-logs" element={lazyRoute(<SessionLogsPage />)} />
+              <Route path="/scan-logs" element={lazyRoute(<ScanLogs />)} />
+              <Route path="/live-map" element={lazyRoute(<LiveMapPage />)} />
+              <Route path="/sos-alerts" element={lazyRoute(<SosAlerts />)} />
+              <Route path="/patrols" element={lazyRoute(<Patrols />)} />
+              <Route path="/patrols/templates" element={lazyRoute(<Patrols />)} />
+              <Route path="/patrols/routes" element={lazyRoute(<Patrols />)} />
+              <Route path="/patrols/schedules" element={lazyRoute(<Patrols />)} />
+              <Route path="/patrols/sessions" element={lazyRoute(<Patrols />)} />
+              <Route path="/guards" element={lazyRoute(<Guards />)} />
+              <Route path="/guards/:id" element={lazyRoute(<GuardDetail />)} />
+              <Route path="/checkpoints" element={lazyRoute(<Checkpoints />)} />
+              <Route path="/shifts" element={lazyRoute(<Shifts />)} />
+              <Route path="/incidents" element={lazyRoute(<Incidents />)} />
+              <Route path="/scan" element={lazyRoute(<ScanRecord />)} />
+              <Route path="/ai-insights" element={lazyRoute(<AIInsights />)} />
+              <Route path="/reports" element={lazyRoute(<Reports />)} />
+              <Route path="/cameras" element={lazyRoute(<Cameras />)} />
+              <Route path="/cameras/live" element={lazyRoute(<CameraLive />)} />
+              <Route path="/cameras/events" element={lazyRoute(<CameraEvents />)} />
+              <Route path="/whatsapp" element={lazyRoute(<WhatsApp />)} />
+              <Route path="/devices" element={lazyRoute(<Devices />)} />
+              <Route path="/command-center" element={lazyRoute(<CommandCenter />)} />
+              <Route path="/companies" element={lazyRoute(<Companies />)} />
+              <Route path="/settings" element={lazyRoute(<SettingsPage />)} />
+              <Route path="/profile" element={lazyRoute(<Profile />)} />
             </Route>
 
-            <Route path="*" element={<NotFound />} />
+            <Route path="*" element={lazyRoute(<NotFound />)} />
           </Routes>
         </BrowserRouter>
       </TooltipProvider>

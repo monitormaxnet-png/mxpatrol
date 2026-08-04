@@ -28,6 +28,25 @@ export type DeviceScanResult = {
   checkpoint: { id: string; name: string | null; site_id: string | null } | null;
   pendingTag: { id: string; status: string } | null;
   tagStatus: "registered" | "unregistered" | "pending_registration" | "rejected" | string;
+  patrolMatch?: Record<string, unknown> | null;
+};
+
+const asObject = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+const firstObject = (value: unknown): Record<string, unknown> | null => {
+  if (Array.isArray(value)) return asObject(value[0]);
+  return asObject(value);
+};
+
+const normalizeCheckpoint = (value: unknown): DeviceScanResult["checkpoint"] => {
+  const checkpoint = firstObject(value);
+  if (!checkpoint?.id) return null;
+  return {
+    id: String(checkpoint.id),
+    name: typeof checkpoint.name === "string" ? checkpoint.name : null,
+    site_id: typeof checkpoint.site_id === "string" ? checkpoint.site_id : null,
+  };
 };
 
 export async function saveDeviceScan(scan: DeviceScanPayload): Promise<DeviceScanResult> {
@@ -66,10 +85,19 @@ export async function saveDeviceScan(scan: DeviceScanPayload): Promise<DeviceSca
     throw new Error(data?.error || "Device scan save failed");
   }
 
+  const body = asObject(data.result) ?? asObject(data) ?? {};
+  const scanLog = firstObject(body.scan_log) ?? firstObject(body.scanLog);
+  const checkpoint = normalizeCheckpoint(body.checkpoint ?? scanLog?.checkpoints);
+  const scanLogCheckpointId = typeof scanLog?.checkpoint_id === "string" ? scanLog.checkpoint_id : null;
+  const scanLogStatus = typeof scanLog?.tag_status === "string" ? scanLog.tag_status : null;
+  const responseStatus = typeof body.tag_status === "string" ? body.tag_status : null;
+  const derivedStatus = checkpoint || scanLogCheckpointId ? "registered" : responseStatus ?? scanLogStatus ?? scan.tag_status ?? "unregistered";
+
   return {
-    scanLogId: data.scan_log?.id ?? null,
-    checkpoint: data.checkpoint ?? null,
-    pendingTag: data.pending_tag ?? null,
-    tagStatus: data.tag_status ?? scan.tag_status ?? "unregistered",
+    scanLogId: typeof scanLog?.id === "string" ? scanLog.id : null,
+    checkpoint: checkpoint ?? (scanLogCheckpointId ? { id: scanLogCheckpointId, name: null, site_id: null } : null),
+    pendingTag: firstObject(body.pending_tag) as DeviceScanResult["pendingTag"],
+    tagStatus: derivedStatus,
+    patrolMatch: firstObject(body.patrol_match) ?? null,
   };
 }

@@ -263,7 +263,7 @@ const GuardDetail = () => {
                 <Scan className="h-3.5 w-3.5 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground">{scan.checkpoints?.name || "Unknown checkpoint"}</p>
+                <p className="text-sm font-medium text-foreground">{scan.checkpoints?.name || "Unregistered"}</p>
                 <p className="text-xs text-muted-foreground">
                   {format(new Date(scan.scanned_at), "MMM d, yyyy HH:mm:ss")}
                 </p>

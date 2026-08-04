@@ -11,18 +11,20 @@ import { Scan, Clock, WifiOff, AlertTriangle, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import ManualScanForm from "@/components/scan/ManualScanForm";
+import { getDeviceLocation } from "@/lib/deviceGeolocation";
 
 const MAX_MANUAL_SCANS_PER_SHIFT = 3;
 
 type ScanEntry = {
   id: string;
-  guard_id: string;
+  guard_id: string | null;
   checkpoint_id: string;
   scanned_at: string;
   gps_lat: number | null;
   gps_lng: number | null;
   is_offline_sync: boolean | null;
   is_manual: boolean;
+  device_identifier?: string | null;
   guards?: { full_name: string; badge_number: string } | null;
   checkpoints?: { name: string } | null;
 };
@@ -33,6 +35,7 @@ const ScanRecord = () => {
   const queryClient = useQueryClient();
   const { pendingCount, syncQueue, syncing } = useOfflineScanQueue();
   const [selectedGuard, setSelectedGuard] = useState("");
+  const [selectedDeviceIdentifier, setSelectedDeviceIdentifier] = useState("");
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
@@ -61,11 +64,26 @@ const ScanRecord = () => {
   const { data: checkpoints = [] } = useQuery({
     queryKey: ["checkpoints"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("checkpoints").select("id, name, nfc_tag_id").order("sort_order");
+      const { data, error } = await supabase.from("checkpoints").select("id, name, nfc_tag_id, site_id").order("sort_order");
       if (error) throw error;
       return data;
     },
     enabled: !!user,
+  });
+
+  const { data: devices = [] } = useQuery({
+    queryKey: ["manual-scan-devices", profile?.company_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("devices")
+        .select("id, device_identifier, device_name, site_id, sites(name)")
+        .eq("company_id", profile!.company_id)
+        .eq("pairing_status", "paired")
+        .order("device_name");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user && !!profile?.company_id,
   });
 
   const { data: guards = [] } = useQuery({
@@ -78,21 +96,23 @@ const ScanRecord = () => {
     enabled: !!user,
   });
 
-  // Count manual scans in the current shift (last 12 hours)
+  // Count manual corrections in the current shift window by guard when available, otherwise by device.
   const { data: manualScanCount = 0 } = useQuery({
-    queryKey: ["manual_scan_count", selectedGuard],
+    queryKey: ["manual_scan_count", selectedGuard || selectedDeviceIdentifier],
     queryFn: async () => {
       const shiftStart = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-      const { count, error } = await supabase
+      let query = supabase
         .from("scan_logs")
         .select("id", { count: "exact", head: true })
-        .eq("guard_id", selectedGuard)
         .eq("is_manual", true)
         .gte("scanned_at", shiftStart);
+      if (selectedGuard) query = query.eq("guard_id", selectedGuard);
+      else query = query.eq("device_identifier", selectedDeviceIdentifier);
+      const { count, error } = await query;
       if (error) return 0;
       return count ?? 0;
     },
-    enabled: !!selectedGuard,
+    enabled: !!selectedGuard || !!selectedDeviceIdentifier,
   });
 
   const { data: recentScans = [] } = useQuery({
@@ -100,7 +120,7 @@ const ScanRecord = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("scan_logs")
-        .select("id, guard_id, checkpoint_id, scanned_at, gps_lat, gps_lng, is_offline_sync, is_manual, guards(full_name, badge_number), checkpoints(name)")
+        .select("id, guard_id, checkpoint_id, device_identifier, scanned_at, gps_lat, gps_lng, is_offline_sync, is_manual, guards(full_name, badge_number), checkpoints(name)")
         .order("scanned_at", { ascending: false })
         .limit(10);
       if (error) throw error;
@@ -109,24 +129,17 @@ const ScanRecord = () => {
     enabled: !!user,
   });
 
-  const captureGps = () => {
-    if (!navigator.geolocation) {
-      toast.error("Geolocation not supported");
-      return;
-    }
+  const captureGps = async () => {
     setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setGpsLoading(false);
-        toast.success("Location captured");
-      },
-      (err) => {
-        setGpsLoading(false);
-        toast.error(`GPS error: ${err.message}`);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+    try {
+      const location = await getDeviceLocation();
+      setGps({ lat: location.lat, lng: location.lng });
+      toast.success("Location captured");
+    } catch (err: any) {
+      toast.error(`GPS error: ${err.message}`);
+    } finally {
+      setGpsLoading(false);
+    }
   };
 
   return (
@@ -180,8 +193,11 @@ const ScanRecord = () => {
           <ManualScanForm
             guards={guards}
             checkpoints={checkpoints}
+            devices={devices}
             selectedGuard={selectedGuard}
             onGuardChange={setSelectedGuard}
+            selectedDeviceIdentifier={selectedDeviceIdentifier}
+            onDeviceChange={setSelectedDeviceIdentifier}
             gps={gps}
             gpsLoading={gpsLoading}
             onCaptureGps={captureGps}
@@ -223,10 +239,10 @@ const ScanRecord = () => {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">
-                    {scan.checkpoints?.name || "Unknown"}
+                    {scan.checkpoints?.name || "Unregistered"}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {scan.guards?.full_name} • {scan.guards?.badge_number}
+                    {scan.guards ? `${scan.guards.full_name} - ${scan.guards.badge_number}` : scan.device_identifier || "Device correction"}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">

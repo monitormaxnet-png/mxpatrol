@@ -11,11 +11,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import {
-  Shield, Camera, CheckCircle2, XCircle, Loader2,
+  Camera, CheckCircle2, XCircle, Loader2,
   Smartphone, Wifi, WifiOff, QrCode, ArrowLeft, RefreshCw, CloudUpload,
   ChevronRight, Edit3, ArrowRight,
 } from "lucide-react";
 import { useOfflineEnrollQueue } from "@/hooks/useOfflineEnrollQueue";
+import { getPatrolDeviceInfo } from "@/lib/deviceInfo";
+import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
 
 type WizardStep = 0 | 1 | 2; // scan → confirm → success
 type ProcessState = "idle" | "processing" | "error" | "offline-queued";
@@ -27,17 +29,28 @@ interface DeviceMetadata {
   serial_number: string;
 }
 
-const STEP_LABELS = ["Scan Token", "Confirm Device", "Complete"];
+type EnrollResult = {
+  ok?: boolean;
+  success?: boolean;
+  error?: string;
+  device_id?: string;
+  app_type?: string;
+};
+
+const STEP_LABELS = ["Pair Code", "Confirm Device", "Complete"];
+
+const normalizePairingCode = (value: string) =>
+  value.trim().toUpperCase().replace(/^MXP[-\s]?/, "").replace(/[\s-]/g, "");
 
 export default function EnrollPage() {
   const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [processState, setProcessState] = useState<ProcessState>("idle");
   const [error, setError] = useState("");
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<EnrollResult | null>(null);
   const [scannedToken, setScannedToken] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [manualMode, setManualMode] = useState(false);
+  const [manualMode, setManualMode] = useState(true);
   const [manualToken, setManualToken] = useState("");
   const [metadata, setMetadata] = useState<DeviceMetadata>({
     device_identifier: "",
@@ -52,10 +65,10 @@ export default function EnrollPage() {
   useEffect(() => {
     const ua = navigator.userAgent;
     const isMobile = /Mobile|Android|iPhone/i.test(ua);
-    const deviceId = `WEB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const device = getPatrolDeviceInfo();
     setMetadata((prev) => ({
       ...prev,
-      device_identifier: deviceId,
+      device_identifier: device.deviceIdentifier,
       device_name: isMobile ? "Guard Mobile Device" : "Guard Workstation",
       device_type: isMobile ? "mobile" : "tablet",
     }));
@@ -74,7 +87,7 @@ export default function EnrollPage() {
 
   const stopCamera = useCallback(async () => {
     if (scannerRef.current) {
-      try { await scannerRef.current.stop(); } catch {}
+      try { await scannerRef.current.stop(); } catch (stopError) { console.warn("Unable to stop QR scanner", stopError); }
       scannerRef.current = null;
     }
     setCameraActive(false);
@@ -122,8 +135,8 @@ export default function EnrollPage() {
       setProcessState("idle");
       setWizardStep(2);
       toast.success("Device enrolled successfully!");
-    } catch (err: any) {
-      setError(err.message || "Enrollment failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Enrollment failed");
       setProcessState("error");
     }
   };
@@ -147,9 +160,55 @@ export default function EnrollPage() {
     }
   }, [handleTokenScanned]);
 
+  const processPairingCode = async (code: string) => {
+    const normalizedCode = normalizePairingCode(code);
+    if (!isOnline) {
+      toast.error("Pairing requires an internet connection");
+      return;
+    }
+
+    setError("");
+    setProcessState("processing");
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("device-pair", {
+        body: {
+          pairing_code: normalizedCode,
+          device_metadata: {
+            device_identifier: metadata.device_identifier,
+            device_name: metadata.device_name,
+            device_type: metadata.device_type,
+            serial_number: metadata.serial_number || undefined,
+            model: navigator.userAgent,
+            os: navigator.platform,
+            nfc_enabled: true,
+          },
+        },
+      });
+
+      if (fnError) throw fnError;
+      if (!data?.success) throw new Error(data?.error || "Pairing failed");
+
+      setScannedToken(normalizedCode);
+      setResult(data);
+      setProcessState("idle");
+      setWizardStep(2);
+      toast.success("Device paired successfully!");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Pairing failed");
+      setProcessState("error");
+    }
+  };
   const handleManualSubmit = () => {
-    if (!manualToken.trim()) { toast.error("Please enter a token"); return; }
-    handleTokenScanned(manualToken);
+    const value = manualToken.trim();
+    if (!value) { toast.error("Please enter a token or pairing code"); return; }
+
+    if (value.includes(".")) {
+      handleTokenScanned(value);
+      return;
+    }
+
+    processPairingCode(value);
   };
 
   const resetAll = () => {
@@ -159,7 +218,7 @@ export default function EnrollPage() {
     setResult(null);
     setScannedToken("");
     setManualToken("");
-    setManualMode(false);
+    setManualMode(true);
     processingRef.current = false;
   };
 
@@ -170,13 +229,7 @@ export default function EnrollPage() {
       {/* Header */}
       <header className="border-b border-border px-4 py-3">
         <div className="mx-auto flex max-w-lg items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-            <Shield className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="font-heading text-sm font-bold text-foreground tracking-wide">SENTINEL</h1>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Device Enrollment</p>
-          </div>
+          <div className="flex flex-col"><TTechMxPatrolLogo variant="header" priority className="w-32" /><p className="mt-1 text-xs uppercase tracking-widest text-muted-foreground">Device Enrollment</p></div>
           <div className="ml-auto flex items-center gap-2">
             {pendingCount > 0 && (
               <Badge variant="secondary" className="text-xs">
@@ -234,20 +287,20 @@ export default function EnrollPage() {
                       </div>
                       <Separator />
                       <Button variant="outline" className="w-full" onClick={() => { stopCamera(); setManualMode(true); }}>
-                        Enter token manually
+                        Enter pairing code manually
                       </Button>
                     </CardContent>
                   </Card>
                 ) : (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Manual Token Entry</CardTitle>
-                      <CardDescription>Paste the enrollment token from your administrator</CardDescription>
+                      <CardTitle>Manual Pairing Code</CardTitle>
+                      <CardDescription>Enter the pairing code shown on the Devices page</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
-                        <Label>Enrollment Token</Label>
-                        <Input value={manualToken} onChange={(e) => setManualToken(e.target.value)} placeholder="Paste token here..." className="font-mono text-xs" />
+                        <Label>Pairing Code or Enrollment Token</Label>
+                        <Input value={manualToken} onChange={(e) => setManualToken(e.target.value)} placeholder="e.g. ABCD2345" className="font-mono text-xs" />
                       </div>
                       <div className="flex gap-2">
                         <Button variant="outline" className="flex-1" onClick={() => setManualMode(false)}>
@@ -317,7 +370,7 @@ export default function EnrollPage() {
                   <CardContent className="flex flex-col items-center gap-4 py-12">
                     <Loader2 className="h-12 w-12 animate-spin text-primary" />
                     <p className="text-lg font-medium text-foreground">Enrolling device...</p>
-                    <p className="text-sm text-muted-foreground">Validating token and registering your device</p>
+                    <p className="text-sm text-muted-foreground">Validating code and registering your device</p>
                   </CardContent>
                 </Card>
               </motion.div>

@@ -18,9 +18,12 @@ const MANUAL_REASONS = [
 
 interface ManualScanFormProps {
   guards: Array<{ id: string; full_name: string; badge_number: string }>;
-  checkpoints: Array<{ id: string; name: string; nfc_tag_id: string }>;
+  checkpoints: Array<{ id: string; name: string; nfc_tag_id: string; site_id?: string | null }>;
+  devices: Array<{ id: string; device_identifier: string | null; device_name?: string | null; site_id?: string | null; sites?: { name: string } | null }>;
   selectedGuard: string;
   onGuardChange: (id: string) => void;
+  selectedDeviceIdentifier: string;
+  onDeviceChange: (id: string) => void;
   gps: { lat: number; lng: number } | null;
   gpsLoading: boolean;
   onCaptureGps: () => void;
@@ -34,8 +37,11 @@ interface ManualScanFormProps {
 const ManualScanForm = ({
   guards,
   checkpoints,
+  devices,
   selectedGuard,
   onGuardChange,
+  selectedDeviceIdentifier,
+  onDeviceChange,
   gps,
   gpsLoading,
   onCaptureGps,
@@ -59,13 +65,22 @@ const ManualScanForm = ({
       if (!gps) throw new Error("GPS location is required for manual scans");
       if (!reason) throw new Error("A reason is required for manual scans");
 
+      const device = devices.find((item) => item.device_identifier === selectedDeviceIdentifier);
+      const checkpoint = checkpoints.find((item) => item.id === selectedCheckpoint);
+      if (!device?.device_identifier) throw new Error("Select a patrol device for this correction");
+
       const scanData = {
-        guard_id: selectedGuard,
+        guard_id: selectedGuard || null,
         checkpoint_id: selectedCheckpoint,
         company_id: companyId,
+        site_id: checkpoint?.site_id ?? device.site_id ?? null,
         scanned_at: new Date().toISOString(),
         gps_lat: gps.lat,
         gps_lng: gps.lng,
+        device_id: device.device_identifier,
+        device_identifier: device.device_identifier,
+        tag_uid: checkpoint?.nfc_tag_id ?? null,
+        tag_status: "registered",
         is_offline_sync: !isOnline,
         is_manual: true,
         manual_scan_reason: reason,
@@ -76,13 +91,14 @@ const ManualScanForm = ({
 
       // Trigger supervisor alert
       const guard = guards.find((g) => g.id === selectedGuard);
-      const checkpoint = checkpoints.find((c) => c.id === selectedCheckpoint);
+      const reasonLabel = MANUAL_REASONS.find((r) => r.value === reason)?.label ?? reason;
       await supabase.from("alerts").insert({
         company_id: companyId,
+        site_id: checkpoint?.site_id ?? device.site_id ?? null,
         type: "anomaly" as const,
         severity: "medium" as const,
-        guard_id: selectedGuard,
-        message: `Manual scan entry by ${guard?.full_name ?? "Unknown"} at ${checkpoint?.name ?? "Unknown"} — Reason: ${MANUAL_REASONS.find((r) => r.value === reason)?.label ?? reason}`,
+        guard_id: selectedGuard || null,
+        message: `Manual scan correction | Device: ${device.device_name || device.device_identifier} | Guard: ${guard?.full_name ?? "Unassigned"} | Checkpoint: ${checkpoint?.name ?? "Unknown"} | Reason: ${reasonLabel}`,
       });
     },
     onSuccess: () => {
@@ -94,13 +110,13 @@ const ManualScanForm = ({
       setTimeout(() => setScanSuccess(false), 2500);
       setSelectedCheckpoint("");
       setReason("");
-      toast.success("Manual scan recorded — supervisor notified");
+      toast.success("Manual scan correction recorded - supervisor notified");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const canSubmit =
-    !!selectedGuard &&
+    !!selectedDeviceIdentifier &&
     !!selectedCheckpoint &&
     !!gps &&
     !!reason &&
@@ -136,7 +152,7 @@ const ManualScanForm = ({
         <div>
           <p className="text-xs font-semibold text-warning">Manual entries are monitored and audited</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">
-            All manual scans require GPS verification, a valid reason, and trigger supervisor notifications.
+            All manual corrections require GPS, a real patrol device, a valid reason, and trigger supervisor notifications.
           </p>
         </div>
       </div>
@@ -161,14 +177,34 @@ const ManualScanForm = ({
       )}
 
       <div className="space-y-4">
-        {/* Guard */}
+        {/* Patrol device */}
         <div className="space-y-1.5">
-          <Label className="text-xs">Guard</Label>
-          <Select value={selectedGuard} onValueChange={onGuardChange}>
+          <Label className="text-xs">Patrol Device <span className="text-destructive">*</span></Label>
+          <Select value={selectedDeviceIdentifier || "none"} onValueChange={(value) => onDeviceChange(value === "none" ? "" : value)}>
             <SelectTrigger className="h-10 bg-card/60 border-border/50">
-              <SelectValue placeholder="Select guard on duty" />
+              <SelectValue placeholder="Select patrol device" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="none">Select patrol device</SelectItem>
+              {devices.filter((device) => !!device.device_identifier).map((device) => (
+                <SelectItem key={device.id} value={device.device_identifier!}>
+                  {device.device_name || device.device_identifier}
+                  {device.sites?.name ? ` - ${device.sites.name}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Guard */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">Guard (optional)</Label>
+          <Select value={selectedGuard || "none"} onValueChange={(value) => onGuardChange(value === "none" ? "" : value)}>
+            <SelectTrigger className="h-10 bg-card/60 border-border/50">
+              <SelectValue placeholder="Select guard if known" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No guard assigned</SelectItem>
               {guards.map((g) => (
                 <SelectItem key={g.id} value={g.id}>
                   {g.full_name} ({g.badge_number})

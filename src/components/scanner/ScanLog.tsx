@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { Scan, WifiOff, CheckCircle2, XCircle } from "lucide-react";
 import { format } from "date-fns";
@@ -56,5 +57,5 @@ const ScanLog = ({ entries }: ScanLogProps) => {
   );
 };
 
-export default ScanLog;
+export default memo(ScanLog);
 export type { ScanLogEntry };

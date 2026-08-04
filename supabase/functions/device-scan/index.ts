@@ -1,4 +1,4 @@
-﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +45,7 @@ const removeMissingColumns = (payload: Record<string, unknown>, error: unknown) 
     "actor_user_id",
     "actor_guard_id",
     "performed_by",
+    "battery_level",
   ];
 
   for (const column of possibleColumns) {
@@ -162,7 +163,8 @@ Deno.serve(async (req) => {
     const gpsLat = numberOrNull(scan.gps_lat);
     const gpsLng = numberOrNull(scan.gps_lng);
     const gpsAccuracy = numberOrNull(scan.gps_accuracy);
-    const deviceMetadata = scan.device_metadata && typeof scan.device_metadata === "object" ? scan.device_metadata : {};
+    const deviceMetadata = scan.device_metadata && typeof scan.device_metadata === "object" ? scan.device_metadata as Record<string, unknown> : {};
+    const batteryLevel = numberOrNull(deviceMetadata.battery_level ?? scan.battery_level);
 
     const deviceUpdatePayload: Record<string, unknown> = {
       status: "online",
@@ -171,6 +173,7 @@ Deno.serve(async (req) => {
       current_gps_lng: gpsLng,
       current_gps_accuracy: gpsAccuracy,
       current_gps_at: gpsLat != null && gpsLng != null ? now : null,
+      battery_level: batteryLevel,
       metadata: deviceMetadata,
     };
     let deviceUpdate = await serviceClient.from("devices").update(deviceUpdatePayload).eq("id", device.id);
@@ -179,6 +182,54 @@ Deno.serve(async (req) => {
       deviceUpdate = await serviceClient.from("devices").update(deviceUpdatePayload).eq("id", device.id);
     }
     if (deviceUpdate.error) console.warn("device-scan device presence update failed", deviceUpdate.error);
+
+    if (batteryLevel != null && batteryLevel <= 20) {
+      const batteryMessage = [
+        "Low Battery Alert",
+        `Device: ${device.device_name ?? deviceIdentifier}`,
+        `Device ID: ${deviceIdentifier}`,
+        `Battery: ${batteryLevel}%`,
+        device.site_id ? `Site ID: ${device.site_id}` : null,
+        `Time: ${now}`,
+      ].filter(Boolean).join(" | ");
+
+      const { data: existingBatteryAlert, error: batteryAlertLookupError } = await serviceClient
+        .from("alerts")
+        .select("id")
+        .eq("company_id", device.company_id)
+        .eq("type", "anomaly")
+        .eq("is_read", false)
+        .ilike("message", `%Low Battery Alert%${deviceIdentifier}%`)
+        .maybeSingle();
+
+      if (batteryAlertLookupError) {
+        console.warn("device-scan low battery alert lookup failed", batteryAlertLookupError);
+      }
+
+      if (!existingBatteryAlert) {
+        const lowBatteryAlert = await insertSelectIdWithFallback(serviceClient, "alerts", {
+          company_id: device.company_id,
+          site_id: device.site_id ?? null,
+          type: "anomaly",
+          severity: batteryLevel <= 10 ? "critical" : "high",
+          guard_id: null,
+          message: batteryMessage,
+          is_read: false,
+        });
+
+        if (lowBatteryAlert.error) {
+          console.warn("device-scan low battery alert insert failed", lowBatteryAlert.error);
+        } else {
+          console.info("[Device] Low battery alert inserted", {
+            alertId: lowBatteryAlert.data?.id ?? null,
+            companyId: device.company_id,
+            siteId: device.site_id ?? null,
+            deviceIdentifier,
+            batteryLevel,
+          });
+        }
+      }
+    }
 
     let checkpointId = stringOrNull(scan.checkpoint_id);
     let siteId = stringOrNull(scan.site_id) ?? device.site_id ?? null;
@@ -270,6 +321,32 @@ Deno.serve(async (req) => {
       scanLog = scanInsert.data;
     }
 
+    const { data: persistedScan, error: persistedScanError } = scanLog?.id
+      ? await serviceClient
+        .from("scan_logs")
+        .select("id, checkpoint_id, site_id, tag_status, checkpoints(id, name, site_id)")
+        .eq("id", scanLog.id)
+        .maybeSingle()
+      : { data: null, error: null };
+
+    if (persistedScanError) {
+      console.warn("device-scan persisted scan lookup failed", persistedScanError);
+    } else if (persistedScan) {
+      const persistedCheckpoint = Array.isArray((persistedScan as any).checkpoints)
+        ? (persistedScan as any).checkpoints[0]
+        : (persistedScan as any).checkpoints;
+
+      checkpointId = stringOrNull((persistedScan as any).checkpoint_id) ?? checkpointId;
+      siteId = stringOrNull((persistedScan as any).site_id) ?? siteId;
+      tagStatus = stringOrNull((persistedScan as any).tag_status) ?? tagStatus;
+
+      if (checkpointId) {
+        tagStatus = "registered";
+        checkpointName = stringOrNull(persistedCheckpoint?.name) ?? checkpointName ?? "Registered checkpoint";
+        siteId = stringOrNull(persistedCheckpoint?.site_id) ?? siteId;
+      }
+    }
+
     if (checkpointId && gpsLat != null && gpsLng != null) {
       const checkpointGpsUpdate = await serviceClient
         .from("checkpoints")
@@ -280,6 +357,27 @@ Deno.serve(async (req) => {
       if (checkpointGpsUpdate.error) console.warn("device-scan checkpoint GPS update failed", checkpointGpsUpdate.error);
     }
 
+    let patrolMatch: Record<string, unknown> | null = null;
+    if (scanLog?.id) {
+      const { data: patrolMatchData, error: patrolMatchError } = await serviceClient.rpc("match_scan_to_patrol_session", {
+        p_scan_log_id: scanLog.id,
+      });
+
+      if (patrolMatchError) {
+        console.warn("device-scan patrol matching skipped", patrolMatchError);
+      } else {
+        patrolMatch = Array.isArray(patrolMatchData)
+          ? (patrolMatchData[0] as Record<string, unknown> | undefined) ?? null
+          : (patrolMatchData as Record<string, unknown> | null);
+
+        console.info("[Patrol] Scan matching result", {
+          scanLogId: scanLog.id,
+          companyId: device.company_id,
+          deviceIdentifier,
+          patrolMatch,
+        });
+      }
+    }
     let pendingTag: { id: string; status: string } | null = null;
     let alert: { id: string } | null = null;
 
@@ -368,6 +466,7 @@ Deno.serve(async (req) => {
       pending_tag: pendingTag,
       alert,
       tag_status: tagStatus,
+      patrol_match: patrolMatch,
     });
   } catch (err) {
     const dbError = err as DbError;

@@ -1,49 +1,97 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
-import { useUserRole } from "@/hooks/useUserRole";
+import type { Database } from "@/integrations/supabase/types";
 import { useNfcReader } from "@/hooks/useNfcReader";
 import { useNfcScanProcessor, type ScanValidationResult } from "@/hooks/useNfcScanProcessor";
 import { useOfflineScanQueue } from "@/hooks/useOfflineScanQueue";
-import ScannerRing from "@/components/scanner/ScannerRing";
-import ScannerControls from "@/components/scanner/ScannerControls";
-import ScanLog, { type ScanLogEntry } from "@/components/scanner/ScanLog";
-import ManualScanForm from "@/components/scan/ManualScanForm";
-import FaceVerification, { type FaceVerifyResult } from "@/components/scanner/FaceVerification";
+import { useDeviceBattery } from "@/hooks/useDeviceBattery";
+import ScannerRing, { type ScannerUiState } from "@/components/scanner/ScannerRing";
+import type { ScanLogEntry } from "@/components/scanner/ScanLog";
+import type { FaceVerifyResult } from "@/components/scanner/FaceVerification";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, AlertTriangle, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import vaultDoor from "@/assets/vault-door.png";
+import { ensureLocationPermission, getCachedDeviceLocation, getDeviceLocation } from "@/lib/deviceGeolocation";
+import { updatePatrolDevicePresence } from "@/lib/devicePresence";
+import { backfillNfcScanGps } from "@/lib/nfcWorkflow";
+import { getLocalDeviceIdentifier, resolveDeviceCompany } from "@/lib/deviceCompany";
+import { batteryMetadata } from "@/lib/deviceBattery";
+import HardwareSosListener from "@/components/devices/HardwareSosListener";
+import TTechMxPatrolLogo from "@/components/branding/TTechMxPatrolLogo";
+
+const FaceVerification = lazy(() => import("@/components/scanner/FaceVerification"));
+
+type IdleCallbackWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+};
+
+type ScanLogInsert = Database["public"]["Tables"]["scan_logs"]["Insert"];
+type FaceScanData = ScanLogInsert & { guard_name?: string | null };
+
+const scheduleLowPriority = (work: () => void) => {
+  if (typeof window === "undefined") {
+    work();
+    return;
+  }
+
+  const requestIdleCallback = (window as IdleCallbackWindow).requestIdleCallback;
+
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(work, { timeout: 1500 });
+    return;
+  }
+
+  window.setTimeout(work, 0);
+};
+
+type ScanGps = { lat: number; lng: number; accuracy?: number | null } | null;
 
 const NFCScanner = () => {
-  const { user } = useAuth();
-  const { canManage } = useUserRole();
   const queryClient = useQueryClient();
+  const videoRef = useRef<HTMLVideoElement>(null);
   const { syncQueue, syncing, pendingCount } = useOfflineScanQueue();
 
-  const [selectedGuard, setSelectedGuard] = useState("");
-  const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
-  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gps, setGps] = useState<ScanGps>(null);
+  const [gpsStatus, setGpsStatus] = useState<"idle" | "capturing" | "available" | "pending" | "unavailable">("idle");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [sessionLog, setSessionLog] = useState<ScanLogEntry[]>([]);
-  const [scannerStatus, setScannerStatus] = useState<NfcStatus>("idle");
+  const [scannerStatus, setScannerStatus] = useState<ScannerUiState>("initializing");
   const [lastCheckpoint, setLastCheckpoint] = useState<string | null>(null);
+  const [lastTagUid, setLastTagUid] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [showManualFallback, setShowManualFallback] = useState(false);
-  const bgMapContainerRef = useRef<HTMLDivElement>(null);
-  const bgMapRef = useRef<L.Map | null>(null);
+  const [lastScanAt, setLastScanAt] = useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const { battery } = useDeviceBattery();
+  const scanDeviceMetadata = useMemo(() => batteryMetadata(battery), [battery]);
 
   // Face verification state
   const [pendingFaceScan, setPendingFaceScan] = useState<{
     result: ScanValidationResult;
-    scanData: any;
+    scanData: FaceScanData;
   } | null>(null);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const syncVideoPlayback = () => {
+      if (document.visibilityState === "visible") {
+        void video.play().catch(() => undefined);
+        return;
+      }
+
+      video.pause();
+    };
+
+    syncVideoPlayback();
+    document.addEventListener("visibilitychange", syncVideoPlayback);
+    return () => document.removeEventListener("visibilitychange", syncVideoPlayback);
+  }, []);
   // Online/offline tracking
   useEffect(() => {
     const on = () => setIsOnline(true);
@@ -53,210 +101,354 @@ const NFCScanner = () => {
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
-  // Company ID
-  const { data: profile } = useQuery({
-    queryKey: ["profile-company", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("company_id").eq("id", user!.id).single();
-      return data;
-    },
-    enabled: !!user,
+  const localDeviceIdentifier = getLocalDeviceIdentifier();
+  const { data: deviceCompany, isLoading: deviceCompanyLoading, error: deviceCompanyError } = useQuery({
+    queryKey: ["device-company", localDeviceIdentifier],
+    queryFn: resolveDeviceCompany,
+    retry: false,
   });
+  const devicePaired = deviceCompany?.pairingStatus === "paired";
+  const companyId = devicePaired ? deviceCompany.companyId : null;
+
+  useEffect(() => {
+    console.info(`[NFCScanner] device company ${JSON.stringify({
+      localDeviceIdentifier,
+      loading: deviceCompanyLoading,
+      paired: devicePaired,
+      companyId,
+      pairingStatus: deviceCompany?.pairingStatus ?? null,
+      error: deviceCompanyError ? String(deviceCompanyError) : null,
+    })}`);
+  }, [localDeviceIdentifier, deviceCompanyLoading, devicePaired, companyId, deviceCompany?.pairingStatus, deviceCompanyError]);
+
+  useEffect(() => {
+    if (!isOnline) return;
+    void queryClient.invalidateQueries({ queryKey: ["device-company", localDeviceIdentifier] });
+  }, [isOnline, localDeviceIdentifier, queryClient]);
+
+  useEffect(() => {
+    if (!isOnline || !companyId || pendingCount <= 0 || syncing) return;
+
+    void syncQueue()
+      .then(() => {
+        setLastSyncAt(new Date().toISOString());
+        console.info("[Device] Offline scans synchronized", { company_id: companyId, pending_count: pendingCount });
+        queryClient.invalidateQueries({ queryKey: ["recent_scans"] });
+        queryClient.invalidateQueries({ queryKey: ["scan_logs"] });
+        queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags"] });
+      })
+      .catch((syncError) => {
+        console.warn("[Device] Offline scan synchronization failed", syncError);
+      });
+  }, [companyId, isOnline, pendingCount, queryClient, syncQueue, syncing]);
 
   // Checkpoints
   const { data: checkpoints = [] } = useQuery({
-    queryKey: ["checkpoints"],
+    queryKey: ["checkpoints", companyId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("checkpoints").select("id, name, nfc_tag_id, patrol_id, location_lat, location_lng").order("sort_order");
-      if (error) throw error;
+      const { data, error } = await supabase
+        .from("checkpoints")
+        .select("id, name, nfc_tag_id, site_id, patrol_id, location_lat, location_lng")
+        .eq("company_id", companyId!)
+        .order("sort_order");
+
+      if (error) {
+        console.error("[NFCScanner] checkpoints fetch failed", { companyId, error });
+        throw error;
+      }
+
+      console.info("[NFCScanner] checkpoints loaded", {
+        companyId,
+        siteId: deviceCompany?.siteId ?? null,
+        count: data?.length ?? 0,
+        tags: (data ?? []).map((checkpoint) => ({
+          id: checkpoint.id,
+          name: checkpoint.name,
+          nfc_tag_id: checkpoint.nfc_tag_id,
+          site_id: checkpoint.site_id,
+        })),
+      });
+
+      if (!data?.length) {
+        console.warn("[NFCScanner] no checkpoints found for paired device company", {
+          companyId,
+          siteId: deviceCompany?.siteId ?? null,
+          deviceIdentifier: deviceCompany?.deviceIdentifier ?? localDeviceIdentifier,
+        });
+      }
+
       return data;
     },
-    enabled: !!user,
+    enabled: !!companyId,
   });
-
-  // Background map initialization
-  useEffect(() => {
-    if (!bgMapContainerRef.current || bgMapRef.current) return;
-
-    const map = L.map(bgMapContainerRef.current, {
-      center: [0, 0],
-      zoom: 2,
-      zoomControl: false,
-      attributionControl: false,
-      dragging: false,
-      scrollWheelZoom: false,
-      doubleClickZoom: false,
-      touchZoom: false,
-      keyboard: false,
-    });
-
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: "",
-    }).addTo(map);
-
-    bgMapRef.current = map;
-
-    return () => {
-      map.remove();
-      bgMapRef.current = null;
-    };
-  }, []);
-
-  // Fit background map to checkpoints and add markers
-  useEffect(() => {
-    const map = bgMapRef.current;
-    if (!map) return;
-
-    const withCoords = checkpoints.filter(
-      (cp: any) => cp.location_lat != null && cp.location_lng != null
-    );
-
-    if (withCoords.length > 0) {
-      const bounds = L.latLngBounds(
-        withCoords.map((cp: any) => [cp.location_lat!, cp.location_lng!])
-      );
-      map.fitBounds(bounds.pad(1.5), { animate: false, maxZoom: 3 });
-
-      withCoords.forEach((cp: any) => {
-        const icon = L.divIcon({
-          className: "",
-          html: `<div style="width:10px;height:10px;transform:rotate(45deg);background:hsl(188,95%,50%);border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 12px hsl(188,95%,50%,0.5);opacity:0.7;"></div>`,
-          iconSize: [10, 10],
-          iconAnchor: [5, 5],
-        });
-        L.marker([cp.location_lat!, cp.location_lng!], { icon, interactive: false }).addTo(map);
-      });
-    }
-  }, [checkpoints]);
 
   // Patrols (for verification_level)
   const { data: patrols = [] } = useQuery({
-    queryKey: ["patrols-verification"],
+    queryKey: ["patrols-verification", companyId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("patrols").select("id, verification_level");
+      const { data, error } = await supabase.from("patrols").select("id, verification_level").eq("company_id", companyId!);
       if (error) throw error;
       return data as Array<{ id: string; verification_level: string }>;
     },
-    enabled: !!user,
+    enabled: !!companyId,
   });
-
-  // Guards
-  const { data: guards = [] } = useQuery({
-    queryKey: ["guards-active"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("guards").select("id, full_name, badge_number, photo_url").eq("is_active", true).order("full_name");
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
-
-  const selectedGuardData = guards.find((g) => g.id === selectedGuard);
 
   // Scan processor
   const { processScan } = useNfcScanProcessor({
     checkpoints,
     patrols,
-    selectedGuardId: selectedGuard,
-    companyId: profile?.company_id ?? null,
+    selectedGuardId: null,
+    guardName: null,
+    deviceMetadata: scanDeviceMetadata,
+    companyId,
     isOnline,
     onSuccess: (result) => {
-      setScannerStatus("success");
-      setLastCheckpoint(result.checkpoint?.name ?? null);
-      setLastError(null);
-      addToLog(result, true);
-      queryClient.invalidateQueries({ queryKey: ["recent_scans"] });
-      queryClient.invalidateQueries({ queryKey: ["scan_logs"] });
-      setTimeout(() => setScannerStatus(nfcReader.supported ? "scanning" : "idle"), 2500);
+      const registeredCheckpoint = result.tagStatus === "registered" && Boolean(result.checkpointName ?? result.checkpoint?.name);
+      const nextState: ScannerUiState = !isOnline ? "success_offline" : registeredCheckpoint ? "success" : "unregistered";
+
+      playFeedbackSound(!isOnline ? "offline-queued" : registeredCheckpoint ? "scan-success" : "error");
+      setScannerStatus(nextState);
+      setLastCheckpoint(getScanDisplayName(result));
+      setLastError(registeredCheckpoint ? null : "Tag not registered. Sent to Command Center for registration.");
+      setLastScanAt(new Date().toISOString());
+      addToLog(result, registeredCheckpoint);
+      scheduleLowPriority(() => {
+        queryClient.invalidateQueries({ queryKey: ["recent_scans"] });
+        queryClient.invalidateQueries({ queryKey: ["scan_logs"] });
+        queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags"] });
+      });
+      signalScannerHaptic(registeredCheckpoint ? "success" : "unregistered");
+      console.info("[ScannerState]", {
+        state: nextState,
+        tagUid: result.tagId ?? null,
+        checkpoint: result.checkpointName ?? result.checkpoint?.name ?? null,
+        gpsStatus,
+      });
+      setTimeout(() => setScannerStatus("scanning"), registeredCheckpoint ? 1500 : 2500);
     },
     onFailure: (result) => {
-      setScannerStatus("error");
+      const locallyQueued = result.reason?.toLowerCase().includes("saved locally") ?? false;
+      playFeedbackSound(locallyQueued ? "offline-queued" : "error");
+      setScannerStatus(classifyFailureState(result.reason, locallyQueued));
       setLastCheckpoint(null);
       setLastError(result.reason ?? "Unknown error");
+      setLastScanAt(new Date().toISOString());
       addToLog(result, false);
-      setTimeout(() => setScannerStatus(nfcReader.supported ? "scanning" : "idle"), 2500);
-    },
-    onFaceVerificationRequired: (result, scanData) => {
+      console.info("[ScannerState]", { state: classifyFailureState(result.reason, locallyQueued), reason: result.reason ?? null, tagUid: result.tagId ?? null });
+      setTimeout(() => setScannerStatus("scanning"), 2500);
+    },    onFaceVerificationRequired: (result, scanData) => {
       // Pause scanning, show face verification
       setScannerStatus("idle");
-      setPendingFaceScan({ result, scanData });
-      toast.info("🔐 Face verification required for this patrol");
+      setPendingFaceScan({ result, scanData: scanData as FaceScanData });
+      toast.info("Face verification required for this patrol");
     },
   });
 
-  const addToLog = (result: ScanValidationResult, valid: boolean) => {
+  const addToLog = useCallback((result: ScanValidationResult, valid: boolean) => {
+    console.debug(`[NFCScanner] session log entry ${JSON.stringify({
+      valid,
+      checkpointName: getScanDisplayName(result),
+      resultCheckpointName: result.checkpointName,
+      resultCheckpoint: result.checkpoint
+        ? { id: result.checkpoint.id, name: result.checkpoint.name, nfc_tag_id: result.checkpoint.nfc_tag_id }
+        : null,
+      tagStatus: result.tagStatus,
+      reason: result.reason ?? null,
+    })}`);
+
     setSessionLog((prev) => [
       {
         id: crypto.randomUUID(),
-        checkpointName: result.checkpoint?.name ?? "Unknown Tag",
+        checkpointName: getScanDisplayName(result),
         timestamp: new Date().toISOString(),
         valid,
         offline: !isOnline,
       },
       ...prev,
-    ].slice(0, 50));
-  };
+    ].slice(0, 20));
+  }, [isOnline]);
 
   // Handle face verification result
   const handleFaceResult = useCallback(async (faceResult: FaceVerifyResult) => {
     if (!pendingFaceScan) return;
 
     if (faceResult.verified) {
-      // Complete the scan with face data
       const { scanData } = pendingFaceScan;
       try {
-        const { error } = await supabase.from("scan_logs").insert({
-          ...scanData,
+        const { guard_name: _guardName, ...scanLogData } = scanData;
+        const verifiedScanData: ScanLogInsert = {
+          ...scanLogData,
           is_offline_sync: false,
           face_verified: true,
           face_confidence: faceResult.confidence,
-        });
+        };
+        const { error } = await supabase.from("scan_logs").insert(verifiedScanData);
         if (error) throw error;
 
         setScannerStatus("success");
-        setLastCheckpoint(pendingFaceScan.result.checkpoint?.name ?? null);
+        setLastCheckpoint(getScanDisplayName(pendingFaceScan.result));
         addToLog(pendingFaceScan.result, true);
         queryClient.invalidateQueries({ queryKey: ["recent_scans"] });
-        toast.success("✅ Triple-verified: NFC + GPS + Face ID");
+        toast.success("Triple-verified: NFC + GPS + Face ID");
       } catch {
         toast.error("Failed to save verified scan");
       }
     } else {
-      // Face verification failed — flag as alert
-      setScannerStatus("error");
-      setLastError("Face verification failed — identity mismatch");
+      setScannerStatus("save_failed");
+      setLastError("Face verification failed - identity mismatch");
       addToLog(pendingFaceScan.result, false);
 
-      // Create security alert
-      if (profile?.company_id) {
+      if (companyId) {
         await supabase.from("alerts").insert({
-          company_id: profile.company_id,
+          company_id: companyId,
           type: "anomaly" as const,
           severity: "high" as const,
-          guard_id: selectedGuard || null,
-          message: `Face verification FAILED at checkpoint "${pendingFaceScan.result.checkpoint?.name}". Confidence: ${Math.round(faceResult.confidence * 100)}%. Possible identity mismatch.`,
+          guard_id: null,
+          message: `Face verification failed at checkpoint "${pendingFaceScan.result.checkpoint?.name}". Confidence: ${Math.round(faceResult.confidence * 100)}%. Possible identity mismatch.`,
         });
       }
-      toast.error("⚠️ Face mismatch — security alert generated");
+      toast.error("Face mismatch - security alert generated");
     }
 
     setPendingFaceScan(null);
-    setTimeout(() => setScannerStatus(nfcReader.supported ? "scanning" : "idle"), 3000);
-  }, [pendingFaceScan, selectedGuard, profile?.company_id, queryClient]);
-
+    setTimeout(() => setScannerStatus("scanning"), 3000);
+  }, [addToLog, companyId, pendingFaceScan, queryClient]);
   // NFC Reader
   const nfcReader = useNfcReader({
     onScan: async ({ serialNumber }) => {
-      if (!selectedGuard) {
-        setScannerStatus("error");
-        setLastError("Select a guard before scanning");
-        setTimeout(() => setScannerStatus("scanning"), 2000);
+      if (!companyId) {
+        const message = deviceCompanyLoading ? "Device enrollment is loading. Please wait." : "This device is not enrolled for patrol scanning.";
+        console.warn(`[Scan] Ignored NFC tag without company ${JSON.stringify({
+          tag_uid: serialNumber,
+          localDeviceIdentifier,
+          loading: deviceCompanyLoading,
+          paired: devicePaired,
+          pairingStatus: deviceCompany?.pairingStatus ?? null,
+          error: deviceCompanyError ? String(deviceCompanyError) : null,
+        })}`);
+        setScannerStatus("device_unassigned");
+        setLastCheckpoint(null);
+        setLastError(message);
+        playFeedbackSound("error");
+        signalScannerHaptic("device_unassigned");
+        toast.warning(message);
+        setTimeout(() => setScannerStatus(nfcReader.supported ? "scanning" : "idle"), 2500);
         return;
       }
-      await processScan(serialNumber, gps);
+
+      playFeedbackSound("scan-detected");
+      signalScannerHaptic("tag_detected");
+      setScannerStatus("tag_detected");
+      setLastTagUid(serialNumber);
+      setLastCheckpoint(`Tag ${serialNumber}`);
+      setLastError(null);
+      console.info("[ScannerState]", { state: "tag_detected", tagUid: serialNumber });
+
+      await sleep(180);
+      setScannerStatus("verifying");
+      console.info("[ScannerState]", { state: "verifying", tagUid: serialNumber });
+
+      const scanGps = await getGpsForScan();
+      setScannerStatus("saving");
+      console.info("[ScannerState]", { state: "saving", tagUid: serialNumber, gpsCaptured: Boolean(scanGps) });
+      const result = await processScan(serialNumber, scanGps);
+      if (!scanGps && result.scanLogId) {
+        toast.info("GPS unavailable, scan saved without GPS. Retrying location in background.");
+        retryGpsInBackground(result.scanLogId, serialNumber);
+      }
     },
     debounceMs: 3000,
   });
+
+  useEffect(() => {
+    void ensureLocationPermission().catch(() => {
+      setGpsStatus("pending");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!companyId || !Capacitor.isNativePlatform()) return;
+
+    let cancelled = false;
+    const warmGps = async (reason: string) => {
+      try {
+        const location = await getDeviceLocation({ maxAgeMs: 120000 });
+        if (cancelled) return;
+
+        const nextGps = { lat: location.lat, lng: location.lng, accuracy: location.accuracy };
+        setGps(nextGps);
+        setGpsStatus("available");
+        console.info("[GPS] Warm location ready", {
+          reason,
+          latitude: nextGps.lat,
+          longitude: nextGps.lng,
+          accuracy: nextGps.accuracy ?? null,
+        });
+      } catch (error) {
+        if (cancelled) return;
+        setGpsStatus((current) => current === "available" ? current : "pending");
+        console.warn("[GPS] Warm location unavailable", { reason, error: String(error) });
+      }
+    };
+
+    void warmGps("scanner-start");
+    const intervalId = window.setInterval(() => void warmGps("scanner-heartbeat"), 45000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [companyId]);
+
+  useEffect(() => {
+    const handleSosFeedback = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: string; deviceIdentifier?: string }>).detail;
+      if (detail?.status === "sending" || detail?.status === "sent") {
+        playFeedbackSound("sos");
+        signalScannerHaptic("sos");
+        setScannerStatus("sos");
+        setLastTagUid(null);
+        setLastCheckpoint(detail.deviceIdentifier ?? localDeviceIdentifier);
+        setLastError("Location is being shared with command center.");
+        setLastScanAt(new Date().toISOString());
+        console.info("[ScannerState]", { state: "sos", status: detail.status, deviceIdentifier: detail.deviceIdentifier ?? localDeviceIdentifier });
+        return;
+      }
+
+      if (detail?.status === "error") {
+        setScannerStatus("save_failed");
+        setLastError("SOS could not be sent. Call your supervisor now.");
+        signalScannerHaptic("save_failed");
+        console.info("[ScannerState]", { state: "error", source: "sos" });
+        setTimeout(() => setScannerStatus(nfcReader.supported ? "scanning" : "idle"), 3500);
+      }
+    };
+
+    window.addEventListener("mxpatrol:sos-feedback", handleSosFeedback);
+    return () => window.removeEventListener("mxpatrol:sos-feedback", handleSosFeedback);
+  }, [localDeviceIdentifier]);
+
+  useEffect(() => {
+    if (!nfcReader.supported || pendingFaceScan) return;
+
+    nfcReader.startScanning();
+    setScannerStatus("scanning");
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        nfcReader.startScanning();
+        setScannerStatus("scanning");
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
+  }, [nfcReader.supported, nfcReader.startScanning, pendingFaceScan]);
 
   // Sync NFC reader status with scanner status
   useEffect(() => {
@@ -264,250 +456,455 @@ const NFCScanner = () => {
       setScannerStatus("scanning");
     }
     if (nfcReader.status === "unsupported" || nfcReader.status === "disabled") {
-      setScannerStatus(nfcReader.status);
+      setScannerStatus(nfcReader.status as ScannerUiState);
       setLastError(nfcReader.errorMessage);
     }
   }, [nfcReader.status]);
 
-  const captureGps = () => {
-    if (!navigator.geolocation) { toast.error("Geolocation not supported"); return; }
-    setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setGpsLoading(false); },
-      (err) => { setGpsLoading(false); toast.error(`GPS error: ${err.message}`); },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
-
-  const handleStartScan = () => {
-    if (!selectedGuard) { toast.error("Select a guard first"); return; }
-    captureGps();
-    nfcReader.startScanning();
-  };
-
-  // Manual scan count for rate limiting
-  const { data: manualScanCount = 0 } = useQuery({
-    queryKey: ["manual_scan_count", selectedGuard],
-    queryFn: async () => {
-      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-      const { count } = await supabase
-        .from("scan_logs")
-        .select("*", { count: "exact", head: true })
-        .eq("guard_id", selectedGuard)
-        .eq("is_manual", true)
-        .gte("scanned_at", twelveHoursAgo);
-      return count ?? 0;
-    },
-    enabled: !!selectedGuard,
-  });
-
   // Check if any assigned patrol has enhanced verification
-  const hasEnhancedPatrol = patrols.some((p) => p.verification_level === "enhanced");
+
+  const getGpsForScan = async (): Promise<ScanGps> => {
+    setGpsStatus("capturing");
+
+    const cachedLocation = getCachedDeviceLocation(120000);
+    if (cachedLocation) {
+      const nextGps = { lat: cachedLocation.lat, lng: cachedLocation.lng, accuracy: cachedLocation.accuracy };
+      setGps(nextGps);
+      setGpsStatus("available");
+      return nextGps;
+    }
+
+    try {
+      const location = await withTimeout(getDeviceLocation({ maxAgeMs: 120000 }), 4500);
+      const nextGps = { lat: location.lat, lng: location.lng, accuracy: location.accuracy };
+      setGps(nextGps);
+      setGpsStatus("available");
+      return nextGps;
+    } catch (error) {
+      console.warn("[GPS] Scan location unavailable before save; will retry after insert", { error: String(error) });
+      setGpsStatus("pending");
+      return null;
+    }
+  };
+
+  const retryGpsInBackground = (scanLogId: string, tagId: string) => {
+    void (async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await sleep(5000);
+        try {
+          const location = await getDeviceLocation({ maxAgeMs: 120000 });
+          const nextGps = { lat: location.lat, lng: location.lng, accuracy: location.accuracy };
+          setGps(nextGps);
+          setGpsStatus("available");
+
+          if (companyId) {
+            await updatePatrolDevicePresence({
+              companyId,
+              userId: null,
+              gps: nextGps,
+              battery,
+            });
+          }
+
+          if (companyId) {
+            await backfillNfcScanGps({
+              companyId,
+              scanLogId,
+              tagId,
+              gps: nextGps,
+              battery,
+            });
+          }
+
+          console.info("[GPS] Scan GPS backfilled", {
+            scanLogId,
+            tagUid: tagId,
+            latitude: nextGps.lat,
+            longitude: nextGps.lng,
+            accuracy: nextGps.accuracy ?? null,
+          });
+
+          scheduleLowPriority(() => {
+            queryClient.invalidateQueries({ queryKey: ["scan_logs"] });
+            queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags"] });
+          });
+          return;
+        } catch (error) {
+          console.warn("[GPS] Scan GPS backfill attempt failed", { scanLogId, tagUid: tagId, attempt: attempt + 1, error: String(error) });
+          setGpsStatus("pending");
+        }
+      }
+
+      setGpsStatus("unavailable");
+    })();
+  };
+
+  const scannerShellState = getScannerShellState(scannerStatus);
+  const isNativeScanner = Capacitor.isNativePlatform();
+  const gpsLabel = getScannerGpsLabel(gpsStatus);
+  const nfcLabel = getScannerNfcLabel(nfcReader.supported, scannerStatus);
+  const assignmentLabel = companyId ? "Assigned" : deviceCompanyLoading ? "Checking" : "Not enrolled";
+  const assignmentTone = companyId ? "is-good" : deviceCompanyLoading ? "is-info" : "is-warning";
+  const latestFeedback = getScannerFeedback(scannerStatus, lastCheckpoint, lastError, pendingCount, deviceCompanyLoading, Boolean(companyId));
+  const activityTime = formatScannerTime(lastScanAt ?? lastSyncAt);
 
   return (
-    <div className="relative flex flex-col min-h-[calc(100vh-3.5rem)] lg:min-h-[calc(100vh-4rem)] overflow-hidden">
-      {/* Vault door behind map */}
-      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center" style={{ opacity: 0.15 }}>
-        <img
-          src={vaultDoor}
-          alt=""
-          className="w-[500px] h-[500px] object-contain"
-          style={{ filter: "blur(1px) saturate(0.5)" }}
-        />
-      </div>
+    <div className={"scanner-shell scanner-page scanner-state-" + scannerShellState + (isNativeScanner ? " scanner-native" : " scanner-web") + " relative min-h-[100vh] overflow-hidden bg-[#020711] text-white lg:min-h-[calc(100vh-4rem)]"}>
+      <HardwareSosListener />
+      <div className="scanner-ambient-bg" aria-hidden="true" />
 
-      {/* Live map background */}
-      <div className="pointer-events-none absolute inset-0 z-[1]">
-        <div ref={bgMapContainerRef} className="absolute inset-0" style={{ opacity: 0.85 }} />
-        {/* Steel/silver tint to match vault + soft vignette */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: `
-              linear-gradient(180deg, hsla(210,15%,60%,0.12) 0%, hsla(210,10%,50%,0.08) 100%)
-            `,
-            mixBlendMode: "color",
-          }}
-        />
-        <div
-          className="absolute inset-0"
-          style={{
-            background: `
-              radial-gradient(ellipse at 50% 40%, transparent 40%, hsl(210 15% 8% / 0.5) 90%),
-              linear-gradient(to bottom, hsl(210 15% 8% / 0.15) 0%, transparent 20%, transparent 80%, hsl(210 15% 8% / 0.3) 100%)
-            `,
-          }}
-        />
-      </div>
-
-      {/* Header */}
-      <div className="relative z-10 px-4 pt-4 pb-2">
-        <div className="flex items-center justify-between">
+      <header className="web-scanner-header" aria-label="MX Patrol web scanner header">
+        <div className="web-scanner-title-group">
+          <TTechMxPatrolLogo variant="header" priority className="web-scanner-logo" />
+          <div className="web-scanner-title-divider" aria-hidden="true" />
           <div>
-            <h2 className="font-heading text-xl font-bold text-foreground">NFC Scanner</h2>
-            <p className="text-xs text-muted-foreground">Tap NFC tags to verify checkpoints</p>
+            <p className="web-scanner-kicker">Web Scanner</p>
+            <p className="web-scanner-subtitle">Secure patrol scan console</p>
           </div>
-          {hasEnhancedPatrol && (
-            <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1">
-              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-              <span className="text-[10px] font-semibold text-primary uppercase tracking-wider">Multi-Factor</span>
-            </div>
-          )}
         </div>
-      </div>
+        <div className="web-scanner-header-actions">
+          <span className={"web-scanner-live-pill " + (isOnline ? "is-live" : "is-offline")}>
+            <span aria-hidden="true" />
+            {isOnline ? "LIVE" : "OFFLINE"}
+          </span>
+          <Button asChild size="sm" variant="ghost" className="web-scanner-supervisor-button">
+            <Link to="/login?supervisor=1">Supervisor</Link>
+          </Button>
+        </div>
+      </header>
 
-      {/* Face Verification Overlay (z-10) */}
-      <AnimatePresence>
-        {pendingFaceScan && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="relative z-10 mx-4 mb-4"
-          >
-            <div className="rounded-xl border border-primary/30 bg-card p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-primary" />
-                <div>
-                  <p className="text-sm font-bold text-foreground">Face Verification Required</p>
-                  <p className="text-xs text-muted-foreground">
-                    Checkpoint: {pendingFaceScan.result.checkpoint?.name} — NFC ✓ GPS ✓ Face ID pending
-                  </p>
-                </div>
+      <main className="web-scanner-shell">
+        {!companyId && (
+          <section className="web-scanner-enrollment-card web-scanner-sidebar-item" aria-label="Device enrollment status">
+            <div className="web-scanner-enrollment-header">
+              <span className="web-scanner-warning-icon" aria-hidden="true">!</span>
+              <div className="web-scanner-enrollment-copy">
+                <h2>
+                  {deviceCompanyLoading
+                    ? "Checking device enrollment"
+                    : deviceCompanyError
+                      ? "Could not verify this device"
+                      : "Device not enrolled"}
+                </h2>
+                <p>
+                  {deviceCompanyError
+                    ? "Check the network connection and retry. Scanning resumes automatically once the device is verified."
+                    : "Enroll this RG360 with a supervisor QR token before patrol scanning."}
+                </p>
               </div>
-              <FaceVerification
-                guardPhotoUrl={selectedGuardData?.photo_url ?? null}
-                onResult={handleFaceResult}
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-xs text-muted-foreground"
-                onClick={() => {
-                  setPendingFaceScan(null);
-                  setScannerStatus(nfcReader.supported ? "scanning" : "idle");
-                  toast.warning("Face verification skipped — scan not recorded");
-                }}
-              >
-                Cancel Verification
+            </div>
+            <div className="web-scanner-device-code" aria-label={`Device identifier ${localDeviceIdentifier}`}>
+              {localDeviceIdentifier}
+            </div>
+            <div className="web-scanner-enrollment-actions">
+              {deviceCompanyError ? (
+                <Button
+                  size="sm"
+                  className="web-scanner-action-button web-scanner-action-primary"
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ["device-company", localDeviceIdentifier] })}
+                >
+                  Retry
+                </Button>
+              ) : (
+                <Button asChild size="sm" className="web-scanner-action-button web-scanner-action-primary">
+                  <Link to="/enroll">Enroll Device</Link>
+                </Button>
+              )}
+              <Button asChild size="sm" variant="outline" className="web-scanner-action-button web-scanner-action-secondary">
+                <Link to="/login?supervisor=1">Supervisor Login</Link>
               </Button>
             </div>
-          </motion.div>
+          </section>
         )}
-      </AnimatePresence>
 
-      {/* Scanner Area */}
-      {!pendingFaceScan && (
-        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4 }}
-          >
-            <ScannerRing
-              status={scannerStatus}
-              checkpointName={lastCheckpoint}
-              errorReason={lastError}
-              onClick={scannerStatus === "idle" ? handleStartScan : undefined}
-            />
-          </motion.div>
-
-
-          {/* Action buttons */}
-          <div className="mt-6 w-full max-w-xs space-y-3">
-            {scannerStatus === "idle" && (
-              <Button
-                onClick={handleStartScan}
-                disabled={!selectedGuard}
-                className="w-full gap-2 py-5 text-base"
-                size="lg"
-              >
-                <ScanLine className="h-5 w-5" />
-                Start NFC Scanning
-              </Button>
-            )}
-            {scannerStatus === "scanning" && (
-              <Button
-                onClick={nfcReader.stopScanning}
-                variant="outline"
-                className="w-full gap-2 border-destructive/30 text-destructive hover:bg-destructive/10"
-              >
-                Stop Scanning
-              </Button>
-            )}
+        <section className="web-scanner-panel-card web-scanner-sidebar-item web-scanner-patrol-card" aria-label="Patrol scanner status">
+          <div className="web-scanner-section-heading">
+            <p>Patrol scanner</p>
           </div>
-        </div>
-      )}
+          <p className="web-scanner-panel-copy">
+            {companyId ? "Scanner is ready. Hold the device near the checkpoint tag." : "Ready for device enrollment before patrol scanning."}
+          </p>
+        </section>
 
-      {/* Manual Fallback Toggle */}
-      <div className="relative z-10 px-4 mb-2">
-        {!showManualFallback ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowManualFallback(true)}
-            className="w-full gap-1.5 text-xs h-8 text-muted-foreground hover:text-warning"
-          >
-            <AlertTriangle className="h-3.5 w-3.5" />
-            Having trouble scanning NFC?
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowManualFallback(false)}
-            className="w-full gap-1.5 text-xs h-8 text-muted-foreground"
-          >
-            Hide manual fallback
-          </Button>
-        )}
-      </div>
+        <section className="web-scanner-panel-card web-scanner-sidebar-item web-scanner-system-card" aria-label="System status">
+          <p className="web-scanner-card-title">System Status</p>
+          <div className="web-scanner-status-list">
+            <div className="web-scanner-status-row"><span>GPS</span><strong className={gpsStatus === "unavailable" ? "is-warning" : "is-good"}>{gpsLabel}</strong></div>
+            <div className="web-scanner-status-row"><span>Network</span><strong className={isOnline ? "is-good" : "is-warning"}>{isOnline ? "Online" : "Offline"}</strong></div>
+            <div className="web-scanner-status-row"><span>Sync Queue</span><strong className={pendingCount > 0 ? "is-warning" : "is-good"}>{pendingCount} Pending</strong></div>
+            <div className="web-scanner-status-row"><span>NFC</span><strong className={nfcReader.supported ? "is-good" : "is-danger"}>{nfcLabel}</strong></div>
+            <div className="web-scanner-status-row"><span>Device Assignment</span><strong className={assignmentTone}>{assignmentLabel}</strong></div>
+          </div>
+        </section>
 
-      {/* Manual Scan Form (restricted fallback) */}
-      <AnimatePresence>
-        {showManualFallback && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="relative z-10 px-4 mb-4 overflow-hidden"
-          >
-            <ManualScanForm
-              guards={guards}
-              checkpoints={checkpoints}
-              selectedGuard={selectedGuard}
-              onGuardChange={setSelectedGuard}
-              gps={gps}
-              gpsLoading={gpsLoading}
-              onCaptureGps={captureGps}
-              isOnline={isOnline}
-              companyId={profile?.company_id ?? null}
-              manualScanCount={manualScanCount}
-              maxManualScans={3}
-              canBypassLimit={canManage}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+        <section className="web-scanner-panel-card web-scanner-sidebar-item web-scanner-feedback-card web-scanner-latest-card" aria-label="Latest scanner activity">
+          <div className="web-scanner-section-heading">
+            <span className={"web-scanner-feedback-dot " + latestFeedback.tone} aria-hidden="true" />
+            <p>Latest Activity</p>
+          </div>
+          <div className="web-scanner-latest-body">
+            <div>
+              <span>{latestFeedback.title}</span>
+              <span>{activityTime}</span>
+            </div>
+            <p>{latestFeedback.detail}</p>
+          </div>
+        </section>
 
-      {/* Bottom panel */}
-      <div className="relative z-10 glass-card mx-4 mb-4 p-4 space-y-4 rounded-xl">
-        <ScannerControls
-          guards={guards}
-          selectedGuard={selectedGuard}
-          onGuardChange={setSelectedGuard}
-          gps={gps}
-          gpsLoading={gpsLoading}
-          onCaptureGps={captureGps}
-          isOnline={isOnline}
-          pendingCount={pendingCount}
-          syncing={syncing}
-          onSync={() => syncQueue().then(() => queryClient.invalidateQueries({ queryKey: ["recent_scans"] }))}
-        />
-        <ScanLog entries={sessionLog} />
-      </div>
+        <section className="web-scanner-visual-panel" aria-label="NFC scanner video">
+          <div className="scanner-stage">
+            <div className="scanner-media-shell web-scanner-media-shell">
+              <video
+                ref={videoRef}
+                className="scanner-background-video"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+                controls={false}
+                poster="/assets/rg360/nfcscanner-poster.jpg"
+                aria-hidden="true"
+              >
+                <source src="/assets/rg360/nfcscanner.mp4" type="video/mp4" />
+              </video>
+              <div className="scanner-dark-overlay" />
+
+              <p className="sr-only" aria-live="polite">
+                {scannerStatus === "idle" || scannerStatus === "scanning" || scannerStatus === "initializing"
+                  ? "NFC scanner ready"
+                  : scannerStatus + (lastCheckpoint ? " " + lastCheckpoint : "")}
+              </p>
+
+              <AnimatePresence>
+                {pendingFaceScan && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="scanner-face-panel relative z-10 mx-4 mt-auto mb-4"
+                  >
+                    <div className="space-y-3 rounded-xl border border-primary/30 bg-black/82 p-4 backdrop-blur-sm">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="text-sm font-bold text-white">Face Verification Required</p>
+                          <p className="text-xs text-white/70">
+                            Checkpoint: {pendingFaceScan.result.checkpoint?.name ?? "Unknown"} - NFC + GPS + Face ID pending
+                          </p>
+                        </div>
+                      </div>
+                      <Suspense
+                        fallback={(
+                          <div className="rounded-xl border border-white/15 p-6 text-center text-sm text-white/65">
+                            Loading face verification...
+                          </div>
+                        )}
+                      >
+                        <FaceVerification
+                          guardPhotoUrl={null}
+                          onResult={handleFaceResult}
+                        />
+                      </Suspense>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-xs text-white/65"
+                        onClick={() => {
+                          setPendingFaceScan(null);
+                          setScannerStatus(nfcReader.supported ? "scanning" : "idle");
+                          toast.warning("Face verification skipped - scan not recorded");
+                        }}
+                      >
+                        Cancel Verification
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {!pendingFaceScan && (
+                <div className="scanner-feedback-layer pointer-events-none absolute inset-0 z-10 flex items-end justify-center px-4 pb-16">
+                  <ScannerRing
+                    status={scannerStatus}
+                    checkpointName={lastCheckpoint}
+                    errorReason={lastError}
+                    tagUid={lastTagUid}
+                    gpsStatus={gpsStatus}
+                    isOnline={isOnline}
+                    pendingCount={pendingCount}
+                    scannedAt={lastScanAt}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="web-scanner-footer" aria-label="Scanner footer">
+        <span>MX Patrol Web Scanner</span>
+        <span>Secure Patrol System</span>
+        <span>(c) 2025 TTECH</span>
+      </footer>
     </div>
   );
 };
+const getScanDisplayName = (result: ScanValidationResult) =>
+  result.checkpointName
+  ?? result.checkpoint?.name
+  ?? (result.tagStatus === "registered" ? "Registered checkpoint" : "Unregistered");
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("Timed out")), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
+type NavigatorWithActivation = Navigator & {
+  userActivation?: { hasBeenActive?: boolean };
+};
+
+type ScannerHapticKind =
+  | "tag_detected"
+  | "success"
+  | "success_offline"
+  | "duplicate"
+  | "unregistered"
+  | "save_failed"
+  | "device_unassigned"
+  | "sos";
+
+const signalScannerHaptic = (kind: ScannerHapticKind) => {
+  const nav = navigator as NavigatorWithActivation;
+  if (!nav.userActivation?.hasBeenActive) return;
+
+  const patterns: Record<ScannerHapticKind, number | number[]> = {
+    tag_detected: 35,
+    success: [45, 40, 80],
+    success_offline: [50, 60, 50],
+    duplicate: [35, 45, 35],
+    unregistered: [80, 55, 80],
+    save_failed: [120, 70, 120],
+    device_unassigned: [90, 60, 90],
+    sos: [180, 90, 180, 90, 180],
+  };
+
+  try {
+    nav.vibrate?.(patterns[kind]);
+  } catch {
+    // Some Android WebViews block vibration unless triggered by a direct tap.
+  }
+};
+
+const classifyFailureState = (reason?: string | null, locallyQueued = false): ScannerUiState => {
+  const text = reason?.toLowerCase() ?? "";
+
+  if (locallyQueued || /saved locally|sync is queued/.test(text)) return "success_offline";
+  if (/duplicate|already scanned/.test(text)) return "duplicate";
+  if (/not registered|unregistered|unknown tag/.test(text)) return "unregistered";
+  if (/company|enroll|assigned|paired/.test(text)) return "device_unassigned";
+  return "save_failed";
+};
+
+const getScannerShellState = (status: ScannerUiState) => {
+  if (status === "idle" || status === "scanning" || status === "initializing") return "ready";
+  if (status === "acquiring_gps" || status === "verifying" || status === "saving") return "verifying";
+  if (status === "error") return "save_failed";
+  if (status === "unsupported" || status === "disabled") return "device_unassigned";
+  return status;
+};
+const getScannerGpsLabel = (status: "idle" | "capturing" | "available" | "pending" | "unavailable") => {
+  if (status === "available") return "Ready";
+  if (status === "capturing") return "Capturing";
+  if (status === "pending") return "Searching";
+  if (status === "unavailable") return "Unavailable";
+  return "Ready";
+};
+
+const getScannerNfcLabel = (supported: boolean, status: ScannerUiState) => {
+  if (!supported) return "Unavailable";
+  if (status === "disabled") return "Disabled";
+  if (status === "unsupported") return "Unsupported";
+  return "Active";
+};
+
+const getScannerFeedback = (
+  status: ScannerUiState,
+  checkpointName: string | null,
+  errorReason: string | null,
+  pendingCount: number,
+  deviceCompanyLoading: boolean,
+  hasCompany: boolean,
+) => {
+  if (!hasCompany) {
+    return {
+      tone: deviceCompanyLoading ? "is-info" : "is-warning",
+      title: deviceCompanyLoading ? "Checking device" : "Enrollment required",
+      detail: deviceCompanyLoading ? "Verifying this RG360 before scanning." : "Enroll this device before patrol scanning.",
+    };
+  }
+
+  switch (status) {
+    case "tag_detected":
+      return { tone: "is-info", title: "Tag detected", detail: checkpointName ?? "Hold steady while MX Patrol verifies the tag." };
+    case "acquiring_gps":
+      return { tone: "is-info", title: "Getting GPS", detail: "Capturing location for this checkpoint scan." };
+    case "verifying":
+      return { tone: "is-info", title: "Verifying checkpoint", detail: checkpointName ?? "Checking tag against registered checkpoints." };
+    case "saving":
+      return { tone: "is-info", title: "Saving scan", detail: "Writing checkpoint scan securely." };
+    case "success":
+      return { tone: "is-good", title: "Checkpoint verified", detail: checkpointName ?? "Scan saved successfully." };
+    case "success_offline":
+      return { tone: "is-warning", title: "Saved offline", detail: `${pendingCount} pending sync${pendingCount === 1 ? "" : "s"}.` };
+    case "duplicate":
+      return { tone: "is-warning", title: "Already scanned", detail: checkpointName ?? "Duplicate checkpoint scan detected." };
+    case "unregistered":
+      return { tone: "is-danger", title: "Unknown checkpoint", detail: errorReason ?? "Tag is not registered for this site." };
+    case "save_failed":
+    case "error":
+      return { tone: "is-danger", title: "Scan save delayed", detail: errorReason ?? "MX Patrol will retry automatically where possible." };
+    case "device_unassigned":
+      return { tone: "is-warning", title: "Device not assigned", detail: errorReason ?? "Contact a supervisor to assign this device." };
+    case "sos":
+      return { tone: "is-danger", title: "SOS active", detail: "Alert sent to control room." };
+    default:
+      return { tone: "is-good", title: "Ready to scan", detail: "Hold the device near the checkpoint tag." };
+  }
+};
+
+const formatScannerTime = (iso: string | null) => {
+  const date = iso ? new Date(iso) : new Date();
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+};
 export default NFCScanner;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Clock, Trash2, Edit2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useDevices } from "@/hooks/useDashboardData";
+import { useSites } from "@/hooks/useSites";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const DAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -51,13 +53,15 @@ const Shifts = () => {
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [form, setForm] = useState(defaultForm);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const { data: devices = [] } = useDevices();
+  const { data: sites = [] } = useSites();
 
   const { data: shifts = [], isLoading } = useQuery({
     queryKey: ["shifts"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("shifts")
-        .select("*, guards(full_name, badge_number)")
+        .select("*, sites(name), guards(full_name, badge_number)")
         .order("day_of_week")
         .order("start_time");
       if (error) throw error;
@@ -88,6 +92,8 @@ const Shifts = () => {
       const payload = {
         guard_id: values.guard_id,
         company_id,
+        site_id: values.site_id || null,
+        device_identifier: values.device_identifier || null,
         day_of_week: values.day_of_week,
         start_time: values.start_time,
         end_time: values.end_time,
@@ -179,6 +185,30 @@ const Shifts = () => {
                     <SelectContent>
                       {guards.map((g) => (
                         <SelectItem key={g.id} value={g.id}>{g.full_name} ({g.badge_number})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Site</Label>
+                  <Select value={form.site_id || "none"} onValueChange={(v) => setForm({ ...form, site_id: v === "none" ? "" : v, device_identifier: "" })}>
+                    <SelectTrigger><SelectValue placeholder="Select site" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      {sites.map((site) => (
+                        <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Device Identity</Label>
+                  <Select value={form.device_identifier || "none"} onValueChange={(v) => setForm({ ...form, device_identifier: v === "none" ? "" : v })}>
+                    <SelectTrigger><SelectValue placeholder="Select patrol device" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      {devices.filter((device: any) => !form.site_id || device.site_id === form.site_id).map((device: any) => (
+                        <SelectItem key={device.id} value={device.device_identifier}>{device.device_name || device.device_identifier}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -298,6 +328,9 @@ const Shifts = () => {
                           </div>
                         )}
                       </div>
+                      <p className="mb-1 text-xs text-muted-foreground">Site: {shift.sites?.name || "Unassigned"}</p>
+                      <p className="mb-1 text-xs text-muted-foreground">Device: {shift.device_identifier || "Unassigned"}</p>
+                      <p className="mb-2 text-xs text-muted-foreground">Company: {shift.company_id}</p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Clock className="h-3.5 w-3.5" />
                         <span>{shift.start_time.slice(0, 5)} – {shift.end_time.slice(0, 5)}</span>

@@ -21,6 +21,16 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 
@@ -29,6 +39,7 @@ import DeviceRegistrationDialog from "@/components/devices/DeviceRegistrationDia
 import DeviceDetailSheet from "@/components/devices/DeviceDetailSheet";
 import DevicePairingCard from "@/components/devices/DevicePairingCard";
 import QRGenerateDialog from "@/components/devices/QRGenerateDialog";
+import SiteSelector from "@/components/sites/SiteSelector";
 
 const typeIcons: Record<string, typeof Smartphone> = {
   mobile: Smartphone, tablet: Tablet, nfc_reader: ScanLine, pda: Monitor,
@@ -38,7 +49,8 @@ const typeLabels: Record<string, string> = {
 };
 
 const Devices = () => {
-  const { data: devices = [], isLoading } = useDevices();
+  const [siteId, setSiteId] = useState("all");
+  const { data: devices = [], isLoading } = useDevices(siteId);
   const { isAdmin } = useUserRole();
   const queryClient = useQueryClient();
   useDeviceRealtime();
@@ -51,6 +63,7 @@ const Devices = () => {
   const [qrOpen, setQrOpen] = useState(false);
   const [editDevice, setEditDevice] = useState<any>(null);
   const [detailDevice, setDetailDevice] = useState<any>(null);
+  const [deleteDevice, setDeleteDevice] = useState<any>(null);
 
   const filtered = useMemo(() => {
     return devices.filter((d: any) => {
@@ -102,6 +115,24 @@ const Devices = () => {
     onError: (err: any) => toast.error(err.message),
   });
 
+  const deleteDeviceMutation = useMutation({
+    mutationFn: async (deviceId: string) => {
+      const { error } = await supabase.from("devices").delete().eq("id", deviceId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Device deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["devices"] });
+      setSelected((prev) => {
+        if (!deleteDevice?.id) return prev;
+        const next = new Set(prev);
+        next.delete(deleteDevice.id);
+        return next;
+      });
+      setDeleteDevice(null);
+    },
+    onError: (err: any) => toast.error(err.message || "Failed to delete device"),
+  });
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -125,6 +156,7 @@ const Devices = () => {
 
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row">
+        <SiteSelector value={siteId} onChange={setSiteId} className="flex items-center gap-2" />
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -217,7 +249,8 @@ const Devices = () => {
               {filtered.map((device: any) => {
                 const Icon = typeIcons[device.device_type] || Smartphone;
                 const isOnline = device.status === "online";
-                const batteryLow = (device.battery_level ?? 100) <= 30;
+                const batteryLevel = device.battery_level ?? device.metadata?.battery_level ?? null;
+                const batteryLow = batteryLevel != null && batteryLevel <= 30;
 
                 return (
                   <TableRow key={device.id}>
@@ -248,12 +281,10 @@ const Devices = () => {
                         <Badge variant={isOnline ? "default" : "secondary"} className={isOnline ? "bg-success text-success-foreground" : ""}>
                           {isOnline ? "Online" : "Offline"}
                         </Badge>
-                        {device.battery_level != null && (
-                          <span className="flex items-center gap-1">
-                            <Battery className={`h-3 w-3 ${batteryLow ? "text-destructive" : "text-success"}`} />
-                            <span className="text-xs text-muted-foreground">{device.battery_level}%</span>
-                          </span>
-                        )}
+                        <span className="flex items-center gap-1" title={batteryLevel == null ? "Battery will appear after the RG360 sends a scan or presence update" : undefined}>
+                          <Battery className={`h-3 w-3 ${batteryLow ? "text-destructive" : batteryLevel == null ? "text-muted-foreground" : "text-success"}`} />
+                          <span className="text-xs text-muted-foreground">{batteryLevel != null ? `${batteryLevel}%` : "Battery pending"}</span>
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
@@ -286,6 +317,14 @@ const Devices = () => {
                               <Pencil className="mr-2 h-4 w-4" /> Edit
                             </DropdownMenuItem>
                           )}
+                          {isAdmin && (
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeleteDevice(device)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -310,6 +349,29 @@ const Devices = () => {
         open={!!detailDevice}
         onOpenChange={(open) => !open && setDetailDevice(null)}
       />
+
+      <AlertDialog open={!!deleteDevice} onOpenChange={(open) => !open && setDeleteDevice(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Device?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove {deleteDevice?.device_name || deleteDevice?.device_identifier || "this device"} from Device Management.
+              Existing scan history stays in reports, but this device will no longer be paired or monitored.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteDeviceMutation.isPending}
+              onClick={() => deleteDevice?.id && deleteDeviceMutation.mutate(deleteDevice.id)}
+            >
+              {deleteDeviceMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Device
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

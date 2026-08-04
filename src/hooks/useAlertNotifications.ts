@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { playFeedbackSound } from "@/lib/feedbackSound";
 
 const severityStyles: Record<string, { title: string }> = {
   critical: { title: "🚨 CRITICAL ALERT" },
@@ -27,6 +28,10 @@ export function useAlertNotifications() {
         { event: "INSERT", schema: "public", table: "alerts" },
         (payload) => {
           const alert = payload.new as { message: string; severity: string; type: string };
+          if (alert.type === "panic_button") {
+            console.info("[Realtime] SOS alert received", payload.new);
+            playFeedbackSound("sos");
+          }
           const style = severityStyles[alert.severity] || severityStyles.low;
           const isFaceAlert = alert.message?.toLowerCase().includes("face verification");
           
@@ -60,6 +65,7 @@ export function useAlertNotifications() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "scan_logs" },
         () => {
+          playFeedbackSound("scan-detected");
           toast.info("New NFC scan recorded", { duration: 3000 });
         }
       )

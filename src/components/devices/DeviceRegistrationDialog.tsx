@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGuards } from "@/hooks/useDashboardData";
+import { useSites } from "@/hooks/useSites";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -25,9 +26,10 @@ import { Loader2, Plus } from "lucide-react";
 const deviceSchema = z.object({
   device_name: z.string().min(1, "Device name is required").max(100),
   device_type: z.enum(["mobile", "pda", "nfc_reader", "tablet"]),
-  device_identifier: z.string().min(1, "Device identifier is required").max(100),
+  device_identifier: z.string().max(100).optional().or(z.literal("")),
   serial_number: z.string().max(100).optional().or(z.literal("")),
   site_location: z.string().max(200).optional().or(z.literal("")),
+  site_id: z.string().optional().or(z.literal("")),
   guard_id: z.string().optional().or(z.literal("")),
   notes: z.string().max(500).optional().or(z.literal("")),
 });
@@ -51,6 +53,7 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { data: guards = [] } = useGuards();
+  const { data: sites = [] } = useSites();
   const isEdit = !!editDevice;
 
   const form = useForm<DeviceFormValues>({
@@ -61,6 +64,7 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
       device_identifier: editDevice?.device_identifier || "",
       serial_number: editDevice?.serial_number || "",
       site_location: editDevice?.site_location || "",
+      site_id: editDevice?.site_id || "",
       guard_id: editDevice?.guard_id || "",
       notes: editDevice?.notes || "",
     },
@@ -80,9 +84,10 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
       const payload: any = {
         device_name: values.device_name,
         device_type: values.device_type,
-        device_identifier: values.device_identifier,
+        device_identifier: values.device_identifier || (isEdit ? editDevice.device_identifier : `pending-${crypto.randomUUID()}`),
         serial_number: values.serial_number || null,
         site_location: values.site_location || null,
+        site_id: values.site_id && values.site_id !== "unassigned" ? values.site_id : null,
         guard_id: values.guard_id && values.guard_id !== "unassigned" ? values.guard_id : null,
         notes: values.notes || null,
         company_id: profile.company_id,
@@ -117,7 +122,7 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Device" : "Register New Device"}</DialogTitle>
           <DialogDescription>
-            {isEdit ? "Update device details" : "Register a new NFC patrol device to the platform"}
+            {isEdit ? "Update device details" : "Register a device shell and generate a pairing code for RG360 setup"}
           </DialogDescription>
         </DialogHeader>
 
@@ -169,7 +174,7 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
                   <FormItem>
                     <FormLabel>Device ID</FormLabel>
                     <FormControl>
-                      <Input placeholder="Unique identifier" {...field} />
+                      <Input placeholder={isEdit ? "Unique identifier" : "Leave blank for pairing code setup"} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -206,6 +211,32 @@ export default function DeviceRegistrationDialog({ open, onOpenChange, editDevic
                 )}
               />
             </div>
+
+
+
+            <FormField
+              control={form.control}
+              name="site_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Site</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value || "unassigned"}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select site" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {sites.map((site) => (
+                        <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

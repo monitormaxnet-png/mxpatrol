@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Building2, Users, Loader2, Save, Trash2, Shield, Bell, Lock,
-  Mail, Globe, Phone, BadgeCheck, AlertTriangle, Eye, EyeOff
+  Mail, Globe, BadgeCheck, AlertTriangle, Eye, EyeOff, MapPin, Plus, Pencil, X
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -24,6 +24,17 @@ type UserRole = {
   profile?: { full_name: string | null; avatar_url: string | null } | null;
 };
 
+type SiteRecord = {
+  id: string;
+  company_id: string;
+  name: string;
+  address: string | null;
+  gps_lat: number | null;
+  gps_lng: number | null;
+  status: string;
+  created_at: string;
+};
+
 const roleConfig = {
   admin: { label: "Admin", icon: Shield, color: "bg-destructive/10 text-destructive border-destructive/20" },
   supervisor: { label: "Supervisor", icon: Eye, color: "bg-warning/10 text-warning border-warning/20" },
@@ -40,6 +51,18 @@ const SettingsPage = () => {
   const [companyDomain, setCompanyDomain] = useState("");
   const [savingCompany, setSavingCompany] = useState(false);
   const [loadingCompany, setLoadingCompany] = useState(true);
+
+  // Sites state
+  const [sites, setSites] = useState<SiteRecord[]>([]);
+  const [loadingSites, setLoadingSites] = useState(false);
+  const [savingSite, setSavingSite] = useState(false);
+  const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
+  const [showSiteForm, setShowSiteForm] = useState(false);
+  const [siteName, setSiteName] = useState("");
+  const [siteAddress, setSiteAddress] = useState("");
+  const [siteGpsLat, setSiteGpsLat] = useState("");
+  const [siteGpsLng, setSiteGpsLng] = useState("");
+  const [siteStatus, setSiteStatus] = useState("active");
 
   // Users/roles state
   const [roles, setRoles] = useState<UserRole[]>([]);
@@ -58,6 +81,51 @@ const SettingsPage = () => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  const resetSiteForm = () => {
+    setEditingSiteId(null);
+    setSiteName("");
+    setSiteAddress("");
+    setSiteGpsLat("");
+    setSiteGpsLng("");
+    setSiteStatus("active");
+  };
+
+  const loadSites = async (companyId: string) => {
+    setLoadingSites(true);
+    const { data, error } = await (supabase.from("sites" as never) as any)
+      .select("id, company_id, name, address, gps_lat, gps_lng, status, created_at")
+      .eq("company_id", companyId)
+      .order("name", { ascending: true });
+    setLoadingSites(false);
+
+    if (error) {
+      toast.error("Failed to load sites: " + error.message);
+      return;
+    }
+
+    setSites((data ?? []) as SiteRecord[]);
+  };
+
+  const openNewSiteForm = () => {
+    resetSiteForm();
+    setShowSiteForm(true);
+  };
+
+  const openEditSiteForm = (site: SiteRecord) => {
+    setEditingSiteId(site.id);
+    setSiteName(site.name);
+    setSiteAddress(site.address || "");
+    setSiteGpsLat(site.gps_lat === null ? "" : String(site.gps_lat));
+    setSiteGpsLng(site.gps_lng === null ? "" : String(site.gps_lng));
+    setSiteStatus(site.status || "active");
+    setShowSiteForm(true);
+  };
+
+  const closeSiteForm = () => {
+    resetSiteForm();
+    setShowSiteForm(false);
+  };
 
   // Load company data
   useEffect(() => {
@@ -86,6 +154,14 @@ const SettingsPage = () => {
     };
     load();
   }, [user]);
+
+  useEffect(() => {
+    if (!company?.id) {
+      setSites([]);
+      return;
+    }
+    loadSites(company.id);
+  }, [company?.id]);
 
   // Load user roles
   useEffect(() => {
@@ -117,6 +193,48 @@ const SettingsPage = () => {
     setSavingCompany(false);
     if (error) toast.error("Failed to update: " + error.message);
     else toast.success("Company settings saved");
+  };
+
+  const handleSaveSite = async () => {
+    if (!company?.id || !isAdmin) return;
+
+    const trimmedName = siteName.trim();
+    if (!trimmedName) {
+      toast.error("Site name is required");
+      return;
+    }
+
+    const lat = siteGpsLat.trim() ? Number(siteGpsLat) : null;
+    const lng = siteGpsLng.trim() ? Number(siteGpsLng) : null;
+    if ((lat !== null && !Number.isFinite(lat)) || (lng !== null && !Number.isFinite(lng))) {
+      toast.error("GPS coordinates must be valid numbers");
+      return;
+    }
+
+    setSavingSite(true);
+    const payload = {
+      company_id: company.id,
+      name: trimmedName,
+      address: siteAddress.trim() || null,
+      gps_lat: lat,
+      gps_lng: lng,
+      status: siteStatus,
+    };
+
+    const query = supabase.from("sites" as never) as any;
+    const { error } = editingSiteId
+      ? await query.update(payload).eq("id", editingSiteId).eq("company_id", company.id)
+      : await query.insert(payload);
+
+    setSavingSite(false);
+    if (error) {
+      toast.error("Failed to save site: " + error.message);
+      return;
+    }
+
+    toast.success(editingSiteId ? "Site updated" : "Site added");
+    closeSiteForm();
+    await loadSites(company.id);
   };
 
   const handleUpdateRole = async (roleId: string, newRole: "admin" | "supervisor" | "guard") => {
@@ -183,10 +301,14 @@ const SettingsPage = () => {
       </div>
 
       <Tabs defaultValue="company" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 lg:w-[500px]">
+        <TabsList className="grid w-full grid-cols-5 lg:w-[640px]">
           <TabsTrigger value="company" className="flex items-center gap-1.5 text-xs lg:text-sm">
             <Building2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Company</span>
+          </TabsTrigger>
+          <TabsTrigger value="sites" className="flex items-center gap-1.5 text-xs lg:text-sm">
+            <MapPin className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Sites</span>
           </TabsTrigger>
           <TabsTrigger value="users" className="flex items-center gap-1.5 text-xs lg:text-sm">
             <Users className="h-3.5 w-3.5" />
@@ -256,6 +378,150 @@ const SettingsPage = () => {
                   </p>
                 )}
               </div>
+            )}
+          </SectionCard>
+        </TabsContent>
+
+
+        {/* Sites Tab */}
+        <TabsContent value="sites">
+          <SectionCard>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                  <MapPin className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-heading text-sm font-semibold text-foreground">Manage Sites</h3>
+                  <p className="text-xs text-muted-foreground">Add and edit branches for the current company</p>
+                </div>
+              </div>
+              {isAdmin && (
+                <Button onClick={openNewSiteForm} size="sm" className="w-full sm:w-auto">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Site
+                </Button>
+              )}
+            </div>
+
+            <Separator className="bg-border/30" />
+
+            {showSiteForm && (
+              <div className="rounded-lg border border-border/30 bg-secondary/20 p-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground">{editingSiteId ? "Edit Site" : "Add Site"}</h4>
+                    <p className="text-xs text-muted-foreground">Sites are saved under {company?.name || "this company"}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeSiteForm}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    title="Close"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Site Name</Label>
+                    <Input value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="Main Branch" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Status</Label>
+                    <Select value={siteStatus} onValueChange={setSiteStatus}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label className="text-xs text-muted-foreground">Address</Label>
+                    <Input value={siteAddress} onChange={(e) => setSiteAddress(e.target.value)} placeholder="Street address" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">GPS Latitude</Label>
+                    <Input value={siteGpsLat} onChange={(e) => setSiteGpsLat(e.target.value)} inputMode="decimal" placeholder="-26.2041" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">GPS Longitude</Label>
+                    <Input value={siteGpsLng} onChange={(e) => setSiteGpsLng(e.target.value)} inputMode="decimal" placeholder="28.0473" />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <Button onClick={handleSaveSite} disabled={savingSite} className="w-full sm:w-auto">
+                    {savingSite ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    {editingSiteId ? "Save Site" : "Add Site"}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={closeSiteForm} className="w-full sm:w-auto">
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {loadingSites ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : sites.length === 0 ? (
+              <div className="rounded-lg border border-border/30 py-10 text-center">
+                <MapPin className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                <p className="text-sm font-medium text-foreground">No sites added yet</p>
+                <p className="text-xs text-muted-foreground">Create the first site for this company.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-border/30">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="bg-secondary/40 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Site</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Address</th>
+                      <th className="px-4 py-3 font-medium">GPS Latitude</th>
+                      <th className="px-4 py-3 font-medium">GPS Longitude</th>
+                      <th className="px-4 py-3 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/30">
+                    {sites.map((site) => (
+                      <tr key={site.id} className="bg-background/20">
+                        <td className="px-4 py-3 font-medium text-foreground">{site.name}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant="outline" className={site.status === "active" ? "border-success/30 text-success" : "border-muted-foreground/30 text-muted-foreground"}>
+                            {site.status === "active" ? "Active" : "Inactive"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{site.address || "-"}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{site.gps_lat ?? "-"}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{site.gps_lng ?? "-"}</td>
+                        <td className="px-4 py-3 text-right">
+                          {isAdmin ? (
+                            <Button variant="ghost" size="sm" onClick={() => openEditSiteForm(site)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">View only</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {!isAdmin && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Lock className="h-3 w-3" /> Only admins can add or edit sites
+              </p>
             )}
           </SectionCard>
         </TabsContent>

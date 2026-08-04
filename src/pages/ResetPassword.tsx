@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Shield, Lock, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { motion } from "framer-motion";
 
 const ResetPassword = () => {
@@ -13,7 +13,6 @@ const ResetPassword = () => {
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -29,9 +28,9 @@ const ResetPassword = () => {
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast.error("Error", { description: error.message });
     } else {
-      toast({ title: "Password updated", description: "You can now sign in with your new password." });
+      toast.success("Password updated", { description: "You can now sign in with your new password." });
       navigate("/login");
     }
     setLoading(false);

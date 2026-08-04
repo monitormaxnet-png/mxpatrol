@@ -1,6 +1,6 @@
 {
-  "name": "SENTINEL Patrol Intelligence",
-  "short_name": "SENTINEL",
+  "name": "TTECH Patrol Intelligence",
+  "short_name": "TTECH",
   "description": "AI-powered guard patrol management and monitoring platform",
   "start_url": "/",
   "display": "standalone",

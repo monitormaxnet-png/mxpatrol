@@ -1,0 +1,35 @@
+PS C:\Users\Administrator> Get-Content "C:\response-system\DriverApp\src\context\SocketContext.js" | Select-String "joinRoom|onDispatchRef|reconnect"
+
+  const onDispatchRef = useRef(onDispatch);
+    onDispatchRef.current = onDispatch;
+        reconnection: true,
+        reconnectionDelay: 2000,
+        reconnectionAttempts: 999,
+      // Join vehicle room - extracted so we can call on reconnect too
+      const joinRoom = () => {
+        joinRoom(); // join on every connect/reconnect
+      socket.on('reconnect', (attempt) => {
+        console.log(`[Socket] Reconnected after ${attempt} attempts`);
+        joinRoom(); // re-join room after reconnect
+      socket.on('reconnect_error', (err) => {
+        console.log(`[Socket] Reconnect error: ${err.message}`);
+        if (onDispatchRef.current) {
+          onDispatchRef.current(alarm);
+
+
+PS C:\Users\Administrator>
+
+
+
+
+C:\Users\Administrator>curl -X PATCH "http://192.168.178.199:5000/api/alarms/35d4d2ca-5bbb-4abc-8de6-2d3815b0689f/status" -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjljMmZjN2NhLTY5YTMtNDVmOC1hNjE1LTRlMGIwNzk4NmY4MiIsImVtYWlsIjoiYWRtaW5AcmVzcG9uc2VzeXN0ZW0ubG9jYWwiLCJyb2xlIjoiYWRtaW4iLCJmdWxsX25hbWUiOiJTeXN0ZW0gQWRtaW4iLCJpYXQiOjE3NzcyMDA2MjMsImV4cCI6MTc3NzIyOTQyM30.JN0OyYxBV7HiySkEV-3s-wnqlNXcnU3kVb_4ezQo6GQ" -d "{\"status\":\"acknowledged\"}"
+{"error":"Server error"}
+C:\Users\Administrator>
+
+
+
+curl -X PATCH "http://192.168.178.199:5000/api/alarms/35d4d2ca-5bbb-4abc-8de6-2d3815b0689f/status" -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjljMmZjN2NhLTY5YTMtNDVmOC1hNjE1LTRlMGIwNzk4NmY4MiIsImVtYWlsIjoiYWRtaW5AcmVzcG9uc2VzeXN0ZW0ubG9jYWwiLCJyb2xlIjoiYWRtaW4iLCJmdWxsX25hbWUiOiJTeXN0ZW0gQWRtaW4iLCJpYXQiOjE3NzcyMzE4MTUsImV4cCI6MTc3NzI2MDYxNX0.pfO4ek7hCRG-TRtXI-Pnn-H2110ThC24UZXXxd1yz6o" -d "{\"status\":\"acknowledged\"}" -v 2>&1
+
+
+
+curl -X PATCH "http://192.168.178.199:5000/api/alarms/35d4d2ca-5bbb-4abc-8de6-2d3815b0689f/status" -H "Content-Type: application/json" -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjljMmZjN2NhLTY5YTMtNDVmOC1hNjE1LTRlMGIwNzk4NmY4MiIsImVtYWlsIjoiYWRtaW5AcmVzcG9uc2VzeXN0ZW0ubG9jYWwiLCJyb2xlIjoiYWRtaW4iLCJmdWxsX25hbWUiOiJTeXN0ZW0gQWRtaW4iLCJpYXQiOjE3NzcyMzE4MTUsImV4cCI6MTc3NzI2MDYxNX0.pfO4ek7hCRG-TRtXI-Pnn-H2110ThC24UZXXxd1yz6o" -d "{\"status\":\"acknowledged\"}" -v 2>&1

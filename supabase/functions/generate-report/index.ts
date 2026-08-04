@@ -5,61 +5,148 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+const dbDetails = (error: any) => ({
+  code: error?.code ?? null,
+  message: error?.message ?? null,
+  details: error?.details ?? null,
+  hint: error?.hint ?? null,
+});
+
+const dbError = (message: string, error: any) => json({ error: message, details: dbDetails(error) }, 500);
+
+const dateRangeStart = (range: unknown) => {
+  const date = new Date();
+  if (range === "today") date.setHours(0, 0, 0, 0);
+  else if (range === "30d") date.setDate(date.getDate() - 30);
+  else date.setDate(date.getDate() - 7);
+  return date.toISOString();
 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  let reportJobId: string | null = null;
+
+  const markJobFailed = async (message: string) => {
+    if (!reportJobId) return;
+    await supabase
+      .from("report_jobs")
+      .update({ status: "failed", failed_at: new Date().toISOString(), error_message: message })
+      .eq("id", reportJobId);
+  };
 
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    // Authenticate user
     const authHeader = req.headers.get("Authorization");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const userClient = createClient(SUPABASE_URL, anonKey, {
       global: { headers: { Authorization: authHeader || "" } },
     });
     const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("company_id")
       .eq("id", user.id)
       .single();
-
-    if (!profile?.company_id) {
-      return new Response(JSON.stringify({ error: "No company associated" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (profileError) return dbError("Profile lookup failed", profileError);
+    if (!profile?.company_id) return json({ error: "No company associated" }, 400);
 
     const companyId = profile.company_id;
 
     let body: Record<string, unknown> = {};
-    try { body = await req.json(); } catch { /* ok */ }
-    const reportType = (body.report_type as string) || "daily";
+    try { body = await req.json(); } catch { /* empty body is allowed */ }
 
-    // Fetch data for the report
+    const reportType = (body.report_type as string) || "daily";
+    const siteId = typeof body.site_id === "string" && body.site_id ? body.site_id : null;
+    const dateRange = typeof body.date_range === "string" ? body.date_range : "7d";
+    const since = dateRangeStart(dateRange);
+
+    const { data: job, error: jobError } = await supabase
+      .from("report_jobs")
+      .insert({
+        company_id: companyId,
+        site_id: siteId,
+        report_type: reportType,
+        status: "pending",
+        date_range: dateRange,
+        created_by: user.id,
+        filters: { site_id: siteId, since, date_range: dateRange },
+      })
+      .select("id")
+      .single();
+    if (jobError) return dbError("Failed to create report job", jobError);
+    reportJobId = job.id;
+
+    await supabase
+      .from("report_jobs")
+      .update({ status: "running", started_at: new Date().toISOString() })
+      .eq("id", reportJobId);
+
+    const guardsQuery = supabase.from("guards").select("*").eq("company_id", companyId);
+    const patrolsQuery = supabase
+      .from("patrols")
+      .select("*, guards(full_name)")
+      .eq("company_id", companyId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    const incidentsQuery = supabase
+      .from("incidents")
+      .select("*")
+      .eq("company_id", companyId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    let scansQuery = supabase
+      .from("scan_logs")
+      .select("*, guards(full_name), checkpoints(name, site_id, sites(name)), sites(name)")
+      .eq("company_id", companyId)
+      .not("checkpoint_id", "is", null)
+      .neq("tag_status", "unregistered")
+      .neq("tag_status", "rejected")
+      .gte("scanned_at", since)
+      .order("scanned_at", { ascending: false })
+      .limit(100);
+    const alertsQuery = supabase
+      .from("alerts")
+      .select("*")
+      .eq("company_id", companyId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (siteId) scansQuery = scansQuery.eq("site_id", siteId);
+
     const [guardsRes, patrolsRes, incidentsRes, scansRes, alertsRes] = await Promise.all([
-      supabase.from("guards").select("*").eq("company_id", companyId),
-      supabase.from("patrols").select("*, guards(full_name)").eq("company_id", companyId).order("created_at", { ascending: false }).limit(50),
-      supabase.from("incidents").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(30),
-      supabase.from("scan_logs").select("*, guards(full_name), checkpoints(name)").eq("company_id", companyId).order("scanned_at", { ascending: false }).limit(100),
-      supabase.from("alerts").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(50),
+      guardsQuery,
+      patrolsQuery,
+      incidentsQuery,
+      scansQuery,
+      alertsQuery,
     ]);
+
+    if (guardsRes.error) { await markJobFailed(guardsRes.error.message); return dbError("Failed to load guards", guardsRes.error); }
+    if (patrolsRes.error) { await markJobFailed(patrolsRes.error.message); return dbError("Failed to load patrols", patrolsRes.error); }
+    if (incidentsRes.error) { await markJobFailed(incidentsRes.error.message); return dbError("Failed to load incidents", incidentsRes.error); }
+    if (scansRes.error) { await markJobFailed(scansRes.error.message); return dbError("Failed to load registered scans", scansRes.error); }
+    if (alertsRes.error) { await markJobFailed(alertsRes.error.message); return dbError("Failed to load alerts", alertsRes.error); }
 
     const contextData = {
       guards: guardsRes.data || [],
@@ -69,7 +156,6 @@ serve(async (req) => {
       alerts: alertsRes.data || [],
     };
 
-    // Call AI for report generation
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -85,7 +171,7 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `Generate a ${reportType} security report from this data:\n\nGuards (${contextData.guards.length}): ${JSON.stringify(contextData.guards.slice(0, 15))}\n\nPatrols: ${JSON.stringify(contextData.patrols.slice(0, 15))}\n\nIncidents: ${JSON.stringify(contextData.incidents.slice(0, 10))}\n\nScans: ${JSON.stringify(contextData.scans.slice(0, 20))}\n\nAlerts: ${JSON.stringify(contextData.alerts.slice(0, 15))}`,
+            content: `Generate a ${reportType} security report from this filtered operational data. Use only registered checkpoint scans. Filters: company_id=${companyId}, site_id=${siteId ?? "all"}, since=${since}.\n\nGuards (${contextData.guards.length}): ${JSON.stringify(contextData.guards.slice(0, 15))}\n\nPatrols: ${JSON.stringify(contextData.patrols.slice(0, 15))}\n\nIncidents: ${JSON.stringify(contextData.incidents.slice(0, 10))}\n\nRegistered scans (${contextData.scans.length}): ${JSON.stringify(contextData.scans.slice(0, 20))}\n\nAlerts: ${JSON.stringify(contextData.alerts.slice(0, 15))}`,
           },
         ],
         tools: [
@@ -111,10 +197,7 @@ serve(async (req) => {
                       additionalProperties: false,
                     },
                   },
-                  recommendations: {
-                    type: "array",
-                    items: { type: "string" },
-                  },
+                  recommendations: { type: "array", items: { type: "string" } },
                   stats: {
                     type: "object",
                     properties: {
@@ -139,45 +222,44 @@ serve(async (req) => {
     });
 
     if (!aiResponse.ok) {
-      if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded, try again later." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error("AI report generation failed");
+      const message = aiResponse.status === 429
+        ? "Rate limit exceeded, try again later."
+        : aiResponse.status === 402
+          ? "AI credits exhausted."
+          : "AI report generation failed";
+      await markJobFailed(message);
+      return json({ error: message }, aiResponse.status === 429 || aiResponse.status === 402 ? aiResponse.status : 500);
     }
 
     const aiResult = await aiResponse.json();
     const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
     let reportData: Record<string, unknown> = {};
 
-    if (toolCall?.function?.arguments) {
-      reportData = JSON.parse(toolCall.function.arguments);
-    }
+    if (toolCall?.function?.arguments) reportData = JSON.parse(toolCall.function.arguments);
 
-    // Store report
     const { data: report, error: insertError } = await supabase.from("ai_reports").insert({
       company_id: companyId,
       report_type: reportType,
       summary_text: (reportData.summary as string) || "Report generated",
-      data: reportData,
+      data: { ...reportData, filters: { site_id: siteId, since, date_range: dateRange } },
     }).select().single();
 
-    if (insertError) throw insertError;
+    if (insertError) {
+      await markJobFailed(insertError.message);
+      return dbError("Failed to save generated report", insertError);
+    }
 
-    return new Response(JSON.stringify({ success: true, report }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const { error: completeError } = await supabase
+      .from("report_jobs")
+      .update({ status: "completed", completed_at: new Date().toISOString(), report_id: report.id, error_message: null })
+      .eq("id", reportJobId);
+    if (completeError) return dbError("Report generated but job completion failed", completeError);
+
+    return json({ success: true, report, job_id: reportJobId });
   } catch (e) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    await markJobFailed(message);
     console.error("generate-report error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ error: message }, 500);
   }
 });

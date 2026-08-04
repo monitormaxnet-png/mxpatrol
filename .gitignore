@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist
+/.npm-cache
 dist-ssr
 *.local
 
@@ -22,3 +23,33 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+*.keystore
+*.mobileprovision
+*.orig
+# Build outputs
+build
+coverage
+android/app/build
+android/build
+android/.gradle
+android/app/release
+android/app/debug
+android/capacitor-cordova-android-plugins/build
+# Native signing and local Android files
+android/key.properties
+android/local.properties
+android/*.jks
+android/*.keystore
+android/app/*.jks
+android/app/*.keystore
+android/app/google-services.json
+
+# Local Netlify folder
+.netlify

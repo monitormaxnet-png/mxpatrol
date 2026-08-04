@@ -34,7 +34,8 @@ export default function DeviceDetailSheet({ device, open, onOpenChange }: Props)
 
   const Icon = typeIcons[device.device_type] || Smartphone;
   const isOnline = device.status === "online";
-  const batteryLow = (device.battery_level ?? 100) <= 30;
+  const batteryLevel = device.battery_level ?? device.metadata?.battery_level ?? null;
+  const batteryLow = batteryLevel != null && batteryLevel <= 30;
   const { isAdmin } = useUserRole();
 
   return (
@@ -54,19 +55,16 @@ export default function DeviceDetailSheet({ device, open, onOpenChange }: Props)
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
-          {/* Status + Actions */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Badge variant={isOnline ? "default" : "secondary"} className={isOnline ? "bg-success" : ""}>
                 {isOnline ? <Wifi className="mr-1 h-3 w-3" /> : <WifiOff className="mr-1 h-3 w-3" />}
                 {isOnline ? "Online" : "Offline"}
               </Badge>
-              {device.battery_level != null && (
-                <div className="flex items-center gap-1 text-sm">
-                  <Battery className={`h-4 w-4 ${batteryLow ? "text-destructive" : "text-success"}`} />
-                  <span className="text-muted-foreground">{device.battery_level}%</span>
-                </div>
-              )}
+              <div className="flex items-center gap-1 text-sm">
+                <Battery className={`h-4 w-4 ${batteryLow ? "text-destructive" : batteryLevel == null ? "text-muted-foreground" : "text-success"}`} />
+                <span className="text-muted-foreground">{batteryLevel != null ? `${batteryLevel}%` : "Battery pending"}</span>
+              </div>
               {device.app_type && (
                 <Badge variant="outline" className="text-xs">
                   <Shield className="mr-1 h-3 w-3" />
@@ -86,7 +84,6 @@ export default function DeviceDetailSheet({ device, open, onOpenChange }: Props)
             </TabsList>
 
             <TabsContent value="details" className="space-y-6 mt-4">
-              {/* Pairing */}
               <div>
                 <h4 className="mb-2 text-sm font-medium text-foreground">Pairing Status</h4>
                 <DevicePairingCard device={device} />
@@ -94,7 +91,6 @@ export default function DeviceDetailSheet({ device, open, onOpenChange }: Props)
 
               <Separator />
 
-              {/* Details */}
               <div className="space-y-3">
                 <h4 className="text-sm font-medium text-foreground">Device Information</h4>
                 <InfoRow icon={Hash} label="Device ID" value={device.device_identifier} />
@@ -105,7 +101,7 @@ export default function DeviceDetailSheet({ device, open, onOpenChange }: Props)
                 <InfoRow
                   icon={CalendarDays}
                   label="Registered"
-                  value={device.registration_date ? format(new Date(device.registration_date), "MMM d, yyyy") : "—"}
+                  value={device.registration_date ? format(new Date(device.registration_date), "MMM d, yyyy") : "-"}
                 />
                 <InfoRow
                   icon={Clock}

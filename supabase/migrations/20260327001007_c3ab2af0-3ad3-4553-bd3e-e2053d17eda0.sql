@@ -1,6 +1,6 @@
 
 -- =============================================
--- SENTINEL Patrol Intelligence — Full Schema
+-- TTECH Patrol Intelligence — Full Schema
 -- =============================================
 
 -- 1. Enums

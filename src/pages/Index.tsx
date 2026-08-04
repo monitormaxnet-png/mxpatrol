@@ -1,54 +1,119 @@
-import { Users, CheckCircle2, AlertTriangle, Scan } from "lucide-react";
+import { lazy, Suspense, useState } from "react";
+import { CheckCircle2, Radio, Scan, Wifi, WifiOff } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import StatCard from "@/components/dashboard/StatCard";
-import LiveMap from "@/components/dashboard/LiveMap";
 import AlertsFeed from "@/components/dashboard/AlertsFeed";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import AIInsightsCard from "@/components/dashboard/AIInsightsCard";
-import { useGuards, useAlerts, useScanLogs, useCheckpoints, useRealtimeSubscriptions } from "@/hooks/useDashboardData";
+import LivePatrolSession from "@/components/dashboard/LivePatrolSession";
+import PendingUnregisteredCheckpoints from "@/components/dashboard/PendingUnregisteredCheckpoints";
+import SessionLogs from "@/components/dashboard/SessionLogs";
+import { useCompanyId } from "@/hooks/usePatrolScanData";
+import { useDevices, useScanLogs, useCheckpoints, useRealtimeSubscriptions } from "@/hooks/useDashboardData";
+import { supabase } from "@/integrations/supabase/client";
+import SiteSelector from "@/components/sites/SiteSelector";
+
+const LiveMap = lazy(() => import("@/components/dashboard/LiveMap"));
 
 const Index = () => {
   useRealtimeSubscriptions();
+  const [siteId, setSiteId] = useState("all");
 
-  const { data: guards = [] } = useGuards();
-  const { data: alerts = [] } = useAlerts();
-  const { data: scans = [] } = useScanLogs();
-  const { data: checkpoints = [] } = useCheckpoints();
+  const { data: devices = [] } = useDevices(siteId);
+  const { data: scans = [] } = useScanLogs(siteId);
+  const { data: checkpoints = [] } = useCheckpoints(siteId);
+  const { data: companyId } = useCompanyId();
+  const { data: pendingTags = 0 } = useQuery({
+    queryKey: ["pending_nfc_tags_count", companyId, siteId],
+    queryFn: async () => {
+      let query = supabase
+        .from("scan_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId!)
+        .eq("tag_status", "unregistered")
+        .is("checkpoint_id", null);
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { count, error } = await query;
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!companyId,
+  });
 
-  const activeGuards = guards.filter((g) => g.is_active).length;
+  const { data: scansToday = 0 } = useQuery({
+    queryKey: ["patrol_scans_today", companyId, siteId],
+    queryFn: async () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      let query = supabase
+        .from("scan_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId!)
+        .gte("scanned_at", start.toISOString());
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { count, error } = await query;
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!companyId,
+  });
+
+  const activeDevices = devices.length;
+  const devicesOnline = devices.filter((device) => device.status === "online").length;
+  const devicesOffline = devices.filter((device) => device.status === "offline").length;
   const totalCheckpoints = checkpoints.length;
-  const scansToday = scans.length;
-  const unreadAlerts = alerts.filter((a) => !a.is_read).length;
-  const criticalAlerts = alerts.filter((a) => a.severity === "critical" && !a.is_read).length;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-heading text-2xl font-bold text-foreground">Command Center</h2>
-        <p className="text-sm text-muted-foreground">Real-time patrol intelligence and monitoring</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="font-heading text-2xl font-bold text-foreground">Command Center</h2>
+          <p className="text-sm text-muted-foreground">Real-time patrol intelligence and monitoring</p>
+        </div>
+        <SiteSelector value={siteId} onChange={setSiteId} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Active Guards" value={activeGuards} change={`${guards.length} total`} changeType="positive" icon={Users} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+        <StatCard title="Active Devices" value={activeDevices} change="Patrol hardware" changeType="positive" icon={Radio} />
+        <StatCard title="Devices Online" value={devicesOnline} change="Reporting now" changeType="positive" icon={Wifi} />
+        <StatCard title="Devices Offline" value={devicesOffline} change="Needs attention" changeType={devicesOffline > 0 ? "negative" : "positive"} icon={WifiOff} />
         <StatCard
-          title="Checkpoints"
+          title="Total Checkpoints"
           value={totalCheckpoints}
-          change={`${scansToday} scans today`}
+          change="Registered tags"
           changeType="positive"
           icon={CheckCircle2}
         />
         <StatCard
-          title="Active Alerts"
-          value={unreadAlerts}
-          change={criticalAlerts > 0 ? `${criticalAlerts} critical` : "All clear"}
-          changeType={criticalAlerts > 0 ? "negative" : "positive"}
-          icon={AlertTriangle}
+          title="Patrol Scans Today"
+          value={scansToday}
+          change={`${scans.length} recent shown`}
+          changeType="positive"
+          icon={Scan}
         />
-        <StatCard title="NFC Scans" value={scansToday} change="Recent scans" changeType="positive" icon={Scan} />
+        <Link to="/checkpoints" aria-label="Review pending NFC tags" className="rounded-xl focus:outline-none focus:ring-2 focus:ring-ring">
+          <StatCard
+            title="Pending Tags"
+            value={pendingTags}
+            change="Unknown NFC scans"
+            changeType={pendingTags > 0 ? "negative" : "positive"}
+            icon={Scan}
+          />
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <LiveMap />
+          <Suspense
+            fallback={(
+              <div className="glass-card flex min-h-[380px] items-center justify-center text-sm text-muted-foreground">
+                Loading live map...
+              </div>
+            )}
+          >
+            <LiveMap />
+          </Suspense>
         </div>
         <div className="max-h-[420px]">
           <AlertsFeed />
@@ -56,9 +121,16 @@ const Index = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <AIInsightsCard />
+        <LivePatrolSession />
         <ActivityFeed />
       </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <SessionLogs />
+        <PendingUnregisteredCheckpoints />
+      </div>
+
+      <AIInsightsCard />
     </div>
   );
 };

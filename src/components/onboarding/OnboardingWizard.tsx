@@ -210,7 +210,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
               <Shield className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="font-heading text-lg font-bold text-foreground">Welcome to SENTINEL</h2>
+              <h2 className="font-heading text-lg font-bold text-foreground">Welcome to TTECH</h2>
               <p className="text-xs text-muted-foreground">Let's set up your organization</p>
             </div>
           </div>

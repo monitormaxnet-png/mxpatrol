@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Shield, Mail, Lock, User, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { motion } from "framer-motion";
 
 const Signup = () => {
@@ -14,7 +14,6 @@ const Signup = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const { toast } = useToast();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +29,7 @@ const Signup = () => {
     });
 
     if (error) {
-      toast({ title: "Signup failed", description: error.message, variant: "destructive" });
+      toast.error("Signup failed", { description: error.message });
     } else {
       setSuccess(true);
     }
@@ -76,7 +75,7 @@ const Signup = () => {
           </div>
           <div className="text-center">
             <h1 className="font-heading text-2xl font-bold text-foreground">Create Account</h1>
-            <p className="text-xs text-muted-foreground">Join SENTINEL Patrol Intelligence</p>
+            <p className="text-xs text-muted-foreground">Join TTECH Patrol Intelligence</p>
           </div>
         </div>
 

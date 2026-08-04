@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Shield } from "lucide-react";
@@ -17,7 +18,8 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    const fallbackPath = Capacitor.isNativePlatform() ? "/nfc-scanner" : "/login";
+    return <Navigate to={fallbackPath} replace />;
   }
 
   return <>{children}</>;

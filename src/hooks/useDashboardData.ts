@@ -24,7 +24,7 @@ export function useAlerts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("alerts")
-        .select("*, guards(full_name, badge_number)")
+        .select("*, companies(name), guards(full_name, badge_number)")
         .order("created_at", { ascending: false })
         .limit(20);
       if (error) throw error;
@@ -34,16 +34,18 @@ export function useAlerts() {
   });
 }
 
-export function useScanLogs() {
+export function useScanLogs(siteId = "all") {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ["scan_logs"],
+    queryKey: ["scan_logs", siteId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("scan_logs")
-        .select("*, guards(full_name, badge_number), checkpoints(name)")
+        .select("*, sites(name), guards(full_name, badge_number), checkpoints(name)")
         .order("scanned_at", { ascending: false })
         .limit(20);
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -67,15 +69,17 @@ export function usePatrols() {
   });
 }
 
-export function useDevices() {
+export function useDevices(siteId = "all") {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ["devices"],
+    queryKey: ["devices", siteId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("devices")
-        .select("*, guards(full_name, badge_number)")
+        .select("*, sites(name), guards(full_name, badge_number)")
         .order("last_seen_at", { ascending: false });
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -83,12 +87,14 @@ export function useDevices() {
   });
 }
 
-export function useCheckpoints() {
+export function useCheckpoints(siteId = "all") {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ["checkpoints"],
+    queryKey: ["checkpoints", siteId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("checkpoints").select("*").order("sort_order");
+      let query = supabase.from("checkpoints").select("*, sites(name)").order("sort_order");
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { data, error } = await query;
       if (error) throw error;
       return data as Tables<"checkpoints">[];
     },
@@ -136,11 +142,21 @@ export function useRealtimeSubscriptions() {
   useEffect(() => {
     const channel = supabase
       .channel("dashboard-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, (payload) => {
+        const alert = payload.new as { type?: string; severity?: string; id?: string };
+        if (alert?.type === "panic_button") console.info("[Realtime] SOS alert received", payload.new);
         queryClient.invalidateQueries({ queryKey: ["alerts"] });
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "scan_logs" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "scan_logs" }, (payload) => {
+        console.info("[Realtime] scan_logs event received", payload.new);
         queryClient.invalidateQueries({ queryKey: ["scan_logs"] });
+        queryClient.invalidateQueries({ queryKey: ["live_patrol_scans"] });
+        queryClient.invalidateQueries({ queryKey: ["session_scan_logs"] });
+        queryClient.invalidateQueries({ queryKey: ["pending_unregistered_checkpoints"] });
+        queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags_count"] });
+        queryClient.invalidateQueries({ queryKey: ["patrol_scans_today"] });
+        queryClient.invalidateQueries({ queryKey: ["device_trails"] });
+        queryClient.invalidateQueries({ queryKey: ["scan_map_events"] });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "incidents" }, () => {
         queryClient.invalidateQueries({ queryKey: ["incidents"] });
@@ -153,6 +169,15 @@ export function useRealtimeSubscriptions() {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "devices" }, () => {
         queryClient.invalidateQueries({ queryKey: ["devices"] });
+        queryClient.invalidateQueries({ queryKey: ["device_positions"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pending_nfc_tags" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags"] });
+        queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags_count"] });
+        queryClient.invalidateQueries({ queryKey: ["pending_unregistered_checkpoints"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "checkpoints" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["checkpoints"] });
       })
       .subscribe();
 
@@ -161,3 +186,5 @@ export function useRealtimeSubscriptions() {
     };
   }, [queryClient]);
 }
+
+

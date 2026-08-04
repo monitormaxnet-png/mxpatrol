@@ -145,10 +145,12 @@ export function useGeneratePatrolSessions() {
   const { data: companyId } = useCompanyId();
   return useMutation({
     mutationFn: async () => {
-      const { data, error } = await db.rpc("generate_due_patrol_sessions", { p_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
+      const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
+        body: { action: "generate_sessions", until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() },
+      });
       if (error) throw error;
-      await db.rpc("advance_due_patrol_session_statuses");
-      return data as number;
+      if (!data?.ok) throw new Error(data?.error || "Failed to generate patrol sessions");
+      return (data.result?.generated ?? data.generated ?? 0) as number;
     },
     onSuccess: (count) => {
       toast.success(`Generated ${count ?? 0} patrol session${count === 1 ? "" : "s"}`);

@@ -284,6 +284,7 @@ export type Database = {
           name: string
           nfc_tag_id: string
           patrol_id: string | null
+          site_id: string | null
           sort_order: number | null
         }
         Insert: {
@@ -295,6 +296,7 @@ export type Database = {
           name: string
           nfc_tag_id: string
           patrol_id?: string | null
+          site_id?: string | null
           sort_order?: number | null
         }
         Update: {
@@ -306,6 +308,7 @@ export type Database = {
           name?: string
           nfc_tag_id?: string
           patrol_id?: string | null
+          site_id?: string | null
           sort_order?: number | null
         }
         Relationships: [
@@ -321,6 +324,13 @@ export type Database = {
             columns: ["patrol_id"]
             isOneToOne: false
             referencedRelation: "patrols"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkpoints_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
             referencedColumns: ["id"]
           },
         ]
@@ -594,6 +604,7 @@ export type Database = {
           pairing_status: string
           registration_date: string
           serial_number: string | null
+          site_id: string | null
           site_location: string | null
           status: Database["public"]["Enums"]["device_status"]
           updated_at: string
@@ -624,6 +635,7 @@ export type Database = {
           pairing_status?: string
           registration_date?: string
           serial_number?: string | null
+          site_id?: string | null
           site_location?: string | null
           status?: Database["public"]["Enums"]["device_status"]
           updated_at?: string
@@ -654,6 +666,7 @@ export type Database = {
           pairing_status?: string
           registration_date?: string
           serial_number?: string | null
+          site_id?: string | null
           site_location?: string | null
           status?: Database["public"]["Enums"]["device_status"]
           updated_at?: string
@@ -672,6 +685,13 @@ export type Database = {
             columns: ["guard_id"]
             isOneToOne: false
             referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devices_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
             referencedColumns: ["id"]
           },
         ]
@@ -834,6 +854,60 @@ export type Database = {
           },
         ]
       }
+      incident_report_photos: {
+        Row: {
+          captured_at: string
+          company_id: string
+          created_at: string
+          device_identifier: string
+          gps_accuracy: number | null
+          gps_lat: number | null
+          gps_lng: number | null
+          id: string
+          site_id: string | null
+          storage_path: string
+        }
+        Insert: {
+          captured_at: string
+          company_id: string
+          created_at?: string
+          device_identifier: string
+          gps_accuracy?: number | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          site_id?: string | null
+          storage_path: string
+        }
+        Update: {
+          captured_at?: string
+          company_id?: string
+          created_at?: string
+          device_identifier?: string
+          gps_accuracy?: number | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          site_id?: string | null
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_report_photos_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incident_report_photos_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       incidents: {
         Row: {
           ai_classification: string | null
@@ -903,17 +977,602 @@ export type Database = {
           },
         ]
       }
+      nfc_tag_audit_logs: {
+        Row: {
+          action: string
+          actor_guard_id: string | null
+          actor_user_id: string | null
+          checkpoint_id: string | null
+          company_id: string
+          created_at: string
+          device_id: string | null
+          device_identifier: string | null
+          gps_lat: number | null
+          gps_lng: number | null
+          id: string
+          metadata: Json
+          nfc_tag_id: string | null
+          notes: string | null
+          pending_tag_id: string | null
+          performed_by: string | null
+          scan_log_id: string | null
+          tag_uid: string | null
+        }
+        Insert: {
+          action: string
+          actor_guard_id?: string | null
+          actor_user_id?: string | null
+          checkpoint_id?: string | null
+          company_id: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          metadata?: Json
+          nfc_tag_id?: string | null
+          notes?: string | null
+          pending_tag_id?: string | null
+          performed_by?: string | null
+          scan_log_id?: string | null
+          tag_uid?: string | null
+        }
+        Update: {
+          action?: string
+          actor_guard_id?: string | null
+          actor_user_id?: string | null
+          checkpoint_id?: string | null
+          company_id?: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          metadata?: Json
+          nfc_tag_id?: string | null
+          notes?: string | null
+          pending_tag_id?: string | null
+          performed_by?: string | null
+          scan_log_id?: string | null
+          tag_uid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nfc_tag_audit_logs_scan_log_id_fkey"
+            columns: ["scan_log_id"]
+            isOneToOne: false
+            referencedRelation: "scan_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patrol_route_checkpoints: {
+        Row: {
+          checkpoint_id: string
+          company_id: string
+          created_at: string
+          expected_arrival_offset_minutes: number | null
+          expected_offset_minutes: number | null
+          id: string
+          is_required: boolean
+          route_id: string
+          sequence_order: number
+        }
+        Insert: {
+          checkpoint_id: string
+          company_id: string
+          created_at?: string
+          expected_arrival_offset_minutes?: number | null
+          expected_offset_minutes?: number | null
+          id?: string
+          is_required?: boolean
+          route_id: string
+          sequence_order: number
+        }
+        Update: {
+          checkpoint_id?: string
+          company_id?: string
+          created_at?: string
+          expected_arrival_offset_minutes?: number | null
+          expected_offset_minutes?: number | null
+          id?: string
+          is_required?: boolean
+          route_id?: string
+          sequence_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patrol_route_checkpoints_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_route_checkpoints_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_route_checkpoints_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patrol_routes: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          site_id: string | null
+          status: string
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          site_id?: string | null
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          site_id?: string | null
+          status?: string
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patrol_routes_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_routes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_routes_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_routes_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patrol_schedules: {
+        Row: {
+          active_from: string | null
+          active_until: string | null
+          company_id: string
+          created_at: string
+          created_by: string | null
+          days_of_week: number[]
+          device_identifier: string | null
+          end_time: string | null
+          frequency: string
+          frequency_type: string
+          grace_completion_minutes: number
+          grace_start_minutes: number
+          id: string
+          interval_value: number
+          name: string
+          next_run_at: string | null
+          route_id: string
+          site_id: string | null
+          start_time: string | null
+          status: string
+          template_id: string | null
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          active_from?: string | null
+          active_until?: string | null
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          days_of_week?: number[]
+          device_identifier?: string | null
+          end_time?: string | null
+          frequency?: string
+          frequency_type?: string
+          grace_completion_minutes?: number
+          grace_start_minutes?: number
+          id?: string
+          interval_value?: number
+          name: string
+          next_run_at?: string | null
+          route_id: string
+          site_id?: string | null
+          start_time?: string | null
+          status?: string
+          template_id?: string | null
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          active_from?: string | null
+          active_until?: string | null
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          days_of_week?: number[]
+          device_identifier?: string | null
+          end_time?: string | null
+          frequency?: string
+          frequency_type?: string
+          grace_completion_minutes?: number
+          grace_start_minutes?: number
+          id?: string
+          interval_value?: number
+          name?: string
+          next_run_at?: string | null
+          route_id?: string
+          site_id?: string | null
+          start_time?: string | null
+          status?: string
+          template_id?: string | null
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patrol_schedules_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_schedules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_schedules_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_schedules_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_schedules_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patrol_session_checkpoints: {
+        Row: {
+          checkpoint_id: string
+          company_id: string
+          created_at: string
+          id: string
+          route_checkpoint_id: string | null
+          scan_log_id: string | null
+          scanned_at: string | null
+          scheduled_at: string | null
+          scheduled_order: number
+          session_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          checkpoint_id: string
+          company_id: string
+          created_at?: string
+          id?: string
+          route_checkpoint_id?: string | null
+          scan_log_id?: string | null
+          scanned_at?: string | null
+          scheduled_at?: string | null
+          scheduled_order: number
+          session_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          checkpoint_id?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          route_checkpoint_id?: string | null
+          scan_log_id?: string | null
+          scanned_at?: string | null
+          scheduled_at?: string | null
+          scheduled_order?: number
+          session_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patrol_session_checkpoints_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_session_checkpoints_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_session_checkpoints_route_checkpoint_id_fkey"
+            columns: ["route_checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_route_checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_session_checkpoints_scan_log_id_fkey"
+            columns: ["scan_log_id"]
+            isOneToOne: false
+            referencedRelation: "scan_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_session_checkpoints_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patrol_sessions: {
+        Row: {
+          actual_end: string | null
+          actual_start: string | null
+          checkpoint_completed: number
+          checkpoint_total: number
+          company_id: string
+          completed_required_count: number
+          created_at: string
+          device_id: string | null
+          device_identifier: string | null
+          first_scan_at: string | null
+          guard_id: string | null
+          id: string
+          last_scan_at: string | null
+          meta: Json
+          missed_reason: string | null
+          progress: number
+          progress_percent: number
+          route_id: string
+          schedule_id: string | null
+          scheduled_end: string | null
+          scheduled_start: string
+          site_id: string | null
+          status: string
+          template_id: string | null
+          total_required_count: number
+          updated_at: string
+        }
+        Insert: {
+          actual_end?: string | null
+          actual_start?: string | null
+          checkpoint_completed?: number
+          checkpoint_total?: number
+          company_id: string
+          completed_required_count?: number
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          first_scan_at?: string | null
+          guard_id?: string | null
+          id?: string
+          last_scan_at?: string | null
+          meta?: Json
+          missed_reason?: string | null
+          progress?: number
+          progress_percent?: number
+          route_id: string
+          schedule_id?: string | null
+          scheduled_end?: string | null
+          scheduled_start: string
+          site_id?: string | null
+          status?: string
+          template_id?: string | null
+          total_required_count?: number
+          updated_at?: string
+        }
+        Update: {
+          actual_end?: string | null
+          actual_start?: string | null
+          checkpoint_completed?: number
+          checkpoint_total?: number
+          company_id?: string
+          completed_required_count?: number
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          first_scan_at?: string | null
+          guard_id?: string | null
+          id?: string
+          last_scan_at?: string | null
+          meta?: Json
+          missed_reason?: string | null
+          progress?: number
+          progress_percent?: number
+          route_id?: string
+          schedule_id?: string | null
+          scheduled_end?: string | null
+          scheduled_start?: string
+          site_id?: string | null
+          status?: string
+          template_id?: string | null
+          total_required_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patrol_sessions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_sessions_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_sessions_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_sessions_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_sessions_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_sessions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patrol_templates: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          expected_duration_minutes: number
+          id: string
+          name: string
+          site_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          expected_duration_minutes?: number
+          id?: string
+          name: string
+          site_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          expected_duration_minutes?: number
+          id?: string
+          name?: string
+          site_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patrol_templates_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_templates_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       patrols: {
         Row: {
           company_id: string
           completed_at: string | null
           created_at: string
           description: string | null
+          device_identifier: string | null
           expected_duration_minutes: number | null
           guard_id: string | null
           id: string
           name: string
           schedule: Json | null
+          site_id: string | null
           started_at: string | null
           status: Database["public"]["Enums"]["patrol_status"]
           updated_at: string
@@ -924,11 +1583,13 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           description?: string | null
+          device_identifier?: string | null
           expected_duration_minutes?: number | null
           guard_id?: string | null
           id?: string
           name: string
           schedule?: Json | null
+          site_id?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["patrol_status"]
           updated_at?: string
@@ -939,11 +1600,13 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           description?: string | null
+          device_identifier?: string | null
           expected_duration_minutes?: number | null
           guard_id?: string | null
           id?: string
           name?: string
           schedule?: Json | null
+          site_id?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["patrol_status"]
           updated_at?: string
@@ -964,7 +1627,147 @@ export type Database = {
             referencedRelation: "guards"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "patrols_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      pending_nfc_tags: {
+        Row: {
+          alert_id: string | null
+          checkpoint_id: string | null
+          company_id: string
+          created_at: string
+          device_id: string | null
+          device_identifier: string | null
+          device_metadata: Json
+          first_seen_at: string
+          gps_accuracy: number | null
+          gps_lat: number | null
+          gps_lng: number | null
+          id: string
+          last_seen_at: string
+          metadata: Json
+          nfc_tag_id: string
+          proposed_name: string | null
+          rejection_reason: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          scan_log_id: string | null
+          site_id: string | null
+          status: string
+          submitted_by_guard_id: string | null
+          submitted_by_user_id: string | null
+          tag_uid: string
+          updated_at: string
+        }
+        Insert: {
+          alert_id?: string | null
+          checkpoint_id?: string | null
+          company_id: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          device_metadata?: Json
+          first_seen_at?: string
+          gps_accuracy?: number | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          nfc_tag_id: string
+          proposed_name?: string | null
+          rejection_reason?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scan_log_id?: string | null
+          site_id?: string | null
+          status?: string
+          submitted_by_guard_id?: string | null
+          submitted_by_user_id?: string | null
+          tag_uid: string
+          updated_at?: string
+        }
+        Update: {
+          alert_id?: string | null
+          checkpoint_id?: string | null
+          company_id?: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          device_metadata?: Json
+          first_seen_at?: string
+          gps_accuracy?: number | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          nfc_tag_id?: string
+          proposed_name?: string | null
+          rejection_reason?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scan_log_id?: string | null
+          site_id?: string | null
+          status?: string
+          submitted_by_guard_id?: string | null
+          submitted_by_user_id?: string | null
+          tag_uid?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_nfc_tags_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_nfc_tags_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_nfc_tags_scan_log_id_fkey"
+            columns: ["scan_log_id"]
+            isOneToOne: false
+            referencedRelation: "scan_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_admins: {
+        Row: {
+          created_at: string
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -1007,128 +1810,87 @@ export type Database = {
           },
         ]
       }
-      pending_nfc_tags: {
+      report_jobs: {
         Row: {
-          alert_id: string | null
-          checkpoint_id: string | null
           company_id: string
+          completed_at: string | null
           created_at: string
-          device_id: string | null
-          device_identifier: string | null
-          device_metadata: Json
-          first_seen_at: string
-          gps_accuracy: number | null
-          gps_lat: number | null
-          gps_lng: number | null
+          created_by: string | null
+          date_range: string
+          error_message: string | null
+          failed_at: string | null
+          filters: Json
           id: string
-          last_seen_at: string
           metadata: Json
-          rejection_reason: string | null
-          reviewed_at: string | null
-          reviewed_by: string | null
-          scan_log_id: string | null
+          report_id: string | null
+          report_type: string
+          scheduled_for: string | null
+          site_id: string | null
+          started_at: string | null
           status: string
-          tag_uid: string
           updated_at: string
         }
         Insert: {
-          alert_id?: string | null
-          checkpoint_id?: string | null
           company_id: string
+          completed_at?: string | null
           created_at?: string
-          device_id?: string | null
-          device_identifier?: string | null
-          device_metadata?: Json
-          first_seen_at?: string
-          gps_accuracy?: number | null
-          gps_lat?: number | null
-          gps_lng?: number | null
+          created_by?: string | null
+          date_range?: string
+          error_message?: string | null
+          failed_at?: string | null
+          filters?: Json
           id?: string
-          last_seen_at?: string
           metadata?: Json
-          rejection_reason?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          scan_log_id?: string | null
+          report_id?: string | null
+          report_type?: string
+          scheduled_for?: string | null
+          site_id?: string | null
+          started_at?: string | null
           status?: string
-          tag_uid: string
           updated_at?: string
         }
         Update: {
-          alert_id?: string | null
-          checkpoint_id?: string | null
           company_id?: string
+          completed_at?: string | null
           created_at?: string
-          device_id?: string | null
-          device_identifier?: string | null
-          device_metadata?: Json
-          first_seen_at?: string
-          gps_accuracy?: number | null
-          gps_lat?: number | null
-          gps_lng?: number | null
+          created_by?: string | null
+          date_range?: string
+          error_message?: string | null
+          failed_at?: string | null
+          filters?: Json
           id?: string
-          last_seen_at?: string
           metadata?: Json
-          rejection_reason?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          scan_log_id?: string | null
+          report_id?: string | null
+          report_type?: string
+          scheduled_for?: string | null
+          site_id?: string | null
+          started_at?: string | null
           status?: string
-          tag_uid?: string
           updated_at?: string
         }
-        Relationships: []
-      }
-      nfc_tag_audit_logs: {
-        Row: {
-          action: string
-          checkpoint_id: string | null
-          company_id: string
-          created_at: string
-          device_id: string | null
-          device_identifier: string | null
-          gps_lat: number | null
-          gps_lng: number | null
-          id: string
-          metadata: Json
-          pending_tag_id: string | null
-          performed_by: string | null
-          scan_log_id: string | null
-          tag_uid: string
-        }
-        Insert: {
-          action: string
-          checkpoint_id?: string | null
-          company_id: string
-          created_at?: string
-          device_id?: string | null
-          device_identifier?: string | null
-          gps_lat?: number | null
-          gps_lng?: number | null
-          id?: string
-          metadata?: Json
-          pending_tag_id?: string | null
-          performed_by?: string | null
-          scan_log_id?: string | null
-          tag_uid: string
-        }
-        Update: {
-          action?: string
-          checkpoint_id?: string | null
-          company_id?: string
-          created_at?: string
-          device_id?: string | null
-          device_identifier?: string | null
-          gps_lat?: number | null
-          gps_lng?: number | null
-          id?: string
-          metadata?: Json
-          pending_tag_id?: string | null
-          performed_by?: string | null
-          scan_log_id?: string | null
-          tag_uid?: string
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "report_jobs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_jobs_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "ai_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_jobs_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scan_logs: {
         Row: {
@@ -1137,7 +1899,7 @@ export type Database = {
           created_at: string
           device_id: string | null
           device_identifier: string | null
-          device_metadata: Json
+          device_metadata: Json | null
           face_confidence: number | null
           face_verified: boolean | null
           gps_accuracy: number | null
@@ -1148,8 +1910,15 @@ export type Database = {
           is_manual: boolean
           is_offline_sync: boolean | null
           manual_scan_reason: string | null
+          patrol_match_status: string
+          patrol_route_id: string | null
+          patrol_schedule_id: string | null
+          patrol_session_id: string | null
+          patrol_template_id: string | null
+          patrol_validation_status: string | null
           scanned_at: string
           scanned_by: string | null
+          site_id: string | null
           tag_status: string
           tag_uid: string | null
           user_id: string | null
@@ -1160,7 +1929,7 @@ export type Database = {
           created_at?: string
           device_id?: string | null
           device_identifier?: string | null
-          device_metadata?: Json
+          device_metadata?: Json | null
           face_confidence?: number | null
           face_verified?: boolean | null
           gps_accuracy?: number | null
@@ -1171,8 +1940,15 @@ export type Database = {
           is_manual?: boolean
           is_offline_sync?: boolean | null
           manual_scan_reason?: string | null
+          patrol_match_status?: string
+          patrol_route_id?: string | null
+          patrol_schedule_id?: string | null
+          patrol_session_id?: string | null
+          patrol_template_id?: string | null
+          patrol_validation_status?: string | null
           scanned_at?: string
           scanned_by?: string | null
+          site_id?: string | null
           tag_status?: string
           tag_uid?: string | null
           user_id?: string | null
@@ -1183,7 +1959,7 @@ export type Database = {
           created_at?: string
           device_id?: string | null
           device_identifier?: string | null
-          device_metadata?: Json
+          device_metadata?: Json | null
           face_confidence?: number | null
           face_verified?: boolean | null
           gps_accuracy?: number | null
@@ -1194,8 +1970,15 @@ export type Database = {
           is_manual?: boolean
           is_offline_sync?: boolean | null
           manual_scan_reason?: string | null
+          patrol_match_status?: string
+          patrol_route_id?: string | null
+          patrol_schedule_id?: string | null
+          patrol_session_id?: string | null
+          patrol_template_id?: string | null
+          patrol_validation_status?: string | null
           scanned_at?: string
           scanned_by?: string | null
+          site_id?: string | null
           tag_status?: string
           tag_uid?: string | null
           user_id?: string | null
@@ -1222,6 +2005,41 @@ export type Database = {
             referencedRelation: "guards"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "scan_logs_patrol_route_id_fkey"
+            columns: ["patrol_route_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_logs_patrol_schedule_id_fkey"
+            columns: ["patrol_schedule_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_logs_patrol_session_id_fkey"
+            columns: ["patrol_session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_logs_patrol_template_id_fkey"
+            columns: ["patrol_template_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_logs_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
         ]
       }
       shifts: {
@@ -1229,11 +2047,13 @@ export type Database = {
           company_id: string
           created_at: string
           day_of_week: number
+          device_identifier: string | null
           end_time: string
           guard_id: string
           id: string
           is_recurring: boolean
           notes: string | null
+          site_id: string | null
           specific_date: string | null
           start_time: string
           updated_at: string
@@ -1242,11 +2062,13 @@ export type Database = {
           company_id: string
           created_at?: string
           day_of_week: number
+          device_identifier?: string | null
           end_time: string
           guard_id: string
           id?: string
           is_recurring?: boolean
           notes?: string | null
+          site_id?: string | null
           specific_date?: string | null
           start_time: string
           updated_at?: string
@@ -1255,11 +2077,13 @@ export type Database = {
           company_id?: string
           created_at?: string
           day_of_week?: number
+          device_identifier?: string | null
           end_time?: string
           guard_id?: string
           id?: string
           is_recurring?: boolean
           notes?: string | null
+          site_id?: string | null
           specific_date?: string | null
           start_time?: string
           updated_at?: string
@@ -1277,6 +2101,54 @@ export type Database = {
             columns: ["guard_id"]
             isOneToOne: false
             referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sites: {
+        Row: {
+          address: string | null
+          company_id: string
+          created_at: string
+          gps_lat: number | null
+          gps_lng: number | null
+          id: string
+          name: string
+          status: string
+        }
+        Insert: {
+          address?: string | null
+          company_id: string
+          created_at?: string
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          name: string
+          status?: string
+        }
+        Update: {
+          address?: string | null
+          company_id?: string
+          created_at?: string
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          name?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sites_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
@@ -1400,6 +2272,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      advance_due_patrol_session_statuses: { Args: never; Returns: number }
+      generate_due_patrol_sessions: {
+        Args: { p_until?: string }
+        Returns: number
+      }
       get_user_company_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -1408,14 +2285,17 @@ export type Database = {
         }
         Returns: boolean
       }
-      review_pending_nfc_tag: {
-        Args: {
-          p_checkpoint_name?: string | null
-          p_decision: string
-          p_pending_tag_id: string
-          p_rejection_reason?: string | null
-        }
-        Returns: Json
+      match_scan_to_patrol_session: {
+        Args: { p_scan_log_id: string }
+        Returns: {
+          match_status: string
+          session_checkpoint_id: string
+          session_id: string
+        }[]
+      }
+      recalculate_patrol_session_progress: {
+        Args: { p_session_id: string }
+        Returns: undefined
       }
     }
     Enums: {

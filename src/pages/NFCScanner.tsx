@@ -22,6 +22,7 @@ import { backfillNfcScanGps } from "@/lib/nfcWorkflow";
 import { getLocalDeviceIdentifier, resolveDeviceCompany } from "@/lib/deviceCompany";
 import { batteryMetadata } from "@/lib/deviceBattery";
 import { playFeedbackSound } from "@/lib/feedbackSound";
+import { describeScanResult, formatProgress } from "@/lib/scanResult";
 import HardwareSosListener from "@/components/devices/HardwareSosListener";
 import TTechMxPatrolLogo from "@/components/branding/TTechMxPatrolLogo";
 
@@ -204,28 +205,63 @@ const NFCScanner = () => {
     companyId,
     isOnline,
     onSuccess: (result) => {
+      const structured = result.structured ?? null;
       const registeredCheckpoint = result.tagStatus === "registered" && Boolean(result.checkpointName ?? result.checkpoint?.name);
-      const nextState: ScannerUiState = !isOnline ? "success_offline" : registeredCheckpoint ? "success" : "unregistered";
 
-      playFeedbackSound(!isOnline ? "offline-queued" : registeredCheckpoint ? "scan-success" : "error");
+      const feedback = !isOnline
+        ? describeScanResult({
+            success: true,
+            code: "OFFLINE_SAVED",
+            scan_id: null,
+            checkpoint: null,
+            patrol: null,
+            next_checkpoint: null,
+            duplicate: false,
+            offline_replay: false,
+            message: "",
+          })
+        : structured
+          ? describeScanResult(structured)
+          : describeScanResult({
+              success: true,
+              code: registeredCheckpoint ? "NO_ACTIVE_PATROL" : "UNREGISTERED_CHECKPOINT",
+              scan_id: result.scanLogId ?? null,
+              checkpoint: result.checkpoint ? { id: result.checkpoint.id, name: result.checkpointName ?? result.checkpoint.name } : null,
+              patrol: null,
+              next_checkpoint: null,
+              duplicate: false,
+              offline_replay: false,
+              message: "",
+            });
+
+      const nextState = feedback.uiState as ScannerUiState;
+      playFeedbackSound(feedback.sound);
       setScannerStatus(nextState);
       setLastCheckpoint(getScanDisplayName(result));
-      setLastError(registeredCheckpoint ? null : "Tag not registered. Sent to Command Center for registration.");
+      setLastError(feedback.tone === "good" || feedback.tone === "info" ? null : feedback.detail);
       setLastScanAt(new Date().toISOString());
       addToLog(result, registeredCheckpoint);
       scheduleLowPriority(() => {
         queryClient.invalidateQueries({ queryKey: ["recent_scans"] });
         queryClient.invalidateQueries({ queryKey: ["scan_logs"] });
         queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags"] });
+        queryClient.invalidateQueries({ queryKey: ["scheduled-patrols"] });
+        queryClient.invalidateQueries({ queryKey: ["patrol_sessions"] });
+        queryClient.invalidateQueries({ queryKey: ["patrols"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       });
       signalScannerHaptic(registeredCheckpoint ? "success" : "unregistered");
       console.info("[ScannerState]", {
         state: nextState,
+        code: structured?.code ?? null,
         tagUid: result.tagId ?? null,
         checkpoint: result.checkpointName ?? result.checkpoint?.name ?? null,
+        patrol: structured?.patrol?.name ?? null,
+        selectionReason: structured?.patrol?.selection_reason ?? null,
+        progress: formatProgress(structured?.patrol ?? null),
         gpsStatus,
       });
-      setTimeout(() => setScannerStatus("scanning"), registeredCheckpoint ? 1500 : 2500);
+      setTimeout(() => setScannerStatus("scanning"), feedback.holdMs);
     },
     onFailure: (result) => {
       const locallyQueued = result.reason?.toLowerCase().includes("saved locally") ?? false;

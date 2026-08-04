@@ -1895,6 +1895,7 @@ export type Database = {
       scan_logs: {
         Row: {
           checkpoint_id: string | null
+          client_scan_id: string | null
           company_id: string
           created_at: string
           device_id: string | null
@@ -1925,6 +1926,7 @@ export type Database = {
         }
         Insert: {
           checkpoint_id?: string | null
+          client_scan_id?: string | null
           company_id: string
           created_at?: string
           device_id?: string | null
@@ -1955,6 +1957,7 @@ export type Database = {
         }
         Update: {
           checkpoint_id?: string | null
+          client_scan_id?: string | null
           company_id?: string
           created_at?: string
           device_id?: string | null
@@ -2288,9 +2291,19 @@ export type Database = {
       match_scan_to_patrol_session: {
         Args: { p_scan_log_id: string }
         Returns: {
+          code: string
+          completed: number
           match_status: string
+          next_checkpoint_id: string
+          next_checkpoint_name: string
+          patrol_name: string
+          progress_percent: number
+          required: number
+          schedule_id: string
+          selection_reason: string
           session_checkpoint_id: string
           session_id: string
+          session_status: string
         }[]
       }
       recalculate_patrol_session_progress: {

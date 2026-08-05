@@ -55,6 +55,8 @@ export default function Patrols() {
   const devices = useDevices(siteId);
   const generate = useGeneratePatrolSessions();
   const createRoute = useCreatePatrolRoute();
+  const createTemplate = useCreatePatrolTemplate();
+  const createSchedule = useCreatePatrolSchedule();
   const checkpointOptions = useRouteCheckpointOptions(siteId);
   const sessionRows = useMemo(() => sessions.data ?? [], [sessions.data]);
   const templateRows = useMemo(() => templates.data ?? [], [templates.data]);

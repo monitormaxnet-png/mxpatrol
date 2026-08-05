@@ -10,7 +10,7 @@ import { useRealtimeConnectionStatus } from '@/hooks/useRealtimeConnectionStatus
 import { supabase } from '@/integrations/supabase/client';
 import { useDevices } from '@/hooks/useDashboardData';
 import { useCompanyId } from '@/hooks/usePatrolScanData';
-import { patrolSessionLabel, patrolSessionProgress, useCreatePatrolRoute, useGeneratePatrolSessions, usePatrolRoutes, usePatrolSchedules, usePatrolSessions, usePatrolTemplates, type CreatePatrolRouteInput } from '@/hooks/useScheduledPatrols';
+import { patrolSessionLabel, patrolSessionProgress, useCreatePatrolRoute, useCreatePatrolSchedule, useCreatePatrolTemplate, useGeneratePatrolSessions, usePatrolRoutes, usePatrolSchedules, usePatrolSessions, usePatrolTemplates, type CreatePatrolRouteInput, type CreatePatrolScheduleInput, type CreatePatrolTemplateInput } from '@/hooks/useScheduledPatrols';
 
 type Tab = 'operations' | 'templates' | 'routes' | 'schedules';
 type Tone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';
@@ -55,6 +55,8 @@ export default function Patrols() {
   const devices = useDevices(siteId);
   const generate = useGeneratePatrolSessions();
   const createRoute = useCreatePatrolRoute();
+  const createTemplate = useCreatePatrolTemplate();
+  const createSchedule = useCreatePatrolSchedule();
   const checkpointOptions = useRouteCheckpointOptions(siteId);
   const sessionRows = useMemo(() => sessions.data ?? [], [sessions.data]);
   const templateRows = useMemo(() => templates.data ?? [], [templates.data]);
@@ -110,7 +112,7 @@ export default function Patrols() {
       {tab === 'operations' ? (
         <OperationsView loading={sessions.isLoading} sessions={filteredSessions} activeSessions={activeSessions} attentionItems={attentionItems} recentActivity={recentActivity} selectedSession={selectedSession} devices={deviceRows} hasSetupData={templateRows.length > 0 || routeRows.length > 0 || scheduleRows.length > 0} onOpenTemplates={() => setTab('templates')} onOpenRoutes={() => setTab('routes')} onOpenSchedules={() => setTab('schedules')} />
       ) : (
-        <ConfigurationView tab={tab} siteId={siteId} templates={templateRows} routes={routeRows} schedules={scheduleRows} checkpointOptions={checkpointOptions.data ?? []} loading={templates.isLoading || routes.isLoading || schedules.isLoading || checkpointOptions.isLoading} generatePending={generate.isPending} createRoutePending={createRoute.isPending} onGenerate={() => generate.mutate()} onCreateRoute={(route) => createRoute.mutate(route)} />
+        <ConfigurationView tab={tab} siteId={siteId} templates={templateRows} routes={routeRows} schedules={scheduleRows} devices={deviceRows} checkpointOptions={checkpointOptions.data ?? []} loading={templates.isLoading || routes.isLoading || schedules.isLoading || checkpointOptions.isLoading} generatePending={generate.isPending} createRoutePending={createRoute.isPending} createTemplatePending={createTemplate.isPending} createSchedulePending={createSchedule.isPending} onGenerate={() => generate.mutate()} onCreateRoute={(route) => createRoute.mutate(route)} onCreateTemplate={(template) => createTemplate.mutate(template)} onCreateSchedule={(schedule) => createSchedule.mutate(schedule)} />
       )}
     </SocPageShell>
   );
@@ -148,11 +150,107 @@ function QuickActions({ onOpenTemplates, onOpenRoutes, onOpenSchedules }: { onOp
 function QuickAction({ label, icon: Icon, onClick }: { label: string; icon: any; onClick: () => void }) {
   return <button type="button" onClick={onClick} className="flex h-10 w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-slate-300 hover:border-emerald-400/25 hover:text-emerald-300"><Icon className="h-4 w-4" /> {label}</button>;
 }
-function ConfigurationView({ tab, siteId, templates, routes, schedules, checkpointOptions, loading, generatePending, createRoutePending, onGenerate, onCreateRoute }: { tab: Exclude<Tab, 'operations'>; siteId: string; templates: any[]; routes: any[]; schedules: any[]; checkpointOptions: CheckpointOption[]; loading: boolean; generatePending: boolean; createRoutePending: boolean; onGenerate: () => void; onCreateRoute: (route: CreatePatrolRouteInput) => void; }) {
+function ConfigurationView({ tab, siteId, templates, routes, schedules, devices, checkpointOptions, loading, generatePending, createRoutePending, createTemplatePending, createSchedulePending, onGenerate, onCreateRoute, onCreateTemplate, onCreateSchedule }: { tab: Exclude<Tab, 'operations'>; siteId: string; templates: any[]; routes: any[]; schedules: any[]; devices: any[]; checkpointOptions: CheckpointOption[]; loading: boolean; generatePending: boolean; createRoutePending: boolean; createTemplatePending: boolean; createSchedulePending: boolean; onGenerate: () => void; onCreateRoute: (route: CreatePatrolRouteInput) => void; onCreateTemplate: (template: CreatePatrolTemplateInput) => void; onCreateSchedule: (schedule: CreatePatrolScheduleInput) => void; }) {
   if (loading) return <LoadingRows label="Loading patrol configuration..." />;
-  if (tab === 'templates') return <SocPanel title="Patrol Templates" action={<ConfigAction label="New Patrol Template" />}><ConfigTable rows={templates} empty="No patrol templates yet. Create a route first, then add a template and schedule." columns={['Template', 'Site', 'Route', 'Checkpoints', 'Status']} render={(row) => [row.name, row.sites?.name || 'Unassigned', row.patrol_routes?.name || 'No route', String(row.checkpoint_count ?? row.total_required_count ?? '-'), row.status || 'active']} /></SocPanel>;
+  if (tab === 'templates') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><TemplateCreationPanel siteId={siteId} pending={createTemplatePending} onCreate={onCreateTemplate} /><SocPanel title="Patrol Templates"><ConfigTable rows={templates} empty="No patrol templates yet. Create a template, then a route and a schedule." columns={['Template', 'Site', 'Duration', 'Status']} render={(row) => [row.name, row.sites?.name || 'Unassigned', `${row.expected_duration_minutes ?? 60} min`, row.status || 'active']} /></SocPanel></div>;
   if (tab === 'routes') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><RouteCreationPanel siteId={siteId} checkpoints={checkpointOptions} pending={createRoutePending} onCreate={onCreateRoute} /><SocPanel title="Routes"><ConfigTable rows={routes} empty="No patrol routes yet. Build an ordered checkpoint route before scheduling patrols." columns={['Route', 'Site', 'Checkpoints', 'Mode', 'Status']} render={(row) => [row.name, row.sites?.name || 'Unassigned', String(row.patrol_route_checkpoints?.length ?? 0), row.sequence_mode || row.mode || 'Flexible', row.status || 'active']} /></SocPanel></div>;
-  return <SocPanel title="Schedules" action={<div className="flex items-center gap-2"><button type="button" onClick={onGenerate} disabled={generatePending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-slate-950/80 px-3 text-xs font-black text-slate-300 disabled:opacity-50">{generatePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}Admin Generate</button><ConfigAction label="New Schedule" /></div>}><ConfigTable rows={schedules} empty="No active patrol schedules yet. Add a schedule to let the backend create sessions automatically." columns={['Schedule', 'Template', 'Site', 'Frequency', 'Next Run', 'Status']} render={(row) => [row.name, row.patrol_templates?.name || 'No template', row.sites?.name || 'Unassigned', row.frequency_type || row.frequency || '-', formatDateTime(row.next_run_at), row.status || 'active']} /></SocPanel>;
+  return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><ScheduleCreationPanel routes={routes} templates={templates} devices={devices} pending={createSchedulePending} onCreate={onCreateSchedule} /><SocPanel title="Schedules" action={<button type="button" onClick={onGenerate} disabled={generatePending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-slate-950/80 px-3 text-xs font-black text-slate-300 disabled:opacity-50">{generatePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}Admin Generate</button>}><ConfigTable rows={schedules} empty="No active patrol schedules yet. Add a schedule to let the backend create sessions automatically." columns={['Schedule', 'Template', 'Site', 'Frequency', 'Next Run', 'Status']} render={(row) => [row.name, row.patrol_templates?.name || 'No template', row.sites?.name || 'Unassigned', row.frequency_type || row.frequency || '-', formatDateTime(row.next_run_at), row.status || 'active']} /></SocPanel></div>;
+}
+
+const fieldClass = 'mt-2 h-11 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 text-sm font-semibold text-white outline-none focus:border-emerald-400/40';
+const labelClass = 'text-[10px] font-black uppercase tracking-wider text-slate-500';
+
+function TemplateCreationPanel({ siteId, pending, onCreate }: { siteId: string; pending: boolean; onCreate: (template: CreatePatrolTemplateInput) => void }) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [duration, setDuration] = useState('60');
+  const minutes = Number(duration);
+  const canCreate = name.trim().length > 0 && Number.isFinite(minutes) && minutes > 0 && minutes <= 1440 && !pending;
+
+  const submit = () => {
+    if (!canCreate) return;
+    onCreate({ name: name.trim(), description: description.trim() || null, site_id: siteId === 'all' ? null : siteId, status: 'active', expected_duration_minutes: Math.round(minutes) });
+    setName('');
+    setDescription('');
+  };
+
+  return <SocPanel title="Create Patrol Template" action={<span className="text-[10px] font-black uppercase tracking-wider text-emerald-300">Step 1</span>}>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/5 p-3 text-sm text-slate-300"><p className="font-bold text-white">What is a template?</p><p className="mt-1 text-xs text-slate-400">A template names the patrol type and its expected duration. Routes and schedules attach to it.</p></div>
+      <label className="block"><span className={labelClass}>Template Name</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Night Perimeter Patrol" className={fieldClass} /></label>
+      <label className="block"><span className={labelClass}>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Optional notes" className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/40" /></label>
+      <label className="block"><span className={labelClass}>Expected Duration (minutes)</span><input type="number" min={1} max={1440} value={duration} onChange={(event) => setDuration(event.target.value)} className={fieldClass} /></label>
+      <p className="text-xs text-slate-500">{siteId === 'all' ? 'No site filter selected - template will be company-wide.' : 'Template will be linked to the selected site.'}</p>
+      <button type="button" onClick={submit} disabled={!canCreate} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-400/15 text-sm font-black text-emerald-100 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-45">{pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Create Template</button>
+    </div>
+  </SocPanel>;
+}
+
+const weekDays = [{ value: 1, label: 'Mon' }, { value: 2, label: 'Tue' }, { value: 3, label: 'Wed' }, { value: 4, label: 'Thu' }, { value: 5, label: 'Fri' }, { value: 6, label: 'Sat' }, { value: 0, label: 'Sun' }];
+
+function ScheduleCreationPanel({ routes, templates, devices, pending, onCreate }: { routes: any[]; templates: any[]; devices: any[]; pending: boolean; onCreate: (schedule: CreatePatrolScheduleInput) => void }) {
+  const [name, setName] = useState('');
+  const [routeId, setRouteId] = useState('');
+  const [templateId, setTemplateId] = useState('none');
+  const [frequencyType, setFrequencyType] = useState<'hourly' | 'daily' | 'weekly' | 'every_n_minutes' | 'every_n_hours'>('daily');
+  const [intervalValue, setIntervalValue] = useState('1');
+  const [startTime, setStartTime] = useState('18:00');
+  const [endTime, setEndTime] = useState('06:00');
+  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [graceStart, setGraceStart] = useState('10');
+  const [graceCompletion, setGraceCompletion] = useState('40');
+  const [deviceIdentifier, setDeviceIdentifier] = useState('any');
+  const interval = Number(intervalValue);
+  const canCreate = name.trim().length > 0 && !!routeId && Number.isFinite(interval) && interval > 0 && !pending;
+
+  const toggleDay = (day: number) => setDays((current) => current.includes(day) ? current.filter((value) => value !== day) : [...current, day]);
+
+  const submit = () => {
+    if (!canCreate) return;
+    const route = routes.find((row) => row.id === routeId);
+    onCreate({
+      name: name.trim(),
+      route_id: routeId,
+      site_id: route?.site_id ?? null,
+      template_id: templateId === 'none' ? (route?.template_id ?? null) : templateId,
+      frequency_type: frequencyType,
+      interval_value: Math.round(interval),
+      start_time: startTime || null,
+      end_time: endTime || null,
+      days_of_week: frequencyType === 'weekly' ? days : days,
+      timezone: 'Africa/Gaborone',
+      status: 'active',
+      grace_start_minutes: Math.max(Number(graceStart) || 0, 0),
+      grace_completion_minutes: Math.max(Number(graceCompletion) || 1, 1),
+      device_identifier: deviceIdentifier === 'any' ? null : deviceIdentifier,
+    });
+    setName('');
+  };
+
+  return <SocPanel title="Create Schedule" action={<span className="text-[10px] font-black uppercase tracking-wider text-amber-300">Step 3</span>}>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 p-3 text-sm text-slate-300"><p className="font-bold text-white">How schedules work</p><p className="mt-1 text-xs text-slate-400">A schedule turns a route into recurring patrol sessions the RG360 devices must complete.</p></div>
+      {routes.length ? null : <CompactEmpty title="No routes available" body="Create a route first - a schedule must point at an ordered checkpoint route." />}
+      <label className="block"><span className={labelClass}>Schedule Name</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Tlokweng Hourly Patrol" className={fieldClass} /></label>
+      <label className="block"><span className={labelClass}>Route</span><select value={routeId} onChange={(event) => setRouteId(event.target.value)} className={fieldClass}><option value="">Select route</option>{routes.map((route) => <option key={route.id} value={route.id}>{route.name}{route.sites?.name ? ` - ${route.sites.name}` : ''}</option>)}</select></label>
+      <label className="block"><span className={labelClass}>Template (optional)</span><select value={templateId} onChange={(event) => setTemplateId(event.target.value)} className={fieldClass}><option value="none">Inherit from route</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block"><span className={labelClass}>Frequency</span><select value={frequencyType} onChange={(event) => setFrequencyType(event.target.value as any)} className={fieldClass}><option value="hourly">Hourly</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="every_n_minutes">Every N minutes</option><option value="every_n_hours">Every N hours</option></select></label>
+        <label className="block"><span className={labelClass}>Interval</span><input type="number" min={1} value={intervalValue} onChange={(event) => setIntervalValue(event.target.value)} className={fieldClass} /></label>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block"><span className={labelClass}>Start Time</span><input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className={fieldClass} /></label>
+        <label className="block"><span className={labelClass}>End Time</span><input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className={fieldClass} /></label>
+      </div>
+      <div><span className={labelClass}>Active Days</span><div className="mt-2 flex flex-wrap gap-2">{weekDays.map((day) => { const selected = days.includes(day.value); return <button key={day.value} type="button" onClick={() => toggleDay(day.value)} className={`h-9 min-w-12 rounded-lg border px-3 text-xs font-black transition ${selected ? 'border-emerald-400/35 bg-emerald-400/15 text-emerald-100' : 'border-white/10 bg-black/25 text-slate-400 hover:border-cyan-400/25'}`}>{day.label}</button>; })}</div></div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block"><span className={labelClass}>Grace Start (min)</span><input type="number" min={0} max={240} value={graceStart} onChange={(event) => setGraceStart(event.target.value)} className={fieldClass} /></label>
+        <label className="block"><span className={labelClass}>Grace Completion (min)</span><input type="number" min={1} max={1440} value={graceCompletion} onChange={(event) => setGraceCompletion(event.target.value)} className={fieldClass} /></label>
+      </div>
+      <label className="block"><span className={labelClass}>Assigned Device</span><select value={deviceIdentifier} onChange={(event) => setDeviceIdentifier(event.target.value)} className={fieldClass}><option value="any">Any device</option>{devices.filter((device) => device.device_identifier).map((device) => <option key={device.id} value={device.device_identifier}>{displayDeviceLabel(device.device_name || device.device_identifier)}</option>)}</select></label>
+      <button type="button" onClick={submit} disabled={!canCreate} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/15 text-sm font-black text-amber-100 transition hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-45">{pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Create Schedule</button>
+    </div>
+  </SocPanel>;
 }
 
 function RouteCreationPanel({ siteId, checkpoints, pending, onCreate }: { siteId: string; checkpoints: CheckpointOption[]; pending: boolean; onCreate: (route: CreatePatrolRouteInput) => void }) {
@@ -227,7 +325,6 @@ function TabNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => voi
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) { const uniqueOptions = Array.from(new Set(options.filter(Boolean))); return <label className="flex h-11 items-center gap-2 rounded-lg border border-white/10 bg-slate-950/80 px-3"><span className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-200 outline-none">{uniqueOptions.map((option) => <option key={option} value={option} className="bg-slate-950">{option === 'all' ? `All ${label}s` : prettify(option)}</option>)}</select></label>; }
 function StatusBadge({ status }: { status?: string | null }) { const tone = statusTone(status); return <span className={`inline-flex w-fit rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-wider ${badgeTone(tone)}`}>{prettify(status || 'unknown')}</span>; }
 function LiveMiniBadge() { return <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />Live</span>; }
-function ConfigAction({ label }: { label: string }) { return <button type="button" className="h-9 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3 text-xs font-black text-emerald-200">{label}</button>; }
 function CompactEmpty({ title, body }: { title: string; body: string }) { return <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-6 text-center"><p className="font-bold text-white">{title}</p><p className="mt-2 text-sm text-slate-400">{body}</p></div>; }
 function LoadingRows({ label }: { label: string }) { return <div className="flex min-h-48 items-center justify-center gap-2 rounded-xl border border-white/10 bg-slate-950/60 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />{label}</div>; }
 function InfoLine({ label, value }: { label: string; value: string }) { return <div className="flex justify-between gap-3"><span className="text-slate-500">{label}</span><span className="text-right font-semibold text-slate-200">{value}</span></div>; }

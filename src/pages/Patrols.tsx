@@ -112,7 +112,7 @@ export default function Patrols() {
       {tab === 'operations' ? (
         <OperationsView loading={sessions.isLoading} sessions={filteredSessions} activeSessions={activeSessions} attentionItems={attentionItems} recentActivity={recentActivity} selectedSession={selectedSession} devices={deviceRows} hasSetupData={templateRows.length > 0 || routeRows.length > 0 || scheduleRows.length > 0} onOpenTemplates={() => setTab('templates')} onOpenRoutes={() => setTab('routes')} onOpenSchedules={() => setTab('schedules')} />
       ) : (
-        <ConfigurationView tab={tab} siteId={siteId} templates={templateRows} routes={routeRows} schedules={scheduleRows} checkpointOptions={checkpointOptions.data ?? []} loading={templates.isLoading || routes.isLoading || schedules.isLoading || checkpointOptions.isLoading} generatePending={generate.isPending} createRoutePending={createRoute.isPending} onGenerate={() => generate.mutate()} onCreateRoute={(route) => createRoute.mutate(route)} />
+        <ConfigurationView tab={tab} siteId={siteId} templates={templateRows} routes={routeRows} schedules={scheduleRows} devices={deviceRows} checkpointOptions={checkpointOptions.data ?? []} loading={templates.isLoading || routes.isLoading || schedules.isLoading || checkpointOptions.isLoading} generatePending={generate.isPending} createRoutePending={createRoute.isPending} createTemplatePending={createTemplate.isPending} createSchedulePending={createSchedule.isPending} onGenerate={() => generate.mutate()} onCreateRoute={(route) => createRoute.mutate(route)} onCreateTemplate={(template) => createTemplate.mutate(template)} onCreateSchedule={(schedule) => createSchedule.mutate(schedule)} />
       )}
     </SocPageShell>
   );

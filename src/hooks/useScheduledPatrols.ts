@@ -129,7 +129,9 @@ export function useCreatePatrolRoute() {
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Failed to create patrol route");
-      return data.result?.route ?? data.route;
+      const route = data.result?.route ?? data.route;
+      if (!route?.id) throw new Error("Route was not saved by the backend. Please retry.");
+      return route;
     },
     onSuccess: () => {
       toast.success("Patrol route created");
@@ -180,7 +182,9 @@ export function useCreatePatrolTemplate() {
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Failed to create patrol template");
-      return data.result?.template ?? data.template;
+      const template = data.result?.template ?? data.template;
+      if (!template?.id) throw new Error("Template was not saved by the backend. Please retry.");
+      return template;
     },
     onSuccess: () => {
       toast.success("Patrol template created");
@@ -218,7 +222,9 @@ export function useCreatePatrolSchedule() {
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Failed to create patrol schedule");
-      return data.result?.schedule ?? data.schedule;
+      const schedule = data.result?.schedule ?? data.schedule;
+      if (!schedule?.id) throw new Error("Schedule was not saved by the backend. Please retry.");
+      return schedule;
     },
     onSuccess: () => {
       toast.success("Patrol schedule created");

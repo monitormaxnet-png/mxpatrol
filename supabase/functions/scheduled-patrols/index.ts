@@ -161,6 +161,18 @@ async function assertTemplateBelongsToCompany(serviceClient: ServiceClient, temp
   if (!data) throw new Error("Selected template does not belong to this company");
 }
 
+async function assertDeviceBelongsToCompany(serviceClient: ServiceClient, deviceIdentifier: string | null | undefined, companyId: string) {
+  if (!deviceIdentifier) return;
+  const { data, error } = await serviceClient
+    .from("devices")
+    .select("id")
+    .eq("device_identifier", deviceIdentifier)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Selected device is not registered to this company");
+}
+
 async function assertCheckpointsBelongToCompanyAndSite(serviceClient: ServiceClient, checkpointIds: string[], companyId: string, siteId: string | null | undefined) {
   if (!checkpointIds.length) return;
   let query = serviceClient
@@ -285,6 +297,7 @@ Deno.serve(async (req) => {
       const route = await assertRouteBelongsToCompany(serviceClient, input.route_id, access.companyId);
       await assertSiteBelongsToCompany(serviceClient, input.site_id ?? route.site_id, access.companyId);
       await assertTemplateBelongsToCompany(serviceClient, input.template_id ?? route.template_id, access.companyId);
+      await assertDeviceBelongsToCompany(serviceClient, input.device_identifier, access.companyId);
 
       const frequencyType = input.frequency_type ?? "daily";
       const { data, error } = await serviceClient

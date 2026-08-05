@@ -161,6 +161,74 @@ export function useGeneratePatrolSessions() {
   });
 }
 
+export type CreatePatrolTemplateInput = {
+  name: string;
+  description?: string | null;
+  site_id?: string | null;
+  status?: "active" | "paused" | "archived";
+  expected_duration_minutes?: number;
+};
+
+export function useCreatePatrolTemplate() {
+  const queryClient = useQueryClient();
+  const { data: companyId } = useCompanyId();
+
+  return useMutation({
+    mutationFn: async (template: CreatePatrolTemplateInput) => {
+      const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
+        body: { action: "create_template", template },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Failed to create patrol template");
+      return data.result?.template ?? data.template;
+    },
+    onSuccess: () => {
+      toast.success("Patrol template created");
+      queryClient.invalidateQueries({ queryKey: ["patrol_templates", companyId] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create patrol template"),
+  });
+}
+
+export type CreatePatrolScheduleInput = {
+  name: string;
+  route_id: string;
+  site_id?: string | null;
+  template_id?: string | null;
+  frequency_type?: "hourly" | "daily" | "weekly" | "custom" | "every_n_minutes" | "every_n_hours";
+  interval_value?: number;
+  start_time?: string | null;
+  end_time?: string | null;
+  days_of_week?: number[];
+  timezone?: string;
+  status?: "active" | "paused" | "archived";
+  grace_start_minutes?: number;
+  grace_completion_minutes?: number;
+  device_identifier?: string | null;
+};
+
+export function useCreatePatrolSchedule() {
+  const queryClient = useQueryClient();
+  const { data: companyId } = useCompanyId();
+
+  return useMutation({
+    mutationFn: async (schedule: CreatePatrolScheduleInput) => {
+      const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
+        body: { action: "create_schedule", schedule },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Failed to create patrol schedule");
+      return data.result?.schedule ?? data.schedule;
+    },
+    onSuccess: () => {
+      toast.success("Patrol schedule created");
+      queryClient.invalidateQueries({ queryKey: ["patrol_schedules", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["patrol_sessions", companyId] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create patrol schedule"),
+  });
+}
+
 export function patrolSessionProgress(session: PatrolSessionRow) {
   const completed = Number(session.checkpoint_completed ?? session.completed_required_count ?? 0);
   const total = Number(session.checkpoint_total ?? session.total_required_count ?? 0);

@@ -10,7 +10,7 @@ import { useRealtimeConnectionStatus } from '@/hooks/useRealtimeConnectionStatus
 import { supabase } from '@/integrations/supabase/client';
 import { useDevices } from '@/hooks/useDashboardData';
 import { useCompanyId } from '@/hooks/usePatrolScanData';
-import { patrolSessionLabel, patrolSessionProgress, useCreatePatrolRoute, useGeneratePatrolSessions, usePatrolRoutes, usePatrolSchedules, usePatrolSessions, usePatrolTemplates, type CreatePatrolRouteInput } from '@/hooks/useScheduledPatrols';
+import { patrolSessionLabel, patrolSessionProgress, useCreatePatrolRoute, useCreatePatrolSchedule, useCreatePatrolTemplate, useGeneratePatrolSessions, usePatrolRoutes, usePatrolSchedules, usePatrolSessions, usePatrolTemplates, type CreatePatrolRouteInput, type CreatePatrolScheduleInput, type CreatePatrolTemplateInput } from '@/hooks/useScheduledPatrols';
 
 type Tab = 'operations' | 'templates' | 'routes' | 'schedules';
 type Tone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';

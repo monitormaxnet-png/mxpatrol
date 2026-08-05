@@ -152,9 +152,34 @@ function QuickAction({ label, icon: Icon, onClick }: { label: string; icon: any;
 }
 function ConfigurationView({ tab, siteId, templates, routes, schedules, devices, checkpointOptions, loading, generatePending, createRoutePending, createTemplatePending, createSchedulePending, onGenerate, onCreateRoute, onCreateTemplate, onCreateSchedule }: { tab: Exclude<Tab, 'operations'>; siteId: string; templates: any[]; routes: any[]; schedules: any[]; devices: any[]; checkpointOptions: CheckpointOption[]; loading: boolean; generatePending: boolean; createRoutePending: boolean; createTemplatePending: boolean; createSchedulePending: boolean; onGenerate: () => void; onCreateRoute: (route: CreatePatrolRouteInput) => void; onCreateTemplate: (template: CreatePatrolTemplateInput) => void; onCreateSchedule: (schedule: CreatePatrolScheduleInput) => void; }) {
   if (loading) return <LoadingRows label="Loading patrol configuration..." />;
-  if (tab === 'templates') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><TemplateCreationPanel siteId={siteId} pending={createTemplatePending} onCreate={onCreateTemplate} /><SocPanel title="Patrol Templates"><ConfigTable rows={templates} empty="No patrol templates yet. Create a template, then a route and a schedule." columns={['Template', 'Site', 'Duration', 'Status']} render={(row) => [row.name, row.sites?.name || 'Unassigned', `${row.expected_duration_minutes ?? 60} min`, row.status || 'active']} /></SocPanel></div>;
-  if (tab === 'routes') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><RouteCreationPanel siteId={siteId} checkpoints={checkpointOptions} pending={createRoutePending} onCreate={onCreateRoute} /><SocPanel title="Routes"><ConfigTable rows={routes} empty="No patrol routes yet. Build an ordered checkpoint route before scheduling patrols." columns={['Route', 'Site', 'Checkpoints', 'Mode', 'Status']} render={(row) => [row.name, row.sites?.name || 'Unassigned', String(row.patrol_route_checkpoints?.length ?? 0), row.sequence_mode || row.mode || 'Flexible', row.status || 'active']} /></SocPanel></div>;
-  return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><ScheduleCreationPanel routes={routes} templates={templates} devices={devices} pending={createSchedulePending} onCreate={onCreateSchedule} /><SocPanel title="Schedules" action={<button type="button" onClick={onGenerate} disabled={generatePending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-slate-950/80 px-3 text-xs font-black text-slate-300 disabled:opacity-50">{generatePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}Admin Generate</button>}><ConfigTable rows={schedules} empty="No active patrol schedules yet. Add a schedule to let the backend create sessions automatically." columns={['Schedule', 'Template', 'Site', 'Frequency', 'Next Run', 'Status']} render={(row) => [row.name, row.patrol_templates?.name || 'No template', row.sites?.name || 'Unassigned', row.frequency_type || row.frequency || '-', formatDateTime(row.next_run_at), row.status || 'active']} /></SocPanel></div>;
+  if (tab === 'templates') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><TemplateCreationPanel siteId={siteId} pending={createTemplatePending} onCreate={onCreateTemplate} /><SocPanel title="Patrol Templates"><ConfigTable rows={templates} empty="No patrol templates yet. Create a template, then a route and a schedule." columns={['Template', 'Site', 'Duration', 'Status']} render={(row) => [row.name, row.sites?.name || 'Company-wide', row.expected_duration_minutes ? `${row.expected_duration_minutes} min` : '—', row.status || 'active']} /></SocPanel></div>;
+  if (tab === 'routes') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><RouteCreationPanel siteId={siteId} checkpoints={checkpointOptions} pending={createRoutePending} onCreate={onCreateRoute} /><SocPanel title="Routes"><ConfigTable rows={routes} empty="No patrol routes yet. Build an ordered checkpoint route before scheduling patrols." columns={['Route', 'Site', 'Checkpoints', 'Mode', 'Status']} render={(row) => [row.name, row.sites?.name || 'Company-wide', String(row.patrol_route_checkpoints?.length ?? 0), row.sequence_mode || row.mode || 'Flexible', row.status || 'active']} /></SocPanel></div>;
+  return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><ScheduleCreationPanel routes={routes} templates={templates} devices={devices} pending={createSchedulePending} onCreate={onCreateSchedule} /><SocPanel title="Schedules" action={<button type="button" onClick={onGenerate} disabled={generatePending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-slate-950/80 px-3 text-xs font-black text-slate-300 disabled:opacity-50">{generatePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}Admin Generate</button>}><ConfigTable rows={schedules} empty="No active patrol schedules yet. Add a schedule to let the backend create sessions automatically." columns={['Schedule', 'Route', 'Recurrence', 'Active Days', 'Time Window', 'Device', 'Next Run', 'Status']} render={(row) => [row.name, row.patrol_routes?.name || '—', formatRecurrence(row), formatActiveDays(row.days_of_week), formatTimeWindow(row.start_time, row.end_time), row.device_identifier || 'Any device', formatDateTime(row.next_run_at), row.status || 'active']} /></SocPanel></div>;
+}
+
+function formatRecurrence(row: any) {
+  const type = row.frequency_type || row.frequency;
+  const interval = Number(row.interval_value ?? 1) || 1;
+  if (!type) return '—';
+  if (type === 'every_n_minutes') return `Every ${interval} min`;
+  if (type === 'every_n_hours') return `Every ${interval} hr`;
+  if (type === 'hourly') return interval > 1 ? `Every ${interval} hr` : 'Hourly';
+  if (type === 'daily') return interval > 1 ? `Every ${interval} days` : 'Daily';
+  if (type === 'weekly') return interval > 1 ? `Every ${interval} weeks` : 'Weekly';
+  return `${type}${interval > 1 ? ` x${interval}` : ''}`;
+}
+
+function formatActiveDays(days: unknown) {
+  if (!Array.isArray(days) || !days.length) return 'Every day';
+  const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  if (days.length === 7) return 'Every day';
+  return [1, 2, 3, 4, 5, 6, 0].filter((day) => days.includes(day)).map((day) => labels[day]).join(' ');
+}
+
+function formatTimeWindow(start?: string | null, end?: string | null) {
+  if (!start && !end) return 'All day';
+  const trim = (value?: string | null) => (value ? String(value).slice(0, 5) : '—');
+  return `${trim(start)} - ${trim(end)}`;
 }
 
 const fieldClass = 'mt-2 h-11 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 text-sm font-semibold text-white outline-none focus:border-emerald-400/40';

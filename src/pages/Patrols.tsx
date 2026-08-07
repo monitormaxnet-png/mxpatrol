@@ -469,10 +469,12 @@ function ActivityRow({ activity }: { activity: ReturnType<typeof buildRecentActi
   return <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/20 p-2.5"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${dotTone(activity.tone)}`}><Icon className="h-4 w-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white">{activity.title}</p><p className="truncate text-xs text-slate-500">{activity.subtitle}</p></div><span className="text-xs text-slate-500">{activity.time}</span></div>;
 }
 
-function ConfigTable({ rows, columns, render, empty }: { rows: any[]; columns: string[]; render: (row: any) => string[]; empty: string }) {
+function ConfigTable({ rows, columns, render, empty, actions }: { rows: any[]; columns: string[]; render: (row: any) => string[]; empty: string; actions?: (row: any) => React.ReactNode }) {
   if (!rows.length) return <CompactEmpty title={empty} body="This section uses real Supabase data only. No demo records are shown." />;
-  return <div className="overflow-auto"><table className="w-full min-w-[860px] text-left text-sm"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr>{columns.map((column) => <th key={column} className="px-3 py-3">{column}</th>)}</tr></thead><tbody className="divide-y divide-white/5">{rows.map((row) => <tr key={row.id} className="hover:bg-white/[0.03]">{render(row).map((value, index) => <td key={index} className="px-3 py-3 text-slate-300">{value}</td>)}</tr>)}</tbody></table></div>;
+  const headers = actions ? [...columns, 'Actions'] : columns;
+  return <div className="overflow-auto"><table className="w-full min-w-[860px] text-left text-sm"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr>{headers.map((column) => <th key={column} className="px-3 py-3">{column}</th>)}</tr></thead><tbody className="divide-y divide-white/5">{rows.map((row) => <tr key={row.id} className="hover:bg-white/[0.03]">{render(row).map((value, index) => <td key={index} className="px-3 py-3 text-slate-300">{value}</td>)}{actions ? <td className="px-3 py-3">{actions(row)}</td> : null}</tr>)}</tbody></table></div>;
 }
+
 
 function TabNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => void }) {
   const tabs: { id: Tab; label: string; icon: any }[] = [{ id: 'operations', label: 'Operations', icon: Radio }, { id: 'templates', label: 'Templates', icon: FileText }, { id: 'routes', label: 'Routes', icon: Route }, { id: 'schedules', label: 'Schedules', icon: CalendarClock }];

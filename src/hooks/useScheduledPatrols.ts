@@ -235,7 +235,69 @@ export function useCreatePatrolSchedule() {
   });
 }
 
+type PatrolEntity = "template" | "route" | "schedule";
+
+const entityLabel: Record<PatrolEntity, string> = {
+  template: "Patrol template",
+  route: "Patrol route",
+  schedule: "Patrol schedule",
+};
+
+function useInvalidatePatrolConfig() {
+  const queryClient = useQueryClient();
+  const { data: companyId } = useCompanyId();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["patrol_templates", companyId] });
+    queryClient.invalidateQueries({ queryKey: ["patrol_routes", companyId] });
+    queryClient.invalidateQueries({ queryKey: ["patrol_schedules", companyId] });
+    queryClient.invalidateQueries({ queryKey: ["patrol_sessions", companyId] });
+  };
+}
+
+export type UpdatePatrolTemplateInput = Partial<CreatePatrolTemplateInput>;
+export type UpdatePatrolRouteInput = Partial<CreatePatrolRouteInput>;
+export type UpdatePatrolScheduleInput = Partial<CreatePatrolScheduleInput>;
+
+export function useUpdatePatrolEntity(entity: PatrolEntity) {
+  const invalidate = useInvalidatePatrolConfig();
+  return useMutation({
+    mutationFn: async ({ id, values }: { id: string; values: Record<string, any> }) => {
+      const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
+        body: { action: `update_${entity}`, id, [entity]: values },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || `Failed to update ${entityLabel[entity].toLowerCase()}`);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success(`${entityLabel[entity]} updated`);
+      invalidate();
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : `Failed to update ${entityLabel[entity].toLowerCase()}`),
+  });
+}
+
+export function useDeletePatrolEntity(entity: PatrolEntity) {
+  const invalidate = useInvalidatePatrolConfig();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
+        body: { action: `delete_${entity}`, id },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || `Failed to delete ${entityLabel[entity].toLowerCase()}`);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success(`${entityLabel[entity]} deleted`);
+      invalidate();
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : `Failed to delete ${entityLabel[entity].toLowerCase()}`),
+  });
+}
+
 export function patrolSessionProgress(session: PatrolSessionRow) {
+
   const completed = Number(session.checkpoint_completed ?? session.completed_required_count ?? 0);
   const total = Number(session.checkpoint_total ?? session.total_required_count ?? 0);
   const percent = Number(session.progress_percent ?? session.progress ?? (total ? Math.round((completed / total) * 100) : 0));

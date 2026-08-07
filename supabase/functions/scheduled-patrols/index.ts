@@ -184,8 +184,20 @@ async function assertDeviceBelongsToCompany(serviceClient: ServiceClient, device
   if (!data) throw new Error("Selected device is not registered to this company");
 }
 
+async function assertOwnedRecord(serviceClient: ServiceClient, table: string, id: string, companyId: string, label: string) {
+  const { data, error } = await serviceClient
+    .from(table)
+    .select("id")
+    .eq("id", id)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error(`${label} was not found for this company`);
+}
+
 async function assertCheckpointsBelongToCompanyAndSite(serviceClient: ServiceClient, checkpointIds: string[], companyId: string, siteId: string | null | undefined) {
   if (!checkpointIds.length) return;
+
   let query = serviceClient
     .from("checkpoints")
     .select("id")

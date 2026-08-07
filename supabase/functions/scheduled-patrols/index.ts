@@ -369,7 +369,217 @@ Deno.serve(async (req) => {
       return ok({ record: data });
     }
 
+    if (body.action === "update_template") {
+      const input = body.template;
+      await assertOwnedRecord(serviceClient, "patrol_templates", body.id, access.companyId, "Patrol template");
+      await assertSiteBelongsToCompany(serviceClient, input.site_id, access.companyId);
+      const { data, error } = await serviceClient
+        .from("patrol_templates")
+        .update(removeEmpty({
+          name: input.name,
+          description: input.description === undefined ? undefined : (input.description || null),
+          site_id: input.site_id === undefined ? undefined : (input.site_id ?? null),
+          status: input.status,
+          expected_duration_minutes: input.expected_duration_minutes,
+        }))
+        .eq("id", body.id)
+        .eq("company_id", access.companyId)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return ok({ template: data });
+    }
+
+    if (body.action === "update_route") {
+      const input = body.route;
+      await assertOwnedRecord(serviceClient, "patrol_routes", body.id, access.companyId, "Patrol route");
+      await assertSiteBelongsToCompany(serviceClient, input.site_id, access.companyId);
+      await assertTemplateBelongsToCompany(serviceClient, input.template_id, access.companyId);
+
+      if (input.checkpoints?.length) {
+        await assertCheckpointsBelongToCompanyAndSite(
+          serviceClient,
+          input.checkpoints.map((checkpoint) => checkpoint.checkpoint_id),
+          access.companyId,
+          input.site_id,
+        );
+      }
+
+      const { data, error } = await serviceClient
+        .from("patrol_routes")
+        .update(removeEmpty({
+          name: input.name,
+          description: input.description === undefined ? undefined : (input.description || null),
+          site_id: input.site_id === undefined ? undefined : (input.site_id ?? null),
+          template_id: input.template_id === undefined ? undefined : (input.template_id ?? null),
+          status: input.status,
+        }))
+        .eq("id", body.id)
+        .eq("company_id", access.companyId)
+        .select("*")
+        .single();
+      if (error) throw error;
+
+      if (input.checkpoints?.length) {
+        const { error: deleteError } = await serviceClient
+          .from("patrol_route_checkpoints")
+          .delete()
+          .eq("route_id", body.id)
+          .eq("company_id", access.companyId);
+        if (deleteError) throw deleteError;
+
+        const rows = input.checkpoints.map((checkpoint, index) => ({
+          company_id: access.companyId,
+          route_id: body.id,
+          checkpoint_id: checkpoint.checkpoint_id,
+          sequence_order: checkpoint.sequence_order ?? index + 1,
+          expected_arrival_offset_minutes: checkpoint.expected_offset_minutes ?? null,
+          expected_offset_minutes: checkpoint.expected_offset_minutes ?? null,
+          is_required: checkpoint.is_required ?? true,
+        }));
+        const { error: insertError } = await serviceClient.from("patrol_route_checkpoints").insert(rows);
+        if (insertError) throw insertError;
+      }
+
+      return ok({ route: data });
+    }
+
+    if (body.action === "update_schedule") {
+      const input = body.schedule;
+      await assertOwnedRecord(serviceClient, "patrol_schedules", body.id, access.companyId, "Patrol schedule");
+      if (input.route_id) await assertRouteBelongsToCompany(serviceClient, input.route_id, access.companyId);
+      await assertSiteBelongsToCompany(serviceClient, input.site_id, access.companyId);
+      await assertTemplateBelongsToCompany(serviceClient, input.template_id, access.companyId);
+      await assertDeviceBelongsToCompany(serviceClient, input.device_identifier, access.companyId);
+
+      const { data, error } = await serviceClient
+        .from("patrol_schedules")
+        .update(removeEmpty({
+          name: input.name,
+          route_id: input.route_id,
+          site_id: input.site_id === undefined ? undefined : (input.site_id ?? null),
+          template_id: input.template_id === undefined ? undefined : (input.template_id ?? null),
+          frequency: input.frequency_type,
+          frequency_type: input.frequency_type,
+          interval_value: input.interval_value,
+          start_time: input.start_time === undefined ? undefined : (input.start_time || null),
+          end_time: input.end_time === undefined ? undefined : (input.end_time || null),
+          days_of_week: input.days_of_week,
+          timezone: input.timezone,
+          status: input.status,
+          grace_start_minutes: input.grace_start_minutes,
+          grace_completion_minutes: input.grace_completion_minutes,
+          device_identifier: input.device_identifier === undefined ? undefined : (input.device_identifier || null),
+        }))
+        .eq("id", body.id)
+        .eq("company_id", access.companyId)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return ok({ schedule: data });
+    }
+
+    if (body.action === "delete_template") {
+      await assertOwnedRecord(serviceClient, "patrol_templates", body.id, access.companyId, "Patrol template");
+      for (const table of ["patrol_routes", "patrol_schedules", "patrol_sessions"] as const) {
+        const { error } = await serviceClient
+          .from(table)
+          .update({ template_id: null })
+          .eq("template_id", body.id)
+          .eq("company_id", access.companyId);
+        if (error) throw error;
+      }
+      const { error: deleteError } = await serviceClient
+        .from("patrol_templates")
+        .delete()
+        .eq("id", body.id)
+        .eq("company_id", access.companyId);
+      if (deleteError) throw deleteError;
+      return ok({ deleted: body.id });
+    }
+
+    if (body.action === "delete_route") {
+      await assertOwnedRecord(serviceClient, "patrol_routes", body.id, access.companyId, "Patrol route");
+
+      const { count: scheduleCount, error: scheduleError } = await serviceClient
+        .from("patrol_schedules")
+        .select("id", { count: "exact", head: true })
+        .eq("route_id", body.id)
+        .eq("company_id", access.companyId);
+      if (scheduleError) throw scheduleError;
+      if (scheduleCount) return fail("This route is still used by a schedule. Delete or repoint the schedule first, or archive the route instead.");
+
+      const { count: sessionCount, error: sessionError } = await serviceClient
+        .from("patrol_sessions")
+        .select("id", { count: "exact", head: true })
+        .eq("route_id", body.id)
+        .eq("company_id", access.companyId);
+      if (sessionError) throw sessionError;
+      if (sessionCount) return fail("This route already has patrol sessions in history. Archive it instead of deleting.");
+
+      const { error: checkpointError } = await serviceClient
+        .from("patrol_route_checkpoints")
+        .delete()
+        .eq("route_id", body.id)
+        .eq("company_id", access.companyId);
+      if (checkpointError) throw checkpointError;
+
+      const { error: deleteError } = await serviceClient
+        .from("patrol_routes")
+        .delete()
+        .eq("id", body.id)
+        .eq("company_id", access.companyId);
+      if (deleteError) throw deleteError;
+      return ok({ deleted: body.id });
+    }
+
+    if (body.action === "delete_schedule") {
+      await assertOwnedRecord(serviceClient, "patrol_schedules", body.id, access.companyId, "Patrol schedule");
+
+      const { data: sessions, error: sessionError } = await serviceClient
+        .from("patrol_sessions")
+        .select("id, status")
+        .eq("schedule_id", body.id)
+        .eq("company_id", access.companyId);
+      if (sessionError) throw sessionError;
+
+      const pendingIds = (sessions ?? [])
+        .filter((row: any) => ["scheduled", "awaiting_start"].includes(row.status))
+        .map((row: any) => row.id);
+
+      if (pendingIds.length) {
+        const { error: checkpointError } = await serviceClient
+          .from("patrol_session_checkpoints")
+          .delete()
+          .in("session_id", pendingIds)
+          .eq("company_id", access.companyId);
+        if (checkpointError) throw checkpointError;
+        const { error: pendingError } = await serviceClient
+          .from("patrol_sessions")
+          .delete()
+          .in("id", pendingIds)
+          .eq("company_id", access.companyId);
+        if (pendingError) throw pendingError;
+      }
+
+      const { error: detachError } = await serviceClient
+        .from("patrol_sessions")
+        .update({ schedule_id: null })
+        .eq("schedule_id", body.id)
+        .eq("company_id", access.companyId);
+      if (detachError) throw detachError;
+
+      const { error: deleteError } = await serviceClient
+        .from("patrol_schedules")
+        .delete()
+        .eq("id", body.id)
+        .eq("company_id", access.companyId);
+      if (deleteError) throw deleteError;
+      return ok({ deleted: body.id, removed_pending_sessions: pendingIds.length });
+    }
+
     return fail("Unknown action", 400);
+
   } catch (err) {
     console.error("scheduled-patrols error:", err);
     return fail((err as Error)?.message || "Internal server error", 500, {

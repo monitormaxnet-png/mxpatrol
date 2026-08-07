@@ -68,6 +68,10 @@ const ScheduleSchema = z.object({
   device_identifier: optionalText,
 });
 
+const TemplateUpdateSchema = TemplateSchema.partial();
+const RouteUpdateSchema = RouteSchema.partial();
+const ScheduleUpdateSchema = ScheduleSchema.partial();
+
 const BodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("list") }),
   z.object({ action: z.literal("create_template"), template: TemplateSchema }),
@@ -77,7 +81,14 @@ const BodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("archive_template"), id: z.string().uuid() }),
   z.object({ action: z.literal("archive_route"), id: z.string().uuid() }),
   z.object({ action: z.literal("archive_schedule"), id: z.string().uuid() }),
+  z.object({ action: z.literal("update_template"), id: z.string().uuid(), template: TemplateUpdateSchema }),
+  z.object({ action: z.literal("update_route"), id: z.string().uuid(), route: RouteUpdateSchema }),
+  z.object({ action: z.literal("update_schedule"), id: z.string().uuid(), schedule: ScheduleUpdateSchema }),
+  z.object({ action: z.literal("delete_template"), id: z.string().uuid() }),
+  z.object({ action: z.literal("delete_route"), id: z.string().uuid() }),
+  z.object({ action: z.literal("delete_schedule"), id: z.string().uuid() }),
 ]);
+
 
 type ServiceClient = ReturnType<typeof createClient>;
 

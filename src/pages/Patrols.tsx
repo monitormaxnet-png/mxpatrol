@@ -1,7 +1,7 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, Eye, FileText, ListChecks, Loader2, Map as MapIcon, MoreHorizontal, Play, Plus, Radio, Route, Save, ShieldCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, Eye, FileText, ListChecks, Loader2, Map as MapIcon, MoreHorizontal, Pencil, Play, Plus, Radio, Route, Save, ShieldCheck, Trash2, XCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import SiteSelector from '@/components/sites/SiteSelector';
@@ -10,7 +10,7 @@ import { useRealtimeConnectionStatus } from '@/hooks/useRealtimeConnectionStatus
 import { supabase } from '@/integrations/supabase/client';
 import { useDevices } from '@/hooks/useDashboardData';
 import { useCompanyId } from '@/hooks/usePatrolScanData';
-import { patrolSessionLabel, patrolSessionProgress, useCreatePatrolRoute, useCreatePatrolSchedule, useCreatePatrolTemplate, useGeneratePatrolSessions, usePatrolRoutes, usePatrolSchedules, usePatrolSessions, usePatrolTemplates, type CreatePatrolRouteInput, type CreatePatrolScheduleInput, type CreatePatrolTemplateInput } from '@/hooks/useScheduledPatrols';
+import { patrolSessionLabel, patrolSessionProgress, useCreatePatrolRoute, useCreatePatrolSchedule, useCreatePatrolTemplate, useDeletePatrolEntity, useGeneratePatrolSessions, usePatrolRoutes, usePatrolSchedules, usePatrolSessions, usePatrolTemplates, useUpdatePatrolEntity, type CreatePatrolRouteInput, type CreatePatrolScheduleInput, type CreatePatrolTemplateInput } from '@/hooks/useScheduledPatrols';
 
 type Tab = 'operations' | 'templates' | 'routes' | 'schedules';
 type Tone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';
@@ -151,11 +151,142 @@ function QuickAction({ label, icon: Icon, onClick }: { label: string; icon: any;
   return <button type="button" onClick={onClick} className="flex h-10 w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-xs font-bold text-slate-300 hover:border-emerald-400/25 hover:text-emerald-300"><Icon className="h-4 w-4" /> {label}</button>;
 }
 function ConfigurationView({ tab, siteId, templates, routes, schedules, devices, checkpointOptions, loading, generatePending, createRoutePending, createTemplatePending, createSchedulePending, onGenerate, onCreateRoute, onCreateTemplate, onCreateSchedule }: { tab: Exclude<Tab, 'operations'>; siteId: string; templates: any[]; routes: any[]; schedules: any[]; devices: any[]; checkpointOptions: CheckpointOption[]; loading: boolean; generatePending: boolean; createRoutePending: boolean; createTemplatePending: boolean; createSchedulePending: boolean; onGenerate: () => void; onCreateRoute: (route: CreatePatrolRouteInput) => void; onCreateTemplate: (template: CreatePatrolTemplateInput) => void; onCreateSchedule: (schedule: CreatePatrolScheduleInput) => void; }) {
+  const [editing, setEditing] = useState<{ kind: 'template' | 'route' | 'schedule'; row: any } | null>(null);
+  const updateTemplate = useUpdatePatrolEntity('template');
+  const updateRoute = useUpdatePatrolEntity('route');
+  const updateSchedule = useUpdatePatrolEntity('schedule');
+  const deleteTemplate = useDeletePatrolEntity('template');
+  const deleteRoute = useDeletePatrolEntity('route');
+  const deleteSchedule = useDeletePatrolEntity('schedule');
+
+  const mutationFor = (kind: 'template' | 'route' | 'schedule') => kind === 'template' ? updateTemplate : kind === 'route' ? updateRoute : updateSchedule;
+  const removeFor = (kind: 'template' | 'route' | 'schedule') => kind === 'template' ? deleteTemplate : kind === 'route' ? deleteRoute : deleteSchedule;
+
+  const confirmDelete = (kind: 'template' | 'route' | 'schedule', row: any) => {
+    const extra = kind === 'schedule' ? ' Its scheduled (not yet started) patrol sessions will be removed too.' : '';
+    if (!window.confirm(`Delete "${row.name}"? This cannot be undone.${extra}`)) return;
+    removeFor(kind).mutate(row.id);
+  };
+
+  const rowActions = (kind: 'template' | 'route' | 'schedule') => (row: any) => (
+    <RowActions
+      pending={removeFor(kind).isPending}
+      onEdit={() => setEditing({ kind, row })}
+      onDelete={() => confirmDelete(kind, row)}
+    />
+  );
+
+  const dialog = editing ? (
+    <EditPatrolDialog
+      kind={editing.kind}
+      row={editing.row}
+      routes={routes}
+      templates={templates}
+      devices={devices}
+      pending={mutationFor(editing.kind).isPending}
+      onClose={() => setEditing(null)}
+      onSave={(values) => mutationFor(editing.kind).mutate({ id: editing.row.id, values }, { onSuccess: () => setEditing(null) })}
+    />
+  ) : null;
+
   if (loading) return <LoadingRows label="Loading patrol configuration..." />;
-  if (tab === 'templates') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><TemplateCreationPanel siteId={siteId} pending={createTemplatePending} onCreate={onCreateTemplate} /><SocPanel title="Patrol Templates"><ConfigTable rows={templates} empty="No patrol templates yet. Create a template, then a route and a schedule." columns={['Template', 'Site', 'Duration', 'Status']} render={(row) => [row.name, row.sites?.name || 'Company-wide', row.expected_duration_minutes ? `${row.expected_duration_minutes} min` : '—', row.status || 'active']} /></SocPanel></div>;
-  if (tab === 'routes') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><RouteCreationPanel siteId={siteId} checkpoints={checkpointOptions} pending={createRoutePending} onCreate={onCreateRoute} /><SocPanel title="Routes"><ConfigTable rows={routes} empty="No patrol routes yet. Build an ordered checkpoint route before scheduling patrols." columns={['Route', 'Site', 'Checkpoints', 'Mode', 'Status']} render={(row) => [row.name, row.sites?.name || 'Company-wide', String(row.patrol_route_checkpoints?.length ?? 0), row.sequence_mode || row.mode || 'Flexible', row.status || 'active']} /></SocPanel></div>;
-  return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><ScheduleCreationPanel routes={routes} templates={templates} devices={devices} pending={createSchedulePending} onCreate={onCreateSchedule} /><SocPanel title="Schedules" action={<button type="button" onClick={onGenerate} disabled={generatePending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-slate-950/80 px-3 text-xs font-black text-slate-300 disabled:opacity-50">{generatePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}Admin Generate</button>}><ConfigTable rows={schedules} empty="No active patrol schedules yet. Add a schedule to let the backend create sessions automatically." columns={['Schedule', 'Route', 'Recurrence', 'Active Days', 'Time Window', 'Device', 'Next Run', 'Status']} render={(row) => [row.name, row.patrol_routes?.name || '—', formatRecurrence(row), formatActiveDays(row.days_of_week), formatTimeWindow(row.start_time, row.end_time), row.device_identifier || 'Any device', formatDateTime(row.next_run_at), row.status || 'active']} /></SocPanel></div>;
+  if (tab === 'templates') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><TemplateCreationPanel siteId={siteId} pending={createTemplatePending} onCreate={onCreateTemplate} /><SocPanel title="Patrol Templates"><ConfigTable rows={templates} empty="No patrol templates yet. Create a template, then a route and a schedule." columns={['Template', 'Site', 'Duration', 'Status']} render={(row) => [row.name, row.sites?.name || 'Company-wide', row.expected_duration_minutes ? `${row.expected_duration_minutes} min` : '—', row.status || 'active']} actions={rowActions('template')} /></SocPanel>{dialog}</div>;
+  if (tab === 'routes') return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><RouteCreationPanel siteId={siteId} checkpoints={checkpointOptions} pending={createRoutePending} onCreate={onCreateRoute} /><SocPanel title="Routes"><ConfigTable rows={routes} empty="No patrol routes yet. Build an ordered checkpoint route before scheduling patrols." columns={['Route', 'Site', 'Checkpoints', 'Mode', 'Status']} render={(row) => [row.name, row.sites?.name || 'Company-wide', String(row.patrol_route_checkpoints?.length ?? 0), row.sequence_mode || row.mode || 'Flexible', row.status || 'active']} actions={rowActions('route')} /></SocPanel>{dialog}</div>;
+  return <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><ScheduleCreationPanel routes={routes} templates={templates} devices={devices} pending={createSchedulePending} onCreate={onCreateSchedule} /><SocPanel title="Schedules" action={<button type="button" onClick={onGenerate} disabled={generatePending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-slate-950/80 px-3 text-xs font-black text-slate-300 disabled:opacity-50">{generatePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}Admin Generate</button>}><ConfigTable rows={schedules} empty="No active patrol schedules yet. Add a schedule to let the backend create sessions automatically." columns={['Schedule', 'Route', 'Recurrence', 'Active Days', 'Time Window', 'Device', 'Next Run', 'Status']} render={(row) => [row.name, row.patrol_routes?.name || '—', formatRecurrence(row), formatActiveDays(row.days_of_week), formatTimeWindow(row.start_time, row.end_time), row.device_identifier || 'Any device', formatDateTime(row.next_run_at), row.status || 'active']} actions={rowActions('schedule')} /></SocPanel>{dialog}</div>;
 }
+
+function RowActions({ onEdit, onDelete, pending }: { onEdit: () => void; onDelete: () => void; pending: boolean }) {
+  return <div className="flex items-center justify-end gap-2">
+    <button type="button" onClick={onEdit} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-[11px] font-black text-slate-300 transition hover:border-cyan-400/30 hover:text-cyan-200"><Pencil className="h-3.5 w-3.5" />Edit</button>
+    <button type="button" onClick={onDelete} disabled={pending} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-400/25 bg-red-400/10 px-2.5 text-[11px] font-black text-red-200 transition hover:bg-red-400/20 disabled:opacity-50">{pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Delete</button>
+  </div>;
+}
+
+function EditPatrolDialog({ kind, row, routes, templates, devices, pending, onClose, onSave }: { kind: 'template' | 'route' | 'schedule'; row: any; routes: any[]; templates: any[]; devices: any[]; pending: boolean; onClose: () => void; onSave: (values: Record<string, any>) => void }) {
+  const [name, setName] = useState(row.name ?? '');
+  const [description, setDescription] = useState(row.description ?? '');
+  const [status, setStatus] = useState(row.status ?? 'active');
+  const [duration, setDuration] = useState(String(row.expected_duration_minutes ?? 60));
+  const [routeId, setRouteId] = useState(row.route_id ?? '');
+  const [templateId, setTemplateId] = useState(row.template_id ?? 'none');
+  const [frequencyType, setFrequencyType] = useState(row.frequency_type ?? row.frequency ?? 'daily');
+  const [intervalValue, setIntervalValue] = useState(String(row.interval_value ?? 1));
+  const [startTime, setStartTime] = useState((row.start_time ?? '').slice(0, 5));
+  const [endTime, setEndTime] = useState((row.end_time ?? '').slice(0, 5));
+  const [days, setDays] = useState<number[]>(Array.isArray(row.days_of_week) ? row.days_of_week : []);
+  const [graceStart, setGraceStart] = useState(String(row.grace_start_minutes ?? 10));
+  const [graceCompletion, setGraceCompletion] = useState(String(row.grace_completion_minutes ?? 40));
+  const [deviceIdentifier, setDeviceIdentifier] = useState(row.device_identifier ?? 'any');
+
+  const toggleDay = (day: number) => setDays((current) => current.includes(day) ? current.filter((value) => value !== day) : [...current, day]);
+  const canSave = name.trim().length > 0 && (kind !== 'schedule' || !!routeId) && !pending;
+
+  const save = () => {
+    if (!canSave) return;
+    if (kind === 'template') {
+      onSave({ name: name.trim(), description: description.trim() || null, status, expected_duration_minutes: Math.max(Number(duration) || 60, 1) });
+      return;
+    }
+    if (kind === 'route') {
+      onSave({ name: name.trim(), description: description.trim() || null, status });
+      return;
+    }
+    onSave({
+      name: name.trim(),
+      route_id: routeId,
+      template_id: templateId === 'none' ? null : templateId,
+      frequency_type: frequencyType,
+      interval_value: Math.max(Number(intervalValue) || 1, 1),
+      start_time: startTime || null,
+      end_time: endTime || null,
+      days_of_week: days,
+      status,
+      grace_start_minutes: Math.max(Number(graceStart) || 0, 0),
+      grace_completion_minutes: Math.max(Number(graceCompletion) || 1, 1),
+      device_identifier: deviceIdentifier === 'any' ? null : deviceIdentifier,
+    });
+  };
+
+  const title = kind === 'template' ? 'Edit Patrol Template' : kind === 'route' ? 'Edit Route' : 'Edit Schedule';
+
+  return <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="my-8 w-full max-w-lg rounded-2xl border border-white/10 bg-slate-950/95 p-5 shadow-2xl">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-black text-white">{title}</h2>
+        <button type="button" onClick={onClose} aria-label="Close" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white"><XCircle className="h-4 w-4" /></button>
+      </div>
+      <div className="mt-4 space-y-4">
+        <label className="block"><span className={labelClass}>Name</span><input value={name} onChange={(event) => setName(event.target.value)} className={fieldClass} /></label>
+        {kind !== 'schedule' ? <label className="block"><span className={labelClass}>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/40" /></label> : null}
+        {kind === 'template' ? <label className="block"><span className={labelClass}>Expected Duration (minutes)</span><input type="number" min={1} max={1440} value={duration} onChange={(event) => setDuration(event.target.value)} className={fieldClass} /></label> : null}
+        {kind === 'schedule' ? <>
+          <label className="block"><span className={labelClass}>Route</span><select value={routeId} onChange={(event) => setRouteId(event.target.value)} className={fieldClass}>{routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></label>
+          <label className="block"><span className={labelClass}>Template (optional)</span><select value={templateId} onChange={(event) => setTemplateId(event.target.value)} className={fieldClass}><option value="none">No template</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block"><span className={labelClass}>Frequency</span><select value={frequencyType} onChange={(event) => setFrequencyType(event.target.value)} className={fieldClass}><option value="hourly">Hourly</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="every_n_minutes">Every N minutes</option><option value="every_n_hours">Every N hours</option></select></label>
+            <label className="block"><span className={labelClass}>Interval</span><input type="number" min={1} value={intervalValue} onChange={(event) => setIntervalValue(event.target.value)} className={fieldClass} /></label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block"><span className={labelClass}>Start Time</span><input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className={fieldClass} /></label>
+            <label className="block"><span className={labelClass}>End Time</span><input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className={fieldClass} /></label>
+          </div>
+          <div><span className={labelClass}>Active Days</span><div className="mt-2 flex flex-wrap gap-2">{weekDays.map((day) => { const selected = days.includes(day.value); return <button key={day.value} type="button" onClick={() => toggleDay(day.value)} className={`h-9 min-w-12 rounded-lg border px-3 text-xs font-black transition ${selected ? 'border-emerald-400/35 bg-emerald-400/15 text-emerald-100' : 'border-white/10 bg-black/25 text-slate-400 hover:border-cyan-400/25'}`}>{day.label}</button>; })}</div></div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block"><span className={labelClass}>Grace Start (min)</span><input type="number" min={0} max={240} value={graceStart} onChange={(event) => setGraceStart(event.target.value)} className={fieldClass} /></label>
+            <label className="block"><span className={labelClass}>Grace Completion (min)</span><input type="number" min={1} max={1440} value={graceCompletion} onChange={(event) => setGraceCompletion(event.target.value)} className={fieldClass} /></label>
+          </div>
+          <label className="block"><span className={labelClass}>Assigned Device</span><select value={deviceIdentifier} onChange={(event) => setDeviceIdentifier(event.target.value)} className={fieldClass}><option value="any">Any device</option>{devices.filter((device) => device.device_identifier).map((device) => <option key={device.id} value={device.device_identifier}>{displayDeviceLabel(device.device_name || device.device_identifier)}</option>)}</select></label>
+        </> : null}
+        <label className="block"><span className={labelClass}>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)} className={fieldClass}><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></label>
+      </div>
+      <div className="mt-5 flex gap-3">
+        <button type="button" onClick={onClose} className="h-11 flex-1 rounded-lg border border-white/10 bg-white/[0.04] text-sm font-black text-slate-300">Cancel</button>
+        <button type="button" onClick={save} disabled={!canSave} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-400/15 text-sm font-black text-emerald-100 disabled:opacity-45">{pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save Changes</button>
+      </div>
+    </div>
+  </div>;
+}
+
 
 function formatRecurrence(row: any) {
   const type = row.frequency_type || row.frequency;
@@ -338,10 +469,12 @@ function ActivityRow({ activity }: { activity: ReturnType<typeof buildRecentActi
   return <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/20 p-2.5"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${dotTone(activity.tone)}`}><Icon className="h-4 w-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white">{activity.title}</p><p className="truncate text-xs text-slate-500">{activity.subtitle}</p></div><span className="text-xs text-slate-500">{activity.time}</span></div>;
 }
 
-function ConfigTable({ rows, columns, render, empty }: { rows: any[]; columns: string[]; render: (row: any) => string[]; empty: string }) {
+function ConfigTable({ rows, columns, render, empty, actions }: { rows: any[]; columns: string[]; render: (row: any) => string[]; empty: string; actions?: (row: any) => React.ReactNode }) {
   if (!rows.length) return <CompactEmpty title={empty} body="This section uses real Supabase data only. No demo records are shown." />;
-  return <div className="overflow-auto"><table className="w-full min-w-[860px] text-left text-sm"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr>{columns.map((column) => <th key={column} className="px-3 py-3">{column}</th>)}</tr></thead><tbody className="divide-y divide-white/5">{rows.map((row) => <tr key={row.id} className="hover:bg-white/[0.03]">{render(row).map((value, index) => <td key={index} className="px-3 py-3 text-slate-300">{value}</td>)}</tr>)}</tbody></table></div>;
+  const headers = actions ? [...columns, 'Actions'] : columns;
+  return <div className="overflow-auto"><table className="w-full min-w-[860px] text-left text-sm"><thead className="border-b border-white/10 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr>{headers.map((column) => <th key={column} className="px-3 py-3">{column}</th>)}</tr></thead><tbody className="divide-y divide-white/5">{rows.map((row) => <tr key={row.id} className="hover:bg-white/[0.03]">{render(row).map((value, index) => <td key={index} className="px-3 py-3 text-slate-300">{value}</td>)}{actions ? <td className="px-3 py-3">{actions(row)}</td> : null}</tr>)}</tbody></table></div>;
 }
+
 
 function TabNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => void }) {
   const tabs: { id: Tab; label: string; icon: any }[] = [{ id: 'operations', label: 'Operations', icon: Radio }, { id: 'templates', label: 'Templates', icon: FileText }, { id: 'routes', label: 'Routes', icon: Route }, { id: 'schedules', label: 'Schedules', icon: CalendarClock }];

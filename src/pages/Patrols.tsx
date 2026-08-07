@@ -1,7 +1,7 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, Eye, FileText, ListChecks, Loader2, Map as MapIcon, MoreHorizontal, Play, Plus, Radio, Route, Save, ShieldCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, Eye, FileText, ListChecks, Loader2, Map as MapIcon, MoreHorizontal, Pencil, Play, Plus, Radio, Route, Save, ShieldCheck, Trash2, XCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import SiteSelector from '@/components/sites/SiteSelector';

@@ -1,10 +1,11 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, Eye, FileText, ListChecks, Loader2, Map as MapIcon, MoreHorizontal, Pencil, Play, Plus, Radio, Route, Save, ShieldCheck, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, FlaskConical, CalendarClock, CheckCircle2, Clock3, Eye, FileText, ListChecks, Loader2, Map as MapIcon, MoreHorizontal, Pencil, Play, Plus, Radio, Route, Save, ShieldCheck, Trash2, XCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import SiteSelector from '@/components/sites/SiteSelector';
+import ScanValidationPreview from '@/components/patrols/ScanValidationPreview';
 import { SocKpiCard, SocPageShell, SocPanel, SocProgressBar } from '@/components/dashboard/SocComponents';
 import { useRealtimeConnectionStatus } from '@/hooks/useRealtimeConnectionStatus';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,7 +13,7 @@ import { useDevices } from '@/hooks/useDashboardData';
 import { useCompanyId } from '@/hooks/usePatrolScanData';
 import { patrolSessionLabel, patrolSessionProgress, useCreatePatrolRoute, useCreatePatrolSchedule, useCreatePatrolTemplate, useDeletePatrolEntity, useGeneratePatrolSessions, usePatrolRoutes, usePatrolSchedules, usePatrolSessions, usePatrolTemplates, useUpdatePatrolEntity, type CreatePatrolRouteInput, type CreatePatrolScheduleInput, type CreatePatrolTemplateInput } from '@/hooks/useScheduledPatrols';
 
-type Tab = 'operations' | 'templates' | 'routes' | 'schedules';
+type Tab = 'operations' | 'templates' | 'routes' | 'schedules' | 'validation';
 type Tone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';
 const activeStatuses = new Set(['awaiting_start', 'active', 'in_progress', 'late_start', 'delayed']);
 const completedStatuses = new Set(['completed', 'completed_late']);
@@ -109,10 +110,12 @@ export default function Patrols() {
         <SocKpiCard title="Devices Online" value={onlineDevices} subValue={'/ ' + deviceRows.length} caption="All systems" icon={ShieldCheck} tone="blue" loading={sessions.isLoading || devices.isLoading} />
       </section>
       <TabNav active={tab} onChange={setTab} />
-      {tab === 'operations' ? (
+      {tab === 'validation' ? (
+        <ScanValidationPreview sessions={dateSessions} checkpoints={checkpointOptions.data ?? []} devices={deviceRows} loading={sessions.isLoading || checkpointOptions.isLoading} />
+      ) : tab === 'operations' ? (
         <OperationsView loading={sessions.isLoading} sessions={filteredSessions} activeSessions={activeSessions} attentionItems={attentionItems} recentActivity={recentActivity} selectedSession={selectedSession} devices={deviceRows} hasSetupData={templateRows.length > 0 || routeRows.length > 0 || scheduleRows.length > 0} onOpenTemplates={() => setTab('templates')} onOpenRoutes={() => setTab('routes')} onOpenSchedules={() => setTab('schedules')} />
       ) : (
-        <ConfigurationView tab={tab} siteId={siteId} templates={templateRows} routes={routeRows} schedules={scheduleRows} devices={deviceRows} checkpointOptions={checkpointOptions.data ?? []} loading={templates.isLoading || routes.isLoading || schedules.isLoading || checkpointOptions.isLoading} generatePending={generate.isPending} createRoutePending={createRoute.isPending} createTemplatePending={createTemplate.isPending} createSchedulePending={createSchedule.isPending} onGenerate={() => generate.mutate()} onCreateRoute={(route) => createRoute.mutate(route)} onCreateTemplate={(template) => createTemplate.mutate(template)} onCreateSchedule={(schedule) => createSchedule.mutate(schedule)} />
+        <ConfigurationView tab={tab as Exclude<Tab, 'operations' | 'validation'>} siteId={siteId} templates={templateRows} routes={routeRows} schedules={scheduleRows} devices={deviceRows} checkpointOptions={checkpointOptions.data ?? []} loading={templates.isLoading || routes.isLoading || schedules.isLoading || checkpointOptions.isLoading} generatePending={generate.isPending} createRoutePending={createRoute.isPending} createTemplatePending={createTemplate.isPending} createSchedulePending={createSchedule.isPending} onGenerate={() => generate.mutate()} onCreateRoute={(route) => createRoute.mutate(route)} onCreateTemplate={(template) => createTemplate.mutate(template)} onCreateSchedule={(schedule) => createSchedule.mutate(schedule)} />
       )}
     </SocPageShell>
   );
@@ -477,7 +480,7 @@ function ConfigTable({ rows, columns, render, empty, actions }: { rows: any[]; c
 
 
 function TabNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => void }) {
-  const tabs: { id: Tab; label: string; icon: any }[] = [{ id: 'operations', label: 'Operations', icon: Radio }, { id: 'templates', label: 'Templates', icon: FileText }, { id: 'routes', label: 'Routes', icon: Route }, { id: 'schedules', label: 'Schedules', icon: CalendarClock }];
+  const tabs: { id: Tab; label: string; icon: any }[] = [{ id: 'operations', label: 'Operations', icon: Radio }, { id: 'templates', label: 'Templates', icon: FileText }, { id: 'routes', label: 'Routes', icon: Route }, { id: 'schedules', label: 'Schedules', icon: CalendarClock }, { id: 'validation', label: 'Scan Validation', icon: FlaskConical }];
   return <div className="flex flex-wrap gap-2 rounded-xl border border-white/10 bg-slate-950/72 p-2">{tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => onChange(id)} className={`inline-flex h-10 items-center gap-2 rounded-lg px-3 text-xs font-black uppercase tracking-wider transition ${active === id ? 'bg-emerald-500/18 text-emerald-200 shadow-[0_0_18px_rgba(34,197,94,0.12)]' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}><Icon className="h-4 w-4" />{label}</button>)}</div>;
 }
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) { const uniqueOptions = Array.from(new Set(options.filter(Boolean))); return <label className="flex h-11 items-center gap-2 rounded-lg border border-white/10 bg-slate-950/80 px-3"><span className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-200 outline-none">{uniqueOptions.map((option) => <option key={option} value={option} className="bg-slate-950">{option === 'all' ? `All ${label}s` : prettify(option)}</option>)}</select></label>; }

@@ -70,6 +70,16 @@ Deno.serve(async (req) => {
       ? `${lat.toFixed(6)}, ${lng.toFixed(6)}${accuracy ? ` (accuracy ${Math.round(accuracy)}m)` : ""}`
       : device.site_location ?? "GPS unavailable";
 
+    const { data: matchedSessionId, error: sessionMatchError } = await serviceClient.rpc("find_eligible_patrol_session_for_event", {
+      p_company_id: device.company_id,
+      p_site_id: device.site_id ?? null,
+      p_device_identifier: device.device_identifier,
+      p_occurred_at: triggeredAt,
+      p_checkpoint_id: null,
+    });
+    if (sessionMatchError) console.warn("device-sos session match warning:", sessionMatchError);
+    const sessionId = typeof matchedSessionId === "string" ? matchedSessionId : null;
+
     await serviceClient
       .from("devices")
       .update({
@@ -103,11 +113,18 @@ Deno.serve(async (req) => {
       .insert({
         company_id: device.company_id,
         guard_id: null,
+        site_id: device.site_id ?? null,
+        session_id: sessionId,
+        device_identifier: device.device_identifier,
+        event_occurred_at: triggeredAt,
+        location_lat: lat,
+        location_lng: lng,
+        gps_accuracy: accuracy,
         type: "panic_button",
         severity: "critical",
         message: fullDetails,
       })
-      .select("id, company_id, type, severity, created_at")
+      .select("id, company_id, session_id, type, severity, created_at")
       .single();
 
     if (alertError) throw alertError;
@@ -120,15 +137,21 @@ Deno.serve(async (req) => {
         description: fullDetails,
         severity: "critical",
         guard_id: null,
+        site_id: device.site_id ?? null,
+        session_id: sessionId,
+        device_identifier: device.device_identifier,
+        event_occurred_at: triggeredAt,
         location_lat: lat,
         location_lng: lng,
       })
-      .select("id, company_id, title, severity, created_at")
+      .select("id, company_id, session_id, title, severity, created_at")
       .single();
 
     if (incidentError) {
       console.error("device-sos incident insert error:", incidentError);
     }
+
+    if (sessionId) await serviceClient.rpc("refresh_patrol_session_event_counts", { p_session_id: sessionId });
 
     console.info("[SOS] Panic alert inserted", {
       alertId: alert?.id ?? null,
@@ -137,6 +160,7 @@ Deno.serve(async (req) => {
       companyName,
       siteName,
       deviceIdentifier,
+      sessionId,
     });
 
     return respond(true, { alert, incident: incident ?? null, incident_error: incidentError?.message ?? null });

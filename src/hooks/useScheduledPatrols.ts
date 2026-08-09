@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -13,6 +14,7 @@ export type PatrolRouteRow = AnyRow;
 export type PatrolScheduleRow = AnyRow;
 export type PatrolSessionRow = AnyRow;
 export type PatrolSessionCheckpointRow = AnyRow;
+export type PatrolSessionReportRow = AnyRow;
 
 export function usePatrolTemplates(siteId = "all") {
   const { data: companyId } = useCompanyId();
@@ -45,8 +47,9 @@ export function usePatrolRoutes(siteId = "all") {
 }
 
 export function usePatrolSchedules(siteId = "all") {
+  const queryClient = useQueryClient();
   const { data: companyId } = useCompanyId();
-  return useQuery({
+  const query = useQuery({
     queryKey: ["patrol_schedules", companyId, siteId],
     enabled: !!companyId,
     queryFn: async () => {
@@ -57,6 +60,34 @@ export function usePatrolSchedules(siteId = "all") {
       return (data ?? []) as PatrolScheduleRow[];
     },
   });
+
+  useEffect(() => {
+    if (!companyId) return;
+    const channel = supabase
+      .channel(`patrol-schedules-${companyId}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "patrol_schedules", filter: `company_id=eq.${companyId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ["patrol_schedules", companyId] });
+        queryClient.invalidateQueries({ queryKey: ["patrol_sessions", companyId] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "patrol_sessions", filter: `company_id=eq.${companyId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ["patrol_schedules", companyId] });
+        queryClient.invalidateQueries({ queryKey: ["patrol_sessions", companyId] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "patrol_session_checkpoints", filter: `company_id=eq.${companyId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ["patrol_sessions", companyId] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "scan_logs", filter: `company_id=eq.${companyId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ["patrol_sessions", companyId] });
+      })
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") console.warn("[PatrolSchedules] Realtime channel failed");
+      });
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [companyId, queryClient]);
+
+  return query;
 }
 
 export function usePatrolSessions(limit = 100, siteId = "all", statuses?: string[]) {
@@ -70,7 +101,7 @@ export function usePatrolSessions(limit = 100, siteId = "all", statuses?: string
     queryFn: async () => {
       let request = db
         .from("patrol_sessions")
-        .select("*, sites(name), patrol_templates(id, name), patrol_routes(id, name), patrol_schedules(id, name), patrol_session_checkpoints(id, checkpoint_id, sequence_order:scheduled_order, scanned_at, status, checkpoints(id, name, nfc_tag_id))")
+        .select("*, sites(name), patrol_templates(id, name), patrol_routes(id, name), patrol_schedules(id, name), patrol_session_checkpoints(id, checkpoint_id, checkpoint_name_snapshot, required, sequence_order:scheduled_order, scheduled_at, scanned_at, status, scan_log_id, gps_lat, gps_lng, gps_accuracy, audit_meta, checkpoints(id, name, nfc_tag_id))")
         .eq("company_id", companyId)
         .order("scheduled_start", { ascending: false })
         .limit(limit);
@@ -95,6 +126,51 @@ export function usePatrolSessions(limit = 100, siteId = "all", statuses?: string
       })
       .subscribe((status) => {
         if (status === "CHANNEL_ERROR") console.warn("[PatrolSessions] Realtime channel failed");
+      });
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [companyId, queryClient]);
+
+  return query;
+}
+
+export function usePatrolSessionReports(limit = 100, siteId = "all") {
+  const queryClient = useQueryClient();
+  const { data: companyId } = useCompanyId();
+  const query = useQuery({
+    queryKey: ["patrol_session_reports", companyId, siteId, limit],
+    enabled: !!companyId,
+    queryFn: async () => {
+      let request = db.from("patrol_session_reports").select("*").eq("company_id", companyId).order("scheduled_start", { ascending: false }).limit(limit);
+      if (siteId !== "all") request = request.eq("site_id", siteId);
+      const { data, error } = await request;
+      if (error) throw error;
+      return (data ?? []) as PatrolSessionReportRow[];
+    },
+  });
+
+  useEffect(() => {
+    if (!companyId) return;
+    const channel = supabase
+      .channel("patrol-session-reports-" + companyId + "-" + Date.now() + "-" + Math.random().toString(36).slice(2))
+      .on("postgres_changes", { event: "*", schema: "public", table: "patrol_sessions", filter: "company_id=eq." + companyId }, () => {
+        queryClient.invalidateQueries({ queryKey: ["patrol_session_reports", companyId] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "patrol_session_checkpoints", filter: "company_id=eq." + companyId }, () => {
+        queryClient.invalidateQueries({ queryKey: ["patrol_session_reports", companyId] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "scan_logs", filter: "company_id=eq." + companyId }, () => {
+        queryClient.invalidateQueries({ queryKey: ["patrol_session_reports", companyId] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "incidents", filter: "company_id=eq." + companyId }, () => {
+        queryClient.invalidateQueries({ queryKey: ["patrol_session_reports", companyId] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "alerts", filter: "company_id=eq." + companyId }, () => {
+        queryClient.invalidateQueries({ queryKey: ["patrol_session_reports", companyId] });
+      })
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") console.warn("[PatrolSessionReports] Realtime channel failed");
       });
     return () => {
       void supabase.removeChannel(channel);
@@ -196,10 +272,11 @@ export function useCreatePatrolTemplate() {
 
 export type CreatePatrolScheduleInput = {
   name: string;
+  description?: string | null;
   route_id: string;
   site_id?: string | null;
   template_id?: string | null;
-  frequency_type?: "hourly" | "daily" | "weekly" | "custom" | "every_n_minutes" | "every_n_hours";
+  frequency_type?: "once" | "hourly" | "daily" | "weekdays" | "weekends" | "weekly" | "custom" | "every_n_minutes" | "every_n_hours";
   interval_value?: number;
   start_time?: string | null;
   end_time?: string | null;
@@ -208,7 +285,11 @@ export type CreatePatrolScheduleInput = {
   status?: "active" | "paused" | "archived";
   grace_start_minutes?: number;
   grace_completion_minutes?: number;
+  expected_duration_minutes?: number;
   device_identifier?: string | null;
+  active_from?: string | null;
+  active_until?: string | null;
+  next_run_at?: string | null;
 };
 
 export function useCreatePatrolSchedule() {
@@ -273,7 +354,8 @@ export function useUpdatePatrolEntity(entity: PatrolEntity) {
       toast.success(`${entityLabel[entity]} updated`);
       invalidate();
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : `Failed to update ${entityLabel[entity].toLowerCase()}`),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : `Failed to update ${entityLabel[entity].toLowerCase()}`),
   });
 }
 
@@ -292,10 +374,100 @@ export function useDeletePatrolEntity(entity: PatrolEntity) {
       toast.success(`${entityLabel[entity]} deleted`);
       invalidate();
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : `Failed to delete ${entityLabel[entity].toLowerCase()}`),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : `Failed to delete ${entityLabel[entity].toLowerCase()}`),
   });
 }
 
+export function useUpdatePatrolScheduleStatus() {
+  const queryClient = useQueryClient();
+  const { data: companyId } = useCompanyId();
+
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: "active" | "paused" | "archived" }) => {
+      const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
+        body: {
+          action: "update_schedule",
+          id,
+          schedule: { status },
+        },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Failed to update schedule");
+      return data.result?.schedule ?? data.schedule ?? data;
+    },
+    onSuccess: () => {
+      toast.success("Schedule updated");
+      queryClient.invalidateQueries({ queryKey: ["patrol_schedules", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["patrol_sessions", companyId] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to update schedule"),
+  });
+}
+
+export function useDuplicatePatrolSchedule() {
+  const queryClient = useQueryClient();
+  const { data: companyId } = useCompanyId();
+
+  return useMutation({
+    mutationFn: async (schedule: PatrolScheduleRow) => {
+      if (!companyId) throw new Error("Company context is not available");
+      const clone = removeScheduleReadOnlyFields(schedule);
+      const { data, error } = await db
+        .from("patrol_schedules")
+        .insert({
+          ...clone,
+          company_id: companyId,
+          name: `${schedule.name ?? "Schedule"} Copy`,
+          status: "paused",
+          next_run_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as PatrolScheduleRow;
+    },
+    onSuccess: () => {
+      toast.success("Schedule duplicated as paused");
+      queryClient.invalidateQueries({ queryKey: ["patrol_schedules", companyId] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to duplicate schedule"),
+  });
+}
+
+export function useDeletePatrolSchedule() {
+  const queryClient = useQueryClient();
+  const { data: companyId } = useCompanyId();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
+        body: { action: "delete_schedule", id },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Failed to delete schedule");
+      return id;
+    },
+    onSuccess: () => {
+      toast.success("Schedule deleted");
+      queryClient.invalidateQueries({ queryKey: ["patrol_schedules", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["patrol_sessions", companyId] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to delete schedule"),
+  });
+}
+
+function removeScheduleReadOnlyFields(schedule: PatrolScheduleRow) {
+  const { id, sites, patrol_templates, patrol_routes, schedule_code, ...rest } = schedule;
+  void id;
+  void sites;
+  void patrol_templates;
+  void patrol_routes;
+  void schedule_code;
+  return rest;
+}
 export function patrolSessionProgress(session: PatrolSessionRow) {
 
   const completed = Number(session.checkpoint_completed ?? session.completed_required_count ?? 0);

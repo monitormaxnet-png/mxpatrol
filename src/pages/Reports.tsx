@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -30,7 +30,7 @@ import SiteSelector from "@/components/sites/SiteSelector";
 import { realtimeStatusLabel, useRealtimeConnectionStatus } from "@/hooks/useRealtimeConnectionStatus";
 import { SocPageShell } from "@/components/dashboard/SocComponents";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
-import { usePatrolSessions } from "@/hooks/useScheduledPatrols";
+import { usePatrolSessionReports, usePatrolSessions } from "@/hooks/useScheduledPatrols";
 
 type DateRange = "today" | "7d" | "30d";
 type ReportTab = "all" | "generated" | "scheduled" | "pending" | "failed";
@@ -47,7 +47,27 @@ type ReportRecord = {
   data: unknown;
   generated_at: string;
 };
-type CountRow = { id?: string };
+type SessionExecutionReportRow = {
+  session_id: string;
+  schedule_name?: string | null;
+  template_name?: string | null;
+  route_name?: string | null;
+  site_name?: string | null;
+  device_identifier?: string | null;
+  device_id?: string | null;
+  scheduled_start?: string | null;
+  scheduled_end?: string | null;
+  actual_start?: string | null;
+  actual_end?: string | null;
+  expected_checkpoints?: number | null;
+  completed_checkpoints?: number | null;
+  missed_checkpoint_count?: number | null;
+  missed_checkpoint_names?: string[] | null;
+  incident_count?: number | null;
+  sos_count?: number | null;
+  duration_seconds?: number | null;
+  status?: string | null;
+};type CountRow = { id?: string };
 type QueryResult<T = unknown> = {
   data?: T[] | null;
   count?: number | null;
@@ -106,6 +126,7 @@ const Reports = () => {
   const since = useMemo(() => dateRangeStart(dateRange), [dateRange]);
   const { data: scans = [], isLoading: scansLoading, error: scansError } = useLivePatrolScans(250, siteId);
   const { data: reportSessions = [] } = usePatrolSessions(250, siteId);
+  const { data: sessionReportRows = [], isLoading: sessionReportsLoading, error: sessionReportsError } = usePatrolSessionReports(250, siteId);
 
   const { data: company } = useQuery({
     queryKey: ["reports_company", companyId],
@@ -180,6 +201,7 @@ const Reports = () => {
   }), [activeTab, reportJobs, reportType, search, since, siteId]);
 
   const selected = useMemo(() => filteredReports.find((report) => report.id === selectedId) ?? filteredReports[0] ?? null, [filteredReports, selectedId]);
+  const sessionReports = useMemo(() => sessionReportRows.filter((session) => (session.scheduled_start ?? "") >= since), [sessionReportRows, since]);
   const expectedSessions = reportSessions.filter((session) => session.scheduled_start >= since && session.status !== "cancelled");
   const completedExpectedSessions = expectedSessions.filter((session) => ["completed", "completed_late"].includes(session.status));
   const compliance = expectedSessions.length === 0 ? (periodScans.length === 0 ? 0 : Math.round((periodScans.filter((scan) => scan.checkpoint_id || scan.tag_status === "registered").length / periodScans.length) * 1000) / 10) : Math.round((completedExpectedSessions.length / expectedSessions.length) * 1000) / 10;
@@ -284,6 +306,8 @@ const Reports = () => {
 
         <ExecutiveSummary compliance={compliance} completed={completedExpectedSessions.length} expected={expectedSessions.length} scans={periodScans.length} patrolMinutes={patrolMinutes} incidents={metrics?.incidents ?? 0} sos={metrics?.sos ?? 0} />
 
+        <SessionExecutionReportsTable rows={sessionReports} loading={sessionReportsLoading} error={sessionReportsError} />
+
         {scansError && <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">Scan report data could not be loaded.</div>}
 
         <section className="grid gap-4 xl:grid-cols-3">
@@ -321,6 +345,61 @@ const Reports = () => {
     </SocPageShell>
   );
 };
+function SessionExecutionReportsTable({ rows, loading, error }: { rows: SessionExecutionReportRow[]; loading: boolean; error: unknown }) {
+  if (loading) return <State icon={Loader2} spin message="Loading session execution reports..." />;
+  if (error) return <State icon={AlertCircle} tone="red" message="Session execution reports could not be loaded." />;
+  return (
+    <section className="rounded-xl border border-white/10 bg-slate-950/72">
+      <div className="flex flex-col gap-2 border-b border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-black uppercase tracking-[0.12em] text-white">Session Execution Reports</h2>
+          <p className="mt-1 text-xs text-slate-400">Schedule, session, checkpoints, missed checkpoints, incidents and SOS in one company-scoped view.</p>
+        </div>
+        <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase text-emerald-300">Realtime</span>
+      </div>
+      {rows.length === 0 ? <State icon={FileText} message="No session execution reports match this date range." /> : (
+        <div className="overflow-auto p-4">
+          <table className="w-full min-w-[1180px] text-left text-sm">
+            <thead className="border-b border-white/10 text-xs font-black uppercase tracking-widest text-slate-500">
+              <tr>
+                <th className="px-3 py-3">Session</th>
+                <th className="px-3 py-3">Schedule</th>
+                <th className="px-3 py-3">Site</th>
+                <th className="px-3 py-3">DeviceIdentity</th>
+                <th className="px-3 py-3">Start</th>
+                <th className="px-3 py-3">End</th>
+                <th className="px-3 py-3">Checkpoints</th>
+                <th className="px-3 py-3">Missed Checkpoints</th>
+                <th className="px-3 py-3">Incidents</th>
+                <th className="px-3 py-3">SOS</th>
+                <th className="px-3 py-3">Duration</th>
+                <th className="px-3 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {rows.map((row) => (
+                <tr key={row.session_id} className="hover:bg-white/5">
+                  <td className="px-3 py-3 font-mono text-xs text-slate-300">{String(row.session_id).slice(0, 8)}</td>
+                  <td className="px-3 py-3 text-slate-200">{row.schedule_name || row.template_name || row.route_name || "Scheduled patrol"}</td>
+                  <td className="px-3 py-3 text-slate-300">{row.site_name || "Unassigned"}</td>
+                  <td className="px-3 py-3 font-mono text-xs text-slate-300">{row.device_identifier || row.device_id || "Any device"}</td>
+                  <td className="px-3 py-3 text-slate-300">{formatTime(row.actual_start || row.scheduled_start)}</td>
+                  <td className="px-3 py-3 text-slate-300">{formatTime(row.actual_end || row.scheduled_end)}</td>
+                  <td className="px-3 py-3 text-slate-300">{Number(row.completed_checkpoints ?? 0)} / {Number(row.expected_checkpoints ?? 0)}</td>
+                  <td className="px-3 py-3 text-slate-300">{formatMissed(row)}</td>
+                  <td className="px-3 py-3 text-slate-300">{Number(row.incident_count ?? 0)}</td>
+                  <td className="px-3 py-3 text-slate-300">{Number(row.sos_count ?? 0)}</td>
+                  <td className="px-3 py-3 text-slate-300">{formatDurationSeconds(row.duration_seconds)}</td>
+                  <td className="px-3 py-3"><span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs font-bold text-slate-200">{titleCase(row.status || "unknown")}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 function FilterBox({ label, children }: { label: string; children: ReactNode }) {
   return <label className="flex min-h-14 items-center gap-3 rounded-lg border border-white/10 bg-slate-950/70 px-3 text-xs text-slate-500"><span className="shrink-0 font-semibold">{label}</span><div className="min-w-0 flex-1">{children}</div></label>;
 }
@@ -683,6 +762,19 @@ function estimateReportSize(report: ReportRecord) {
  return kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
 }
 
+function formatMissed(row: SessionExecutionReportRow) {
+  const names = Array.isArray(row.missed_checkpoint_names) ? row.missed_checkpoint_names.filter(Boolean) : [];
+  if (names.length) return names.join(", ");
+  const count = Number(row.missed_checkpoint_count ?? 0);
+  return count ? `${count} missed` : "None";
+}
+
+function formatDurationSeconds(value: unknown) {
+  const seconds = Number(value ?? 0);
+  if (!Number.isFinite(seconds) || seconds <= 0) return "-";
+  const minutes = Math.round(seconds / 60);
+  return formatDuration(minutes);
+}
 function formatDuration(minutes: number) {
   if (minutes <= 0) return "0h 00m";
   const hours = Math.floor(minutes / 60);

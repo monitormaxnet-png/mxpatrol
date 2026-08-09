@@ -126,7 +126,7 @@ export default function SessionLogsPage() {
   const exportSessions = () => {
     exportCsv(
       "patrol-session-logs.csv",
-      ["Display Session ID", "Internal UUID", "Patrol Template", "Route", "Site", "Device", "Scheduled Start", "Scheduled End", "Actual Start", "Actual End", "Progress", "Status", "Duration", "Compliance Result"],
+      ["Display Session ID", "Internal UUID", "Patrol Template", "Route", "Site", "Device", "Scheduled Start", "Scheduled End", "Actual Start", "Actual End", "Progress", "Missed Checkpoints", "Incidents", "SOS", "Status", "Duration", "Compliance Result"],
       filteredSessions.map((session) => {
         const progress = patrolSessionProgress(session);
         return [
@@ -141,6 +141,9 @@ export default function SessionLogsPage() {
           formatDateTime(session.actual_start),
           formatDateTime(session.actual_end),
           `${progress.completed}/${progress.total} (${progress.percent}%)`,
+          missed(session).join(", ") || "None",
+          session.incident_count ?? 0,
+          session.sos_count ?? 0,
           prettify(session.status || "unknown"),
           durationLabel(session),
           complianceResult(session),
@@ -219,7 +222,7 @@ function SessionTable({ rows, selectedId, onSelect, multiSite }: { rows: Session
 function SessionDetails({ session }: { session: SessionRow }) {
   const checkpoints = sortedCheckpoints(session);
   const progress = patrolSessionProgress(session);
-  return <SocPanel title="Session Details" action={<StatusBadge status={session.status} />}><div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><div className="space-y-3"><DetailBlock title="Session Identity" rows={[["Display ID", displaySessionId(session)], ["Internal UUID", session.id], ["Patrol Template", patrolSessionLabel(session)], ["Route", routeName(session)], ["Schedule", scheduleName(session)], ["Site", siteName(session)], ["Device", deviceLabel(session)], ["Full Device ID", session.device_identifier || session.device_id || "Unassigned"]]} /><DetailBlock title="Timing" rows={[["Scheduled Start", formatDateTime(session.scheduled_start)], ["Scheduled End", formatDateTime(session.scheduled_end)], ["Actual Start", formatDateTime(session.actual_start)], ["Actual End", formatDateTime(session.actual_end)], ["Elapsed", durationLabel(session)], ["Progress", `${progress.completed}/${progress.total || 0} (${progress.percent}%)`]]} /><Link to={`/scan-logs?patrol_session_id=${session.id}`} className="inline-flex h-10 items-center justify-center rounded-lg border border-cyan-400/25 bg-cyan-400/10 px-3 text-xs font-black text-cyan-200">View all scans for this session</Link></div><div><p className="mb-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Checkpoint Timeline</p>{checkpoints.length ? <div className="space-y-2">{checkpoints.map((checkpoint, index) => <CheckpointTimelineRow key={checkpoint.id ?? `${checkpoint.checkpoint_id}-${index}`} checkpoint={checkpoint} index={index} />)}</div> : <EmptyState title="No checkpoint timeline yet" body="This session exists, but no patrol_session_checkpoints are linked yet." />}</div></div></SocPanel>;
+  return <SocPanel title="Session Details" action={<StatusBadge status={session.status} />}><div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><div className="space-y-3"><DetailBlock title="Session Identity" rows={[["Display ID", displaySessionId(session)], ["Internal UUID", session.id], ["Patrol Template", patrolSessionLabel(session)], ["Route", routeName(session)], ["Schedule", scheduleName(session)], ["Site", siteName(session)], ["Device", deviceLabel(session)], ["Full Device ID", session.device_identifier || session.device_id || "Unassigned"]]} /><DetailBlock title="Timing" rows={[["Scheduled Start", formatDateTime(session.scheduled_start)], ["Scheduled End", formatDateTime(session.scheduled_end)], ["Actual Start", formatDateTime(session.actual_start)], ["Actual End", formatDateTime(session.actual_end)], ["Elapsed", durationLabel(session)], ["Progress", `${progress.completed}/${progress.total || 0} (${progress.percent}%)`]]} /><DetailBlock title="Execution Links" rows={[["Missed Checkpoints", missed(session).join(", ") || "None"], ["Incidents", String(session.incident_count ?? 0)], ["Open Incidents", String(session.open_incident_count ?? 0)], ["SOS Events", String(session.sos_count ?? 0)], ["Unacknowledged SOS", String(session.unacknowledged_sos_count ?? 0)]]} /><Link to={`/scan-logs?patrol_session_id=${session.id}`} className="inline-flex h-10 items-center justify-center rounded-lg border border-cyan-400/25 bg-cyan-400/10 px-3 text-xs font-black text-cyan-200">View all scans for this session</Link></div><div><p className="mb-3 text-[10px] font-black uppercase tracking-wider text-slate-500">Checkpoint Timeline</p>{checkpoints.length ? <div className="space-y-2">{checkpoints.map((checkpoint, index) => <CheckpointTimelineRow key={checkpoint.id ?? `${checkpoint.checkpoint_id}-${index}`} checkpoint={checkpoint} index={index} />)}</div> : <EmptyState title="No checkpoint timeline yet" body="This session exists, but no patrol_session_checkpoints are linked yet." />}</div></div></SocPanel>;
 }
 
 function TimelineItem({ session, selected, onSelect }: { session: SessionRow; selected: boolean; onSelect: () => void }) {

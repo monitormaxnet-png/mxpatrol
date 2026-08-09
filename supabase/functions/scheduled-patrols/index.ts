@@ -53,7 +53,8 @@ const ScheduleSchema = z.object({
   site_id: optionalUuid,
   template_id: optionalUuid,
   route_id: z.string().uuid(),
-  frequency_type: z.enum(["hourly", "daily", "weekly", "custom", "every_n_minutes", "every_n_hours"]).optional(),
+  description: optionalText,
+  frequency_type: z.enum(["once", "hourly", "daily", "weekdays", "weekends", "weekly", "custom", "every_n_minutes", "every_n_hours"]).optional(),
   interval_value: z.number().int().positive().max(10080).optional(),
   start_time: optionalText,
   end_time: optionalText,
@@ -65,6 +66,7 @@ const ScheduleSchema = z.object({
   active_until: z.preprocess(emptyToNull, z.string().datetime().optional().nullable()),
   grace_start_minutes: z.number().int().min(0).max(240).optional(),
   grace_completion_minutes: z.number().int().min(1).max(1440).optional(),
+  expected_duration_minutes: z.number().int().min(1).max(1440).optional(),
   device_identifier: optionalText,
 });
 
@@ -331,6 +333,7 @@ Deno.serve(async (req) => {
           template_id: input.template_id ?? route.template_id ?? null,
           route_id: input.route_id,
           name: input.name,
+          description: input.description || null,
           frequency: frequencyType,
           frequency_type: frequencyType,
           interval_value: input.interval_value ?? 1,
@@ -343,7 +346,8 @@ Deno.serve(async (req) => {
           active_from: input.active_from ?? new Date().toISOString(),
           active_until: input.active_until ?? null,
           grace_start_minutes: input.grace_start_minutes ?? 10,
-          grace_completion_minutes: input.grace_completion_minutes ?? 40,
+          grace_completion_minutes: input.grace_completion_minutes ?? input.expected_duration_minutes ?? 40,
+          expected_duration_minutes: input.expected_duration_minutes ?? input.grace_completion_minutes ?? 40,
           device_identifier: input.device_identifier || null,
           created_by: access.userId,
         }))

@@ -429,7 +429,8 @@ BEGIN
   WHERE psc.session_id = session_row.id
     AND psc.checkpoint_id = scan_row.checkpoint_id
   ORDER BY psc.scheduled_order
-  LIMIT 1;
+  LIMIT 1
+  FOR UPDATE;
 
   SELECT psc.checkpoint_id, c.name INTO v_next_id, v_next_name
   FROM public.patrol_session_checkpoints psc
@@ -753,6 +754,29 @@ BEGIN
       WHERE schedule_id IS NOT NULL;
     ELSE
       RAISE NOTICE 'Skipped unique index idx_patrol_sessions_schedule_start_unique because duplicate historical sessions exist';
+    END IF;
+  END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'idx_patrol_session_checkpoints_session_checkpoint_unique'
+  ) THEN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM public.patrol_session_checkpoints
+      WHERE checkpoint_id IS NOT NULL
+      GROUP BY session_id, checkpoint_id
+      HAVING COUNT(*) > 1
+    ) THEN
+      CREATE UNIQUE INDEX idx_patrol_session_checkpoints_session_checkpoint_unique
+      ON public.patrol_session_checkpoints(session_id, checkpoint_id)
+      WHERE checkpoint_id IS NOT NULL;
+    ELSE
+      RAISE NOTICE 'Skipped unique index idx_patrol_session_checkpoints_session_checkpoint_unique because duplicate historical session checkpoints exist';
     END IF;
   END IF;
 END;

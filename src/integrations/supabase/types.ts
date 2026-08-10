@@ -92,39 +92,67 @@ export type Database = {
       }
       alerts: {
         Row: {
+          checkpoint_id: string | null
           company_id: string
           created_at: string
+          device_identifier: string | null
+          event_occurred_at: string | null
+          gps_accuracy: number | null
           guard_id: string | null
           id: string
           is_read: boolean | null
+          location_lat: number | null
+          location_lng: number | null
           message: string
           patrol_id: string | null
+          session_id: string | null
           severity: Database["public"]["Enums"]["incident_severity"] | null
           type: Database["public"]["Enums"]["alert_type"]
         }
         Insert: {
+          checkpoint_id?: string | null
           company_id: string
           created_at?: string
+          device_identifier?: string | null
+          event_occurred_at?: string | null
+          gps_accuracy?: number | null
           guard_id?: string | null
           id?: string
           is_read?: boolean | null
+          location_lat?: number | null
+          location_lng?: number | null
           message: string
           patrol_id?: string | null
+          session_id?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"] | null
           type: Database["public"]["Enums"]["alert_type"]
         }
         Update: {
+          checkpoint_id?: string | null
           company_id?: string
           created_at?: string
+          device_identifier?: string | null
+          event_occurred_at?: string | null
+          gps_accuracy?: number | null
           guard_id?: string | null
           id?: string
           is_read?: boolean | null
+          location_lat?: number | null
+          location_lng?: number | null
           message?: string
           patrol_id?: string | null
+          session_id?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"] | null
           type?: Database["public"]["Enums"]["alert_type"]
         }
         Relationships: [
+          {
+            foreignKeyName: "alerts_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "alerts_company_id_fkey"
             columns: ["company_id"]
@@ -144,6 +172,20 @@ export type Database = {
             columns: ["patrol_id"]
             isOneToOne: false
             referencedRelation: "patrols"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alerts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_session_reports"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "alerts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -912,9 +954,12 @@ export type Database = {
         Row: {
           ai_classification: string | null
           ai_suggested_action: string | null
+          checkpoint_id: string | null
           company_id: string
           created_at: string
           description: string | null
+          device_identifier: string | null
+          event_occurred_at: string | null
           guard_id: string | null
           id: string
           image_url: string | null
@@ -922,16 +967,21 @@ export type Database = {
           location_lng: number | null
           resolved: boolean | null
           resolved_at: string | null
+          session_id: string | null
           severity: Database["public"]["Enums"]["incident_severity"]
+          site_id: string | null
           title: string
           updated_at: string
         }
         Insert: {
           ai_classification?: string | null
           ai_suggested_action?: string | null
+          checkpoint_id?: string | null
           company_id: string
           created_at?: string
           description?: string | null
+          device_identifier?: string | null
+          event_occurred_at?: string | null
           guard_id?: string | null
           id?: string
           image_url?: string | null
@@ -939,16 +989,21 @@ export type Database = {
           location_lng?: number | null
           resolved?: boolean | null
           resolved_at?: string | null
+          session_id?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"]
+          site_id?: string | null
           title: string
           updated_at?: string
         }
         Update: {
           ai_classification?: string | null
           ai_suggested_action?: string | null
+          checkpoint_id?: string | null
           company_id?: string
           created_at?: string
           description?: string | null
+          device_identifier?: string | null
+          event_occurred_at?: string | null
           guard_id?: string | null
           id?: string
           image_url?: string | null
@@ -956,11 +1011,20 @@ export type Database = {
           location_lng?: number | null
           resolved?: boolean | null
           resolved_at?: string | null
+          session_id?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"]
+          site_id?: string | null
           title?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "incidents_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "incidents_company_id_fkey"
             columns: ["company_id"]
@@ -973,6 +1037,27 @@ export type Database = {
             columns: ["guard_id"]
             isOneToOne: false
             referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incidents_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_session_reports"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "incidents_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incidents_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
             referencedColumns: ["id"]
           },
         ]
@@ -1182,8 +1267,10 @@ export type Database = {
           created_at: string
           created_by: string | null
           days_of_week: number[]
+          description: string | null
           device_identifier: string | null
           end_time: string | null
+          expected_duration_minutes: number | null
           frequency: string
           frequency_type: string
           grace_completion_minutes: number
@@ -1193,6 +1280,7 @@ export type Database = {
           name: string
           next_run_at: string | null
           route_id: string
+          schedule_code: string | null
           site_id: string | null
           start_time: string | null
           status: string
@@ -1207,8 +1295,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           days_of_week?: number[]
+          description?: string | null
           device_identifier?: string | null
           end_time?: string | null
+          expected_duration_minutes?: number | null
           frequency?: string
           frequency_type?: string
           grace_completion_minutes?: number
@@ -1218,6 +1308,7 @@ export type Database = {
           name: string
           next_run_at?: string | null
           route_id: string
+          schedule_code?: string | null
           site_id?: string | null
           start_time?: string | null
           status?: string
@@ -1232,8 +1323,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           days_of_week?: number[]
+          description?: string | null
           device_identifier?: string | null
           end_time?: string | null
+          expected_duration_minutes?: number | null
           frequency?: string
           frequency_type?: string
           grace_completion_minutes?: number
@@ -1243,6 +1336,7 @@ export type Database = {
           name?: string
           next_run_at?: string | null
           route_id?: string
+          schedule_code?: string | null
           site_id?: string | null
           start_time?: string | null
           status?: string
@@ -1290,10 +1384,16 @@ export type Database = {
       }
       patrol_session_checkpoints: {
         Row: {
+          audit_meta: Json
           checkpoint_id: string
+          checkpoint_name_snapshot: string | null
           company_id: string
           created_at: string
+          gps_accuracy: number | null
+          gps_lat: number | null
+          gps_lng: number | null
           id: string
+          required: boolean
           route_checkpoint_id: string | null
           scan_log_id: string | null
           scanned_at: string | null
@@ -1304,10 +1404,16 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          audit_meta?: Json
           checkpoint_id: string
+          checkpoint_name_snapshot?: string | null
           company_id: string
           created_at?: string
+          gps_accuracy?: number | null
+          gps_lat?: number | null
+          gps_lng?: number | null
           id?: string
+          required?: boolean
           route_checkpoint_id?: string | null
           scan_log_id?: string | null
           scanned_at?: string | null
@@ -1318,10 +1424,16 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          audit_meta?: Json
           checkpoint_id?: string
+          checkpoint_name_snapshot?: string | null
           company_id?: string
           created_at?: string
+          gps_accuracy?: number | null
+          gps_lat?: number | null
+          gps_lng?: number | null
           id?: string
+          required?: boolean
           route_checkpoint_id?: string | null
           scan_log_id?: string | null
           scanned_at?: string | null
@@ -1364,6 +1476,13 @@ export type Database = {
             foreignKeyName: "patrol_session_checkpoints_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
+            referencedRelation: "patrol_session_reports"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "patrol_session_checkpoints_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
             referencedRelation: "patrol_sessions"
             referencedColumns: ["id"]
           },
@@ -1378,14 +1497,19 @@ export type Database = {
           company_id: string
           completed_required_count: number
           created_at: string
+          critical_incident_count: number
           device_id: string | null
           device_identifier: string | null
+          finalized_at: string | null
           first_scan_at: string | null
           guard_id: string | null
           id: string
+          incident_count: number
           last_scan_at: string | null
+          latest_sos_at: string | null
           meta: Json
           missed_reason: string | null
+          open_incident_count: number
           progress: number
           progress_percent: number
           route_id: string
@@ -1393,9 +1517,11 @@ export type Database = {
           scheduled_end: string | null
           scheduled_start: string
           site_id: string | null
+          sos_count: number
           status: string
           template_id: string | null
           total_required_count: number
+          unacknowledged_sos_count: number
           updated_at: string
         }
         Insert: {
@@ -1406,14 +1532,19 @@ export type Database = {
           company_id: string
           completed_required_count?: number
           created_at?: string
+          critical_incident_count?: number
           device_id?: string | null
           device_identifier?: string | null
+          finalized_at?: string | null
           first_scan_at?: string | null
           guard_id?: string | null
           id?: string
+          incident_count?: number
           last_scan_at?: string | null
+          latest_sos_at?: string | null
           meta?: Json
           missed_reason?: string | null
+          open_incident_count?: number
           progress?: number
           progress_percent?: number
           route_id: string
@@ -1421,9 +1552,11 @@ export type Database = {
           scheduled_end?: string | null
           scheduled_start: string
           site_id?: string | null
+          sos_count?: number
           status?: string
           template_id?: string | null
           total_required_count?: number
+          unacknowledged_sos_count?: number
           updated_at?: string
         }
         Update: {
@@ -1434,14 +1567,19 @@ export type Database = {
           company_id?: string
           completed_required_count?: number
           created_at?: string
+          critical_incident_count?: number
           device_id?: string | null
           device_identifier?: string | null
+          finalized_at?: string | null
           first_scan_at?: string | null
           guard_id?: string | null
           id?: string
+          incident_count?: number
           last_scan_at?: string | null
+          latest_sos_at?: string | null
           meta?: Json
           missed_reason?: string | null
+          open_incident_count?: number
           progress?: number
           progress_percent?: number
           route_id?: string
@@ -1449,9 +1587,11 @@ export type Database = {
           scheduled_end?: string | null
           scheduled_start?: string
           site_id?: string | null
+          sos_count?: number
           status?: string
           template_id?: string | null
           total_required_count?: number
+          unacknowledged_sos_count?: number
           updated_at?: string
         }
         Relationships: [
@@ -2026,6 +2166,13 @@ export type Database = {
             foreignKeyName: "scan_logs_patrol_session_id_fkey"
             columns: ["patrol_session_id"]
             isOneToOne: false
+            referencedRelation: "patrol_session_reports"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "scan_logs_patrol_session_id_fkey"
+            columns: ["patrol_session_id"]
+            isOneToOne: false
             referencedRelation: "patrol_sessions"
             referencedColumns: ["id"]
           },
@@ -2272,10 +2419,138 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      patrol_session_reports: {
+        Row: {
+          actual_end: string | null
+          actual_start: string | null
+          checkpoints: Json | null
+          company_id: string | null
+          completed_checkpoints: number | null
+          critical_incident_count: number | null
+          device_id: string | null
+          device_identifier: string | null
+          duration_seconds: number | null
+          expected_checkpoints: number | null
+          finalized_at: string | null
+          incident_count: number | null
+          incidents: Json | null
+          latest_sos_at: string | null
+          meta: Json | null
+          missed_checkpoint_count: number | null
+          missed_checkpoint_names: string[] | null
+          open_incident_count: number | null
+          progress_percent: number | null
+          route_id: string | null
+          route_name: string | null
+          schedule_id: string | null
+          schedule_name: string | null
+          scheduled_end: string | null
+          scheduled_start: string | null
+          session_id: string | null
+          site_id: string | null
+          site_name: string | null
+          sos_alerts: Json | null
+          sos_count: number | null
+          status: string | null
+          template_id: string | null
+          template_name: string | null
+          unacknowledged_sos_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patrol_sessions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_sessions_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_sessions_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_sessions_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_sessions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       advance_due_patrol_session_statuses: { Args: never; Returns: number }
+      finalize_patrol_session: {
+        Args: { p_session_id: string }
+        Returns: {
+          actual_end: string | null
+          actual_start: string | null
+          checkpoint_completed: number
+          checkpoint_total: number
+          company_id: string
+          completed_required_count: number
+          created_at: string
+          critical_incident_count: number
+          device_id: string | null
+          device_identifier: string | null
+          finalized_at: string | null
+          first_scan_at: string | null
+          guard_id: string | null
+          id: string
+          incident_count: number
+          last_scan_at: string | null
+          latest_sos_at: string | null
+          meta: Json
+          missed_reason: string | null
+          open_incident_count: number
+          progress: number
+          progress_percent: number
+          route_id: string
+          schedule_id: string | null
+          scheduled_end: string | null
+          scheduled_start: string
+          site_id: string | null
+          sos_count: number
+          status: string
+          template_id: string | null
+          total_required_count: number
+          unacknowledged_sos_count: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patrol_sessions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      find_eligible_patrol_session_for_event: {
+        Args: {
+          p_checkpoint_id?: string
+          p_company_id: string
+          p_device_identifier?: string
+          p_occurred_at?: string
+          p_site_id?: string
+        }
+        Returns: string
+      }
       generate_due_patrol_sessions: {
         Args: { p_until?: string }
         Returns: number
@@ -2306,7 +2581,20 @@ export type Database = {
           session_status: string
         }[]
       }
+      next_patrol_schedule_run: {
+        Args: {
+          p_current: string
+          p_days: number[]
+          p_frequency: string
+          p_interval: number
+        }
+        Returns: string
+      }
       recalculate_patrol_session_progress: {
+        Args: { p_session_id: string }
+        Returns: undefined
+      }
+      refresh_patrol_session_event_counts: {
         Args: { p_session_id: string }
         Returns: undefined
       }

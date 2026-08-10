@@ -1197,6 +1197,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          enforce_sequence: boolean
           id: string
           name: string
           site_id: string | null
@@ -1209,6 +1210,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          enforce_sequence?: boolean
           id?: string
           name: string
           site_id?: string | null
@@ -1221,6 +1223,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          enforce_sequence?: boolean
           id?: string
           name?: string
           site_id?: string | null

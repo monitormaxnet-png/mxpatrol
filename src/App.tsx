@@ -18,6 +18,7 @@ import ErrorBoundary from "@/components/layout/ErrorBoundary";
 const GuardDetail = lazy(() => import("./pages/GuardDetail"));
 const Patrols = lazy(() => import("./pages/Patrols"));
 const Schedules = lazy(() => import("./pages/Schedules"));
+const RoutesPage = lazy(() => import("./pages/Routes"));
 const Guards = lazy(() => import("./pages/Guards"));
 const Checkpoints = lazy(() => import("./pages/Checkpoints"));
 const Incidents = lazy(() => import("./pages/Incidents"));
@@ -116,6 +117,7 @@ const App = () => (
               <Route path="/live-map" element={lazyRoute(<LiveMapPage />)} />
               <Route path="/sos-alerts" element={lazyRoute(<SosAlerts />)} />
               <Route path="/patrols" element={lazyRoute(<Patrols />)} />
+              <Route path="/routes" element={lazyRoute(<RoutesPage />)} />
               <Route path="/schedules" element={lazyRoute(<Schedules />)} />
               <Route path="/patrols/templates" element={lazyRoute(<Patrols />)} />
               <Route path="/patrols/routes" element={lazyRoute(<Patrols />)} />

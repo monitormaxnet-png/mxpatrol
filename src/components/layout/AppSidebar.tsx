@@ -39,6 +39,7 @@ const baseNavItems: NavItem[] = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Command Center" },
   { to: "/live-patrol", icon: Activity, label: "Live Patrol" },
   { to: "/patrols", icon: Route, label: "Patrols", minRole: ["admin", "supervisor"] },
+  { to: "/routes", icon: Route, label: "Routes", minRole: ["admin", "supervisor"] },
   { to: "/schedules", icon: CalendarDays, label: "Schedules", minRole: ["admin", "supervisor"] },
   { to: "/live-map", icon: Map, label: "Live Map" },
   { to: "/session-logs", icon: ListChecks, label: "Session Logs" },
@@ -112,7 +113,7 @@ const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {visibleItems.map(({ to, icon: Icon, label, badge }) => {
-            const isActive = location.pathname === to || (to === "/dashboard" && location.pathname === "/command-center");
+            const isActive = location.pathname === to || location.pathname.startsWith(`${to}/`) || (to === "/dashboard" && location.pathname === "/command-center");
             return (
               <NavLink
                 key={to}

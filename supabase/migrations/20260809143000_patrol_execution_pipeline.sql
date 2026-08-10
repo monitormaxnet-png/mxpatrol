@@ -9,12 +9,17 @@ ALTER TABLE public.patrol_session_checkpoints
   ADD COLUMN IF NOT EXISTS audit_meta jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 UPDATE public.patrol_session_checkpoints psc
-SET checkpoint_name_snapshot = COALESCE(psc.checkpoint_name_snapshot, c.name),
-    required = COALESCE(prc.is_required, psc.required, true)
-FROM public.checkpoints c
-LEFT JOIN public.patrol_route_checkpoints prc ON prc.id = psc.route_checkpoint_id
-WHERE c.id = psc.checkpoint_id
-  AND (psc.checkpoint_name_snapshot IS NULL OR psc.required IS NULL);
+SET checkpoint_name_snapshot = COALESCE(
+      psc.checkpoint_name_snapshot,
+      (SELECT c.name FROM public.checkpoints c WHERE c.id = psc.checkpoint_id)
+    ),
+    required = COALESCE(
+      (SELECT prc.is_required FROM public.patrol_route_checkpoints prc WHERE prc.id = psc.route_checkpoint_id),
+      psc.required,
+      true
+    )
+WHERE psc.checkpoint_name_snapshot IS NULL
+   OR psc.route_checkpoint_id IS NOT NULL;
 
 ALTER TABLE public.patrol_sessions
   ADD COLUMN IF NOT EXISTS finalized_at timestamptz,

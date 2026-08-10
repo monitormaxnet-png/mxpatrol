@@ -37,7 +37,7 @@ export function usePatrolRoutes(siteId = "all") {
     queryKey: ["patrol_routes", companyId, siteId],
     enabled: !!companyId,
     queryFn: async () => {
-      let query = db.from("patrol_routes").select("*, sites(name), patrol_route_checkpoints(id, sequence_order, checkpoint_id, checkpoints(id, name, nfc_tag_id))").eq("company_id", companyId).order("created_at", { ascending: false });
+      let query = db.from("patrol_routes").select("*, sites(name), patrol_route_checkpoints(id, sequence_order, checkpoint_id, expected_offset_minutes, expected_arrival_offset_minutes, is_required, checkpoints(id, name, nfc_tag_id, status, site_id, sites(name)))").eq("company_id", companyId).order("created_at", { ascending: false });
       if (siteId !== "all") query = query.eq("site_id", siteId);
       const { data, error } = await query;
       if (error) throw error;

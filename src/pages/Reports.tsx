@@ -306,7 +306,7 @@ const Reports = () => {
 
         <ExecutiveSummary compliance={compliance} completed={completedExpectedSessions.length} expected={expectedSessions.length} scans={periodScans.length} patrolMinutes={patrolMinutes} incidents={metrics?.incidents ?? 0} sos={metrics?.sos ?? 0} />
 
-        <SessionExecutionReportsTable rows={sessionReports} loading={sessionReportsLoading} error={sessionReportsError} />
+        <SessionExecutionReportsTable rows={sessionReports as unknown as SessionExecutionReportRow[]} loading={sessionReportsLoading} error={sessionReportsError} />
 
         {scansError && <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">Scan report data could not be loaded.</div>}
 

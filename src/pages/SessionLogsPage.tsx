@@ -260,6 +260,7 @@ function buildKpis(sessions: SessionRow[]) {
 }
 function uniqueOptions(values: string[]) { return Array.from(new Set(values.filter(Boolean).filter((value) => value !== "-"))).sort(); }
 function sortedCheckpoints(session: SessionRow) { return [...(session?.patrol_session_checkpoints ?? [])].sort((a, b) => Number(a.sequence_order ?? a.scheduled_order ?? 0) - Number(b.sequence_order ?? b.scheduled_order ?? 0)); }
+function missed(session: SessionRow) { return sortedCheckpoints(session).filter((checkpoint) => missedStatuses.has(checkpoint.status ?? "")).map(checkpointName); }
 function displaySessionId(session: SessionRow) { const start = session.scheduled_start ? format(new Date(session.scheduled_start), "yyyy-MMdd") : "unknown"; const suffix = String(session.id ?? "").replace(/-/g, "").slice(0, 4).toUpperCase(); return `PAT-${start}-${suffix}`; }
 function routeName(session: SessionRow) { return session.patrol_routes?.name || session.route_name || "No route"; }
 function scheduleName(session: SessionRow) { return session.patrol_schedules?.name || session.schedule_name || "No schedule"; }

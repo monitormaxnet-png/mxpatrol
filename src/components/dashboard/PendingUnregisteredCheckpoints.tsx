@@ -155,9 +155,11 @@ export default function PendingUnregisteredCheckpoints() {
         .order("last_seen_at", { ascending: false })
         .limit(1);
 
-      if (pendingTagError) throw pendingTagError;
+      if (pendingTagError) {
+        console.warn("[Pending Tags] pending_nfc_tags unavailable; registering from scan_logs", pendingTagError);
+      }
 
-      const pendingTag = pendingTags?.[0];
+      const pendingTag = pendingTagError ? undefined : pendingTags?.[0];
       if (pendingTag) {
         await reviewPendingNfcTag({
           pendingTagId: pendingTag.id,
@@ -338,3 +340,4 @@ export default function PendingUnregisteredCheckpoints() {
     </>
   );
 }
+

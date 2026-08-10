@@ -9,6 +9,13 @@ type AnyRow = Record<string, any>;
 
 const db = supabase as any;
 
+function isOptionalPatrolSchemaError(error: unknown) {
+  const candidate = error as { code?: string; message?: string } | null | undefined;
+  const code = candidate?.code ?? "";
+  const message = candidate?.message ?? "";
+  return code === "42P01" || code === "42703" || code === "PGRST200" || /patrol_sessions|patrol_session_checkpoints|schema cache|relationship/i.test(message);
+}
+
 export type PatrolTemplateRow = AnyRow;
 export type PatrolRouteRow = AnyRow;
 export type PatrolScheduleRow = AnyRow;
@@ -108,7 +115,13 @@ export function usePatrolSessions(limit = 100, siteId = "all", statuses?: string
       if (siteId !== "all") request = request.eq("site_id", siteId);
       if (statuses?.length) request = request.in("status", statuses);
       const { data, error } = await request;
-      if (error) throw error;
+      if (error) {
+        if (isOptionalPatrolSchemaError(error)) {
+          console.warn("[PatrolSessions] Optional patrol session schema is not available yet", error);
+          return [] as PatrolSessionRow[];
+        }
+        throw error;
+      }
       return (data ?? []) as PatrolSessionRow[];
     },
   });
@@ -479,3 +492,5 @@ export function patrolSessionProgress(session: PatrolSessionRow) {
 export function patrolSessionLabel(session: PatrolSessionRow) {
   return session.patrol_templates?.name ?? session.patrol_routes?.name ?? session.patrol_schedules?.name ?? "Scheduled patrol";
 }
+
+

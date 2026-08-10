@@ -1,4 +1,4 @@
-﻿import { useEffect } from "react";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -275,21 +275,6 @@ export function usePendingUnregisteredCheckpoints(limit = 20, siteId = "all") {
           queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags_count"] });
         }
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "pending_nfc_tags",
-          filter: `company_id=eq.${companyId}`,
-        },
-        (payload) => {
-          console.info("[Realtime] pending_nfc_tags event received", payload);
-          queryClient.invalidateQueries({ queryKey: ["pending_unregistered_checkpoints", companyId] });
-          queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags"] });
-          queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags_count"] });
-        }
-      )
       .subscribe((status) => {
         if (status === "CHANNEL_ERROR") console.warn("[PendingUnregistered] Realtime pending tag channel failed");
       });
@@ -317,5 +302,6 @@ export function patrolScanCheckpointName(scan: PatrolScanRow) {
 export function pendingCheckpointDeviceIdentity(checkpoint: PendingUnregisteredCheckpointRow) {
   return checkpoint.device_identifier || checkpoint.device_id || "Unknown device";
 }
+
 
 

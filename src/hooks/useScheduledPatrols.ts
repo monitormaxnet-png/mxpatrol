@@ -101,7 +101,7 @@ export function usePatrolSessions(limit = 100, siteId = "all", statuses?: string
     queryFn: async () => {
       let request = db
         .from("patrol_sessions")
-        .select("*, sites(name), patrol_templates(id, name), patrol_routes(id, name), patrol_schedules(id, name), patrol_session_checkpoints(id, checkpoint_id, checkpoint_name_snapshot, required, sequence_order:scheduled_order, scheduled_at, scanned_at, status, scan_log_id, gps_lat, gps_lng, gps_accuracy, audit_meta, checkpoints(id, name, nfc_tag_id))")
+        .select("*, sites(name), patrol_templates(id, name), patrol_routes(id, name), patrol_schedules(id, name), patrol_session_checkpoints(id, checkpoint_id, scheduled_order, scheduled_at, scanned_at, status, scan_log_id, checkpoints(id, name, nfc_tag_id))")
         .eq("company_id", companyId)
         .order("scheduled_start", { ascending: false })
         .limit(limit);

@@ -27,10 +27,7 @@ import { useRealtimeConnectionStatus } from "@/hooks/useRealtimeConnectionStatus
 import {
   patrolSessionLabel,
   patrolSessionProgress,
-  usePatrolRoutes,
-  usePatrolSchedules,
   usePatrolSessions,
-  usePatrolTemplates,
 } from "@/hooks/useScheduledPatrols";
 
 type SessionStatusTone = "green" | "blue" | "amber" | "red" | "neutral";
@@ -63,9 +60,6 @@ export default function SessionLogsPage() {
   const [pageSize, setPageSize] = useState(10);
 
   const sessionsQuery = usePatrolSessions(250, siteId);
-  const templatesQuery = usePatrolTemplates(siteId);
-  const routesQuery = usePatrolRoutes(siteId);
-  const schedulesQuery = usePatrolSchedules(siteId);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 250);
@@ -110,8 +104,8 @@ export default function SessionLogsPage() {
   const pageRows = filteredSessions.slice((page - 1) * pageSize, page * pageSize);
   const selectedSession = filteredSessions.find((session) => session.id === selectedId) ?? pageRows[0] ?? filteredSessions[0] ?? null;
   const timeline = filteredSessions.slice().sort((a, b) => new Date(a.scheduled_start ?? 0).getTime() - new Date(b.scheduled_start ?? 0).getTime()).slice(0, 8);
-  const isLoading = sessionsQuery.isLoading || templatesQuery.isLoading || routesQuery.isLoading || schedulesQuery.isLoading;
-  const error = sessionsQuery.error || templatesQuery.error || routesQuery.error || schedulesQuery.error;
+  const isLoading = sessionsQuery.isLoading;
+  const error = sessionsQuery.error;
 
   const clearFilters = () => {
     setTemplateFilter("all");

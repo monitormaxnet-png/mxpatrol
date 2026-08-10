@@ -131,15 +131,24 @@ serve(async (req) => {
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(50);
+    let sessionReportsQuery = supabase
+      .from("patrol_session_reports")
+      .select("*")
+      .eq("company_id", companyId)
+      .gte("scheduled_start", since)
+      .order("scheduled_start", { ascending: false })
+      .limit(100);
 
     if (siteId) scansQuery = scansQuery.eq("site_id", siteId);
+    if (siteId) sessionReportsQuery = sessionReportsQuery.eq("site_id", siteId);
 
-    const [guardsRes, patrolsRes, incidentsRes, scansRes, alertsRes] = await Promise.all([
+    const [guardsRes, patrolsRes, incidentsRes, scansRes, alertsRes, sessionReportsRes] = await Promise.all([
       guardsQuery,
       patrolsQuery,
       incidentsQuery,
       scansQuery,
       alertsQuery,
+      sessionReportsQuery,
     ]);
 
     if (guardsRes.error) { await markJobFailed(guardsRes.error.message); return dbError("Failed to load guards", guardsRes.error); }
@@ -151,6 +160,7 @@ serve(async (req) => {
     const contextData = {
       guards: guardsRes.data || [],
       patrols: patrolsRes.data || [],
+      patrolSessions: sessionReportsRes.data || [],
       incidents: incidentsRes.data || [],
       scans: scansRes.data || [],
       alerts: alertsRes.data || [],
@@ -167,11 +177,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a security operations report writer. Generate a comprehensive ${reportType} security patrol report. Use the tool to return structured report data.`,
+            content: `You are a security operations report writer. Generate a comprehensive ${reportType} security patrol report. Treat canonical patrol session reports as the source of truth for completion, missed checkpoints, incidents, SOS counts, and route execution. Use raw scans only as supporting audit evidence. Use the tool to return structured report data.`,
           },
           {
             role: "user",
-            content: `Generate a ${reportType} security report from this filtered operational data. Use only registered checkpoint scans. Filters: company_id=${companyId}, site_id=${siteId ?? "all"}, since=${since}.\n\nGuards (${contextData.guards.length}): ${JSON.stringify(contextData.guards.slice(0, 15))}\n\nPatrols: ${JSON.stringify(contextData.patrols.slice(0, 15))}\n\nIncidents: ${JSON.stringify(contextData.incidents.slice(0, 10))}\n\nRegistered scans (${contextData.scans.length}): ${JSON.stringify(contextData.scans.slice(0, 20))}\n\nAlerts: ${JSON.stringify(contextData.alerts.slice(0, 15))}`,
+            content: `Generate a ${reportType} security report from this filtered operational data. Filters: company_id=${companyId}, site_id=${siteId ?? "all"}, since=${since}.\n\nCanonical patrol session reports (${contextData.patrolSessions.length}): ${JSON.stringify(contextData.patrolSessions.slice(0, 30))}\n\nGuards (${contextData.guards.length}): ${JSON.stringify(contextData.guards.slice(0, 15))}\n\nLegacy patrol rows: ${JSON.stringify(contextData.patrols.slice(0, 15))}\n\nIncidents: ${JSON.stringify(contextData.incidents.slice(0, 10))}\n\nRegistered scan audit events (${contextData.scans.length}): ${JSON.stringify(contextData.scans.slice(0, 20))}\n\nAlerts: ${JSON.stringify(contextData.alerts.slice(0, 15))}`,
           },
         ],
         tools: [

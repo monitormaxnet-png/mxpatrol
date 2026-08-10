@@ -127,6 +127,7 @@ export function useAIInsights() {
         .from("ai_insights")
         .select("*")
         .order("created_at", { ascending: false })
+        .neq("type", "camera_detection")
         .limit(5);
       if (error) throw error;
       return data as Tables<"ai_insights">[];
@@ -186,5 +187,3 @@ export function useRealtimeSubscriptions() {
     };
   }, [queryClient]);
 }
-
-

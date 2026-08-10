@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Brain, TrendingUp, TrendingDown, Minus, Shield, Target, Zap, BarChart3, Loader2, Filter } from "lucide-react";
@@ -28,6 +29,7 @@ const AIInsights = () => {
         .from("ai_insights")
         .select("*")
         .order("created_at", { ascending: false })
+        .neq("type", "camera_detection")
         .limit(50);
       if (error) throw error;
       return data as Tables<"ai_insights">[];

@@ -174,6 +174,8 @@ async function buildStructuredResult(
       case "PATROL_STARTED": return `${patrol?.name ?? "Patrol"} started`;
       case "CHECKPOINT_ACCEPTED": return `${checkpoint?.name ?? "Checkpoint"} accepted`;
       case "CHECKPOINT_ALREADY_SCANNED": return "Checkpoint already counted for this patrol";
+      case "CHECKPOINT_OUT_OF_ORDER": return `Scanned ${checkpoint?.name ?? "checkpoint"} out of order`;
+      case "CHECKPOINT_NOT_IN_ROUTE": return `${checkpoint?.name ?? "Checkpoint"} is not part of this route`;
       case "UNREGISTERED_CHECKPOINT": return pending ? "Tag submitted for supervisor review" : "Tag is not registered";
       default: return "Checkpoint recorded, no active patrol matched";
     }

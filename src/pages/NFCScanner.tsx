@@ -22,7 +22,7 @@ import { backfillNfcScanGps } from "@/lib/nfcWorkflow";
 import { getLocalDeviceIdentifier, resolveDeviceCompany } from "@/lib/deviceCompany";
 import { batteryMetadata } from "@/lib/deviceBattery";
 import { playFeedbackSound } from "@/lib/feedbackSound";
-import { describeScanResult, formatProgress } from "@/lib/scanResult";
+import { describeScanResult, formatProgress, type StructuredScanResult } from "@/lib/scanResult";
 import HardwareSosListener from "@/components/devices/HardwareSosListener";
 import TTechMxPatrolLogo from "@/components/branding/TTechMxPatrolLogo";
 
@@ -66,6 +66,7 @@ const NFCScanner = () => {
   const [lastCheckpoint, setLastCheckpoint] = useState<string | null>(null);
   const [lastTagUid, setLastTagUid] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [lastStructuredResult, setLastStructuredResult] = useState<StructuredScanResult | null>(null);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const { battery } = useDeviceBattery();
@@ -133,7 +134,16 @@ const NFCScanner = () => {
 
     void syncQueue()
       .then(() => {
-        setLastSyncAt(new Date().toISOString());
+        const syncedAt = new Date().toISOString();
+        setLastSyncAt(syncedAt);
+        if (pendingCount > 0 && !["tag_detected", "verifying", "acquiring_gps", "saving"].includes(scannerStatus)) {
+          setScannerStatus("success");
+          setLastCheckpoint("Offline queue");
+          setLastError("Scan synchronized successfully.");
+          setLastStructuredResult(null);
+          setLastScanAt(syncedAt);
+          window.setTimeout(() => setScannerStatus("scanning"), 1800);
+        }
         console.info("[Device] Offline scans synchronized", { company_id: companyId, pending_count: pendingCount });
         queryClient.invalidateQueries({ queryKey: ["recent_scans"] });
         queryClient.invalidateQueries({ queryKey: ["scan_logs"] });
@@ -142,7 +152,7 @@ const NFCScanner = () => {
       .catch((syncError) => {
         console.warn("[Device] Offline scan synchronization failed", syncError);
       });
-  }, [companyId, isOnline, pendingCount, queryClient, syncQueue, syncing]);
+  }, [companyId, isOnline, pendingCount, queryClient, scannerStatus, syncQueue, syncing]);
 
   // Checkpoints
   const { data: checkpoints = [] } = useQuery({
@@ -206,6 +216,7 @@ const NFCScanner = () => {
     isOnline,
     onSuccess: (result) => {
       const structured = result.structured ?? null;
+      setLastStructuredResult(structured);
       const registeredCheckpoint = result.tagStatus === "registered" && Boolean(result.checkpointName ?? result.checkpoint?.name);
 
       const feedback = !isOnline
@@ -238,7 +249,7 @@ const NFCScanner = () => {
       playFeedbackSound(feedback.sound);
       setScannerStatus(nextState);
       setLastCheckpoint(getScanDisplayName(result));
-      setLastError(feedback.tone === "good" || feedback.tone === "info" ? null : feedback.detail);
+      setLastError(feedback.detail);
       setLastScanAt(new Date().toISOString());
       addToLog(result, registeredCheckpoint);
       scheduleLowPriority(() => {
@@ -264,6 +275,7 @@ const NFCScanner = () => {
       setTimeout(() => setScannerStatus("scanning"), feedback.holdMs);
     },
     onFailure: (result) => {
+      setLastStructuredResult(result.structured ?? null);
       const locallyQueued = result.reason?.toLowerCase().includes("saved locally") ?? false;
       playFeedbackSound(locallyQueued ? "offline-queued" : "error");
       setScannerStatus(classifyFailureState(result.reason, locallyQueued));
@@ -273,7 +285,8 @@ const NFCScanner = () => {
       addToLog(result, false);
       console.info("[ScannerState]", { state: classifyFailureState(result.reason, locallyQueued), reason: result.reason ?? null, tagUid: result.tagId ?? null });
       setTimeout(() => setScannerStatus("scanning"), 2500);
-    },    onFaceVerificationRequired: (result, scanData) => {
+    },
+    onFaceVerificationRequired: (result, scanData) => {
       // Pause scanning, show face verification
       setScannerStatus("idle");
       setPendingFaceScan({ result, scanData: scanData as FaceScanData });
@@ -365,11 +378,12 @@ const NFCScanner = () => {
         })}`);
         setScannerStatus("device_unassigned");
         setLastCheckpoint(null);
+        setLastStructuredResult(null);
         setLastError(message);
         playFeedbackSound("error");
         signalScannerHaptic("device_unassigned");
         toast.warning(message);
-        setTimeout(() => setScannerStatus(nfcReader.supported ? "scanning" : "idle"), 2500);
+        setTimeout(() => setScannerStatus(nfcSupported ? "scanning" : "idle"), 2500);
         return;
       }
 
@@ -378,6 +392,7 @@ const NFCScanner = () => {
       setScannerStatus("tag_detected");
       setLastTagUid(serialNumber);
       setLastCheckpoint(`Tag ${serialNumber}`);
+      setLastStructuredResult(null);
       setLastError(null);
       console.info("[ScannerState]", { state: "tag_detected", tagUid: serialNumber });
 
@@ -396,6 +411,8 @@ const NFCScanner = () => {
     },
     debounceMs: 3000,
   });
+
+  const { errorMessage: nfcErrorMessage, startScanning: startNfcScanning, status: nfcStatus, supported: nfcSupported } = nfcReader;
 
   useEffect(() => {
     void ensureLocationPermission().catch(() => {
@@ -446,6 +463,7 @@ const NFCScanner = () => {
         setScannerStatus("sos");
         setLastTagUid(null);
         setLastCheckpoint(detail.deviceIdentifier ?? localDeviceIdentifier);
+        setLastStructuredResult(null);
         setLastError("Location is being shared with command center.");
         setLastScanAt(new Date().toISOString());
         console.info("[ScannerState]", { state: "sos", status: detail.status, deviceIdentifier: detail.deviceIdentifier ?? localDeviceIdentifier });
@@ -457,23 +475,23 @@ const NFCScanner = () => {
         setLastError("SOS could not be sent. Call your supervisor now.");
         signalScannerHaptic("save_failed");
         console.info("[ScannerState]", { state: "error", source: "sos" });
-        setTimeout(() => setScannerStatus(nfcReader.supported ? "scanning" : "idle"), 3500);
+        setTimeout(() => setScannerStatus(nfcSupported ? "scanning" : "idle"), 3500);
       }
     };
 
     window.addEventListener("mxpatrol:sos-feedback", handleSosFeedback);
     return () => window.removeEventListener("mxpatrol:sos-feedback", handleSosFeedback);
-  }, [localDeviceIdentifier]);
+  }, [localDeviceIdentifier, nfcSupported]);
 
   useEffect(() => {
-    if (!nfcReader.supported || pendingFaceScan) return;
+    if (!nfcSupported || pendingFaceScan) return;
 
-    nfcReader.startScanning();
+    startNfcScanning();
     setScannerStatus("scanning");
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        nfcReader.startScanning();
+        startNfcScanning();
         setScannerStatus("scanning");
       }
     };
@@ -485,18 +503,18 @@ const NFCScanner = () => {
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("focus", handleVisibility);
     };
-  }, [nfcReader.supported, nfcReader.startScanning, pendingFaceScan]);
+  }, [nfcSupported, pendingFaceScan, startNfcScanning]);
 
   // Sync NFC reader status with scanner status
   useEffect(() => {
-    if (nfcReader.status === "scanning" && scannerStatus === "idle") {
+    if (nfcStatus === "scanning" && scannerStatus === "idle") {
       setScannerStatus("scanning");
     }
-    if (nfcReader.status === "unsupported" || nfcReader.status === "disabled") {
-      setScannerStatus(nfcReader.status as ScannerUiState);
-      setLastError(nfcReader.errorMessage);
+    if (nfcStatus === "unsupported" || nfcStatus === "disabled") {
+      setScannerStatus(nfcStatus as ScannerUiState);
+      setLastError(nfcErrorMessage);
     }
-  }, [nfcReader.status]);
+  }, [nfcErrorMessage, nfcStatus, scannerStatus]);
 
   // Check if any assigned patrol has enhanced verification
 
@@ -577,7 +595,7 @@ const NFCScanner = () => {
   const scannerShellState = getScannerShellState(scannerStatus);
   const isNativeScanner = Capacitor.isNativePlatform();
   const gpsLabel = getScannerGpsLabel(gpsStatus);
-  const nfcLabel = getScannerNfcLabel(nfcReader.supported, scannerStatus);
+  const nfcLabel = getScannerNfcLabel(nfcSupported, scannerStatus);
   const assignmentLabel = companyId ? "Assigned" : deviceCompanyLoading ? "Checking" : "Not enrolled";
   const assignmentTone = companyId ? "is-good" : deviceCompanyLoading ? "is-info" : "is-warning";
   const latestFeedback = getScannerFeedback(scannerStatus, lastCheckpoint, lastError, pendingCount, deviceCompanyLoading, Boolean(companyId));
@@ -667,7 +685,7 @@ const NFCScanner = () => {
             <div className="web-scanner-status-row"><span>GPS</span><strong className={gpsStatus === "unavailable" ? "is-warning" : "is-good"}>{gpsLabel}</strong></div>
             <div className="web-scanner-status-row"><span>Network</span><strong className={isOnline ? "is-good" : "is-warning"}>{isOnline ? "Online" : "Offline"}</strong></div>
             <div className="web-scanner-status-row"><span>Sync Queue</span><strong className={pendingCount > 0 ? "is-warning" : "is-good"}>{pendingCount} Pending</strong></div>
-            <div className="web-scanner-status-row"><span>NFC</span><strong className={nfcReader.supported ? "is-good" : "is-danger"}>{nfcLabel}</strong></div>
+            <div className="web-scanner-status-row"><span>NFC</span><strong className={nfcSupported ? "is-good" : "is-danger"}>{nfcLabel}</strong></div>
             <div className="web-scanner-status-row"><span>Device Assignment</span><strong className={assignmentTone}>{assignmentLabel}</strong></div>
           </div>
         </section>
@@ -747,7 +765,7 @@ const NFCScanner = () => {
                         className="w-full text-xs text-white/65"
                         onClick={() => {
                           setPendingFaceScan(null);
-                          setScannerStatus(nfcReader.supported ? "scanning" : "idle");
+                          setScannerStatus(nfcSupported ? "scanning" : "idle");
                           toast.warning("Face verification skipped - scan not recorded");
                         }}
                       >
@@ -769,6 +787,8 @@ const NFCScanner = () => {
                     isOnline={isOnline}
                     pendingCount={pendingCount}
                     scannedAt={lastScanAt}
+                    structuredResult={lastStructuredResult}
+                    deviceIdentifier={deviceCompany?.deviceIdentifier ?? localDeviceIdentifier}
                   />
                 </div>
               )}

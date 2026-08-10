@@ -1,5 +1,8 @@
 -- Coherent patrol execution pipeline: session finalization, snapshot reporting, incident/SOS links.
 
+ALTER TABLE public.patrol_routes
+  ADD COLUMN IF NOT EXISTS enforce_sequence boolean NOT NULL DEFAULT false;
+
 ALTER TABLE public.patrol_session_checkpoints
   ADD COLUMN IF NOT EXISTS checkpoint_name_snapshot text,
   ADD COLUMN IF NOT EXISTS required boolean NOT NULL DEFAULT true,
@@ -327,9 +330,11 @@ DECLARE
   scan_row record;
   session_row record;
   checkpoint_row record;
+  expected_checkpoint_row record;
   recent_row record;
   reason text;
   was_late boolean := false;
+  enforce_sequence boolean := false;
   v_next_id uuid;
   v_next_name text;
   v_final record;
@@ -415,6 +420,10 @@ BEGIN
 
   reason := session_row.reason;
 
+  SELECT COALESCE(pr.enforce_sequence, false) INTO enforce_sequence
+  FROM public.patrol_routes pr
+  WHERE pr.id = session_row.route_id;
+
   SELECT psc.* INTO checkpoint_row
   FROM public.patrol_session_checkpoints psc
   WHERE psc.session_id = session_row.id
@@ -429,6 +438,36 @@ BEGIN
     AND psc.status NOT IN ('scanned','scanned_late')
   ORDER BY psc.scheduled_order
   LIMIT 1;
+
+  SELECT psc.*, c.name AS checkpoint_name INTO expected_checkpoint_row
+  FROM public.patrol_session_checkpoints psc
+  JOIN public.checkpoints c ON c.id = psc.checkpoint_id
+  WHERE psc.session_id = session_row.id
+    AND COALESCE(psc.required, true)
+    AND psc.status NOT IN ('scanned','scanned_late','skipped')
+  ORDER BY psc.scheduled_order
+  LIMIT 1;
+
+  IF enforce_sequence
+    AND expected_checkpoint_row.id IS NOT NULL
+    AND expected_checkpoint_row.id <> checkpoint_row.id THEN
+    UPDATE public.scan_logs
+    SET patrol_template_id = session_row.template_id,
+        patrol_route_id = session_row.route_id,
+        patrol_schedule_id = session_row.schedule_id,
+        patrol_session_id = session_row.id,
+        patrol_match_status = 'out_of_order',
+        patrol_validation_status = 'out_of_order'
+    WHERE id = p_scan_log_id;
+
+    SELECT * INTO v_final FROM public.patrol_sessions WHERE id = session_row.id;
+
+    RETURN QUERY SELECT session_row.id, checkpoint_row.id, 'out_of_order'::text, 'CHECKPOINT_OUT_OF_ORDER'::text,
+      v_final.status, NULL::text, session_row.schedule_id,
+      COALESCE(v_final.checkpoint_completed,0), COALESCE(v_final.checkpoint_total,0),
+      COALESCE(v_final.progress_percent,0), expected_checkpoint_row.checkpoint_id, expected_checkpoint_row.checkpoint_name, reason;
+    RETURN;
+  END IF;
 
   IF checkpoint_row.status IN ('scanned','scanned_late') THEN
     UPDATE public.scan_logs
@@ -723,6 +762,7 @@ CREATE INDEX IF NOT EXISTS idx_patrol_sessions_company_status_time ON public.pat
 CREATE INDEX IF NOT EXISTS idx_patrol_sessions_schedule_start ON public.patrol_sessions(schedule_id, scheduled_start DESC) WHERE schedule_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_patrol_session_checkpoints_session_checkpoint ON public.patrol_session_checkpoints(session_id, checkpoint_id);
 CREATE INDEX IF NOT EXISTS idx_scan_logs_patrol_session ON public.scan_logs(patrol_session_id, scanned_at DESC) WHERE patrol_session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_patrol_routes_company_enforce_sequence ON public.patrol_routes(company_id, enforce_sequence);
 
 DO $$
 DECLARE

@@ -1,99 +1,44 @@
-import { useMemo, useState } from "react";
-import { AlertCircle, Clock, Loader2, Radio } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock, ExternalLink, Loader2, MapPin, Radio, ScanLine, Smartphone } from "lucide-react";
+import { Link } from "react-router-dom";
 import { format } from "date-fns";
-import DashboardFilterBar from "./DashboardFilterBar";
-import SiteSelector from "@/components/sites/SiteSelector";
-import {
-  defaultDashboardFilters,
-  exportCsv,
-  isDateInRange,
-  scanStatus,
-  toFilterOptions,
-} from "./dashboardTableFilters";
 import {
   patrolScanCheckpointName,
   patrolScanDeviceIdentity,
   useSessionScanLogs,
+  type PatrolScanRow,
 } from "@/hooks/usePatrolScanData";
+import { patrolSessionLabel, usePatrolSessions, type PatrolSessionRow } from "@/hooks/useScheduledPatrols";
+
+const ACTIVE_SESSION_STATUSES = ["active", "in_progress", "running"];
 
 export default function SessionLogs() {
-  const [siteId, setSiteId] = useState("all");
-  const [filters, setFilters] = useState(defaultDashboardFilters);
-  const { data: scans = [], isLoading, isFetching, error, refetch } = useSessionScanLogs(80, siteId);
-
-  const checkpointOptions = useMemo(() => toFilterOptions(scans.map(patrolScanCheckpointName)), [scans]);
-  const deviceOptions = useMemo(() => toFilterOptions(scans.map(patrolScanDeviceIdentity)), [scans]);
-  const statusOptions = useMemo(
-    () => toFilterOptions(["Registered", "Unregistered", "Failed", "Synced", ...scans.map(scanStatus)]),
-    [scans]
-  );
-
-  const filteredScans = useMemo(
-    () =>
-      scans.filter((scan) => {
-        const checkpointName = patrolScanCheckpointName(scan);
-        const deviceIdentity = patrolScanDeviceIdentity(scan);
-        const status = scanStatus(scan);
-
-        return (
-          (filters.checkpoint === "all" || checkpointName === filters.checkpoint) &&
-          (filters.device === "all" || deviceIdentity === filters.device) &&
-          (filters.status === "all" || status === filters.status) &&
-          isDateInRange(scan.scanned_at, filters.startDate, filters.endDate)
-        );
-      }),
-    [filters, scans]
-  );
-
-  const exportFilteredRows = () => {
-    exportCsv(
-      "session-logs.csv",
-      ["Site", "Session ID", "Device Identity", "Checkpoint Name", "Date", "Time", "Longitude", "Latitude", "Status"],
-      filteredScans.map((scan) => [
-        scan.sites?.name ?? "Unassigned",
-        scan.id,
-        patrolScanDeviceIdentity(scan),
-        patrolScanCheckpointName(scan),
-        format(new Date(scan.scanned_at), "yyyy-MM-dd"),
-        format(new Date(scan.scanned_at), "HH:mm:ss"),
-        scan.gps_lng != null ? scan.gps_lng.toFixed(6) : "Unavailable",
-        scan.gps_lat != null ? scan.gps_lat.toFixed(6) : "Unavailable",
-        scanStatus(scan),
-      ])
-    );
-  };
+  const { data: activeSessions = [], isLoading: sessionsLoading, error: sessionsError } = usePatrolSessions(8, "all", ACTIVE_SESSION_STATUSES);
+  const { data: scans = [], isLoading: scansLoading, error: scansError } = useSessionScanLogs(30, "all");
+  const currentSession = activeSessions[0] as PatrolSessionRow | undefined;
+  const sessionScans = currentSession
+    ? scans.filter((scan) => scan.patrol_session_id === currentSession.id || (!!scan.device_identifier && scan.device_identifier === currentSession.device_identifier))
+    : scans;
+  const latest = sessionScans[0] ?? scans[0];
+  const activity = (sessionScans.length ? sessionScans : scans).slice(0, 5);
+  const sequence = sequenceLabel(latest);
+  const isLoading = sessionsLoading || scansLoading;
+  const error = sessionsError ?? scansError;
 
   return (
     <div className="glass-card flex min-h-[360px] flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
         <div>
           <h3 className="font-heading text-sm font-semibold text-foreground">Session Logs</h3>
-          <p className="text-[11px] text-muted-foreground">Latest scan sequence by company devices</p>
+          <p className="text-[11px] text-muted-foreground">Current session details and latest scan activity</p>
         </div>
         <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
           <Radio className="h-3 w-3" /> Realtime
         </span>
       </div>
 
-      <div className="border-b border-border/50 px-5 py-3"><SiteSelector value={siteId} onChange={setSiteId} /></div>
-
-      <DashboardFilterBar
-        filters={filters}
-        checkpointLabel="Checkpoint"
-        checkpointAllLabel="All Checkpoints"
-        checkpointOptions={checkpointOptions}
-        deviceOptions={deviceOptions}
-        statusOptions={statusOptions}
-        isRefreshing={isFetching}
-        onFiltersChange={setFilters}
-        onRefresh={() => void refetch()}
-        onReset={() => setFilters(defaultDashboardFilters)}
-        onExport={exportFilteredRows}
-      />
-
       {isLoading && (
         <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading session logs...
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading session summary...
         </div>
       )}
 
@@ -103,63 +48,70 @@ export default function SessionLogs() {
         </div>
       )}
 
-      {!isLoading && !error && scans.length === 0 && (
+      {!isLoading && !error && !latest && (
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-sm text-muted-foreground">
           <Clock className="mb-2 h-7 w-7" />
           No session scans yet. Registered and unregistered scan events will appear here automatically.
         </div>
       )}
 
-      {!isLoading && !error && scans.length > 0 && filteredScans.length === 0 && (
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-          No session logs match these filters.
-        </div>
-      )}
+      {!isLoading && !error && latest && (
+        <div className="flex flex-1 flex-col p-5">
+          <div className="grid gap-3 text-sm">
+            <SummaryRow icon={ScanLine} label="Session ID" value={currentSession?.id ?? latest.patrol_session_id ?? latest.id} mono />
+            <SummaryRow icon={MapPin} label="Site" value={latest.sites?.name ?? currentSession?.sites?.name ?? "Unassigned"} />
+            <SummaryRow icon={Smartphone} label="Device Identity" value={patrolScanDeviceIdentity(latest)} />
+            <SummaryRow icon={ScanLine} label="Latest Checkpoint" value={patrolScanCheckpointName(latest)} highlight />
+            <SummaryRow icon={Clock} label="Latest Scan Time" value={format(new Date(latest.scanned_at), "HH:mm:ss")} />
+            <SummaryRow icon={MapPin} label="Sequence Status" value={sequence.label} highlight={sequence.good} warning={!sequence.good} />
+          </div>
 
-      {!isLoading && !error && filteredScans.length > 0 && (
-        <div className="max-h-[520px] overflow-auto">
-          <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
-            <thead className="sticky top-0 z-10 border-b border-border/50 bg-muted/70 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground backdrop-blur">
-              <tr>
-                <th className="w-[12%] px-4 py-2">Site</th>
-                <th className="w-[16%] px-4 py-2">Session ID</th>
-                <th className="w-[16%] px-4 py-2">Device Identity</th>
-                <th className="w-[18%] px-4 py-2">Checkpoint Name</th>
-                <th className="w-[12%] px-4 py-2">Date</th>
-                <th className="w-[10%] px-4 py-2">Time</th>
-                <th className="w-[13%] px-4 py-2">Longitude</th>
-                <th className="w-[13%] px-4 py-2">Latitude</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/30">
-              {filteredScans.map((scan) => (
-                <tr key={scan.id} className="transition-colors hover:bg-muted/30" title={`Status: ${scanStatus(scan)}`}>
-                  <td className="truncate px-4 py-3 text-foreground" title={scan.sites?.name ?? "Unassigned"}>
-                    {scan.sites?.name ?? "Unassigned"}
-                  </td>
-                  <td className="truncate px-4 py-3 font-mono text-xs text-foreground" title={scan.id}>
-                    {scan.id}
-                  </td>
-                  <td className="truncate px-4 py-3 font-medium text-foreground" title={patrolScanDeviceIdentity(scan)}>
-                    {patrolScanDeviceIdentity(scan)}
-                  </td>
-                  <td className="truncate px-4 py-3 text-foreground" title={patrolScanCheckpointName(scan)}>
-                    {patrolScanCheckpointName(scan)}
-                  </td>
-                  <td className="px-4 py-3 text-foreground">{format(new Date(scan.scanned_at), "yyyy-MM-dd")}</td>
-                  <td className="px-4 py-3 text-foreground">{format(new Date(scan.scanned_at), "HH:mm:ss")}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-foreground">
-                    {scan.gps_lng != null ? scan.gps_lng.toFixed(6) : "Unavailable"}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-foreground">
-                    {scan.gps_lat != null ? scan.gps_lat.toFixed(6) : "Unavailable"}
-                  </td>
-                </tr>
+          <div className="mt-4 border-t border-border/50 pt-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h4 className="text-sm font-semibold text-foreground">Latest Activity</h4>
+              <Link to="/session-logs" className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80">
+                View Full Session <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {activity.map((scan, index) => (
+                <ActivityItem key={scan.id} scan={scan} current={index === 0} />
               ))}
-            </tbody>
-          </table>
+            </div>
+            {currentSession && <p className="mt-3 truncate text-[11px] text-muted-foreground" title={patrolSessionLabel(currentSession)}>Session: {patrolSessionLabel(currentSession)}</p>}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function sequenceLabel(scan?: PatrolScanRow) {
+  const status = String(scan?.patrol_validation_status ?? "");
+  if (status === "out_of_order") return { label: "Out of Sequence", good: false };
+  if (["on_time", "early", "late"].includes(status)) return { label: status === "late" ? "Late Scan" : "In Sequence", good: true };
+  if (scan?.tag_status === "unregistered") return { label: "Pending Registration", good: false };
+  return { label: "Recorded", good: true };
+}
+
+function SummaryRow({ icon: Icon, label, value, highlight, warning, mono }: { icon: typeof Radio; label: string; value: string; highlight?: boolean; warning?: boolean; mono?: boolean }) {
+  return (
+    <div className="grid grid-cols-[1.15rem_9rem_minmax(0,1fr)] items-center gap-2 border-b border-border/35 pb-2 last:border-0">
+      <Icon className="h-4 w-4 text-muted-foreground" />
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`truncate font-semibold ${warning ? "text-warning" : highlight ? "text-primary" : "text-foreground"} ${mono ? "font-mono text-xs" : ""}`} title={value}>{value}</span>
+    </div>
+  );
+}
+
+function ActivityItem({ scan, current }: { scan: PatrolScanRow; current: boolean }) {
+  const sequence = sequenceLabel(scan);
+  return (
+    <div className="grid grid-cols-[0.75rem_4.75rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border/30 bg-muted/15 px-3 py-2 text-sm">
+      <span className={`h-2.5 w-2.5 rounded-full ${current ? "bg-primary" : sequence.good ? "bg-success" : "bg-warning"}`} />
+      <span className="font-mono text-xs text-muted-foreground">{format(new Date(scan.scanned_at), "HH:mm:ss")}</span>
+      <span className="truncate font-semibold text-foreground" title={patrolScanCheckpointName(scan)}>{patrolScanCheckpointName(scan)}</span>
+      <span className={current ? "text-primary" : sequence.good ? "text-success" : "text-warning"}>{current ? "Current" : sequence.good ? "Scanned" : "Review"}</span>
     </div>
   );
 }

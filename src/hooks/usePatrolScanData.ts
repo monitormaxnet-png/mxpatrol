@@ -66,7 +66,7 @@ export function usePatrolScans(limit = 50, siteId = "all") {
     queryFn: async () => {
       let query = supabase
         .from("scan_logs")
-        .select("id, company_id, site_id, checkpoint_id, guard_id, device_id, device_identifier, scanned_at, gps_lat, gps_lng, gps_accuracy, tag_uid, tag_status, is_offline_sync, sites(name), checkpoints(name, nfc_tag_id, site_id, sites(name)), guards(full_name, badge_number)")
+        .select("id, company_id, site_id, checkpoint_id, patrol_session_id, patrol_validation_status, guard_id, device_id, device_identifier, scanned_at, gps_lat, gps_lng, gps_accuracy, tag_uid, tag_status, is_offline_sync, sites(name), checkpoints(name, nfc_tag_id, site_id, sites(name)), guards(full_name, badge_number)")
         .eq("company_id", companyId!)
         .order("scanned_at", { ascending: false })
         .limit(limit);
@@ -154,7 +154,7 @@ export function useSessionScanLogs(limit = 100, siteId = "all") {
     queryFn: async () => {
       let query = supabase
         .from("scan_logs")
-        .select("id, company_id, site_id, checkpoint_id, guard_id, device_id, device_identifier, scanned_at, gps_lat, gps_lng, gps_accuracy, tag_uid, tag_status, is_offline_sync, sites(name), checkpoints(name, nfc_tag_id, site_id, sites(name)), guards(full_name, badge_number)")
+        .select("id, company_id, site_id, checkpoint_id, patrol_session_id, patrol_validation_status, guard_id, device_id, device_identifier, scanned_at, gps_lat, gps_lng, gps_accuracy, tag_uid, tag_status, is_offline_sync, sites(name), checkpoints(name, nfc_tag_id, site_id, sites(name)), guards(full_name, badge_number)")
         .eq("company_id", companyId!)
         .order("scanned_at", { ascending: false })
         .limit(limit);

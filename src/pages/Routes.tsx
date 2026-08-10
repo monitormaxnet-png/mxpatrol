@@ -9,7 +9,7 @@ import {
   Eye,
   FileUp,
   Filter,
-  Map,
+  Map as MapIcon,
   MoreVertical,
   Pause,
   Play,
@@ -192,7 +192,7 @@ export default function RoutesPage() {
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <SocKpiCard icon={RouteIcon} title="Total Routes" value={metrics.total} caption="All time" loading={isLoading} />
         <SocKpiCard icon={ShieldCheck} tone="green" title="Active Routes" value={metrics.active} caption="Currently active" loading={isLoading} />
-        <SocKpiCard icon={Map} tone="blue" title="Checkpoints Used" value={metrics.checkpoints} caption="Across all routes" loading={isLoading} />
+        <SocKpiCard icon={MapIcon} tone="blue" title="Checkpoints Used" value={metrics.checkpoints} caption="Across all routes" loading={isLoading} />
         <SocKpiCard icon={Filter} tone="amber" title="Schedules Using Routes" value={metrics.schedules} caption="Active schedule links" loading={isLoading} />
       </section>
 

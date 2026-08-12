@@ -42,7 +42,8 @@ export default function CommandCenter() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const realtime = useRealtimeConnectionStatus("command-center");
   const periodStart = useMemo(() => dateRangeStart(dateRange), [dateRange]);
-  const overview = useQuery({ queryKey: ["command-center-overview", companyId, siteId, dateRange], enabled: !!companyId, staleTime: 15_000, queryFn: async () => fetchCommandCenterOverview(companyId!, siteId, periodStart) });
+  const overviewQueryKey = useMemo(() => ["command-center-overview", companyId, siteId, dateRange] as const, [companyId, siteId, dateRange]);
+  const overview = useQuery({ queryKey: overviewQueryKey, enabled: !!companyId, staleTime: 15_000, queryFn: async () => fetchCommandCenterOverview(companyId!, siteId, periodStart) });
   const { data: sessions = [], isFetching: sessionsFetching } = usePatrolSessions(80, siteId);
 
   useEffect(() => {
@@ -52,12 +53,13 @@ export default function CommandCenter() {
     tables.forEach((table) => channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `company_id=eq.${companyId}` }, (payload) => {
       console.info("[Command Center] realtime event received", { table, eventType: payload.eventType });
       setLastUpdated(new Date());
-      void queryClient.invalidateQueries({ queryKey: ["command-center-overview", companyId] });
+      void queryClient.invalidateQueries({ queryKey: overviewQueryKey, exact: true });
+      void queryClient.refetchQueries({ queryKey: overviewQueryKey, exact: true, type: "active" });
       void queryClient.invalidateQueries({ queryKey: ["patrol_sessions", companyId] });
     }));
     channel.subscribe((status) => { if (status === "CHANNEL_ERROR") console.warn("[Command Center] realtime channel failed"); });
     return () => { void supabase.removeChannel(channel); };
-  }, [companyId, queryClient]);
+  }, [companyId, overviewQueryKey, queryClient]);
   useEffect(() => { if (overview.data) setLastUpdated(new Date()); }, [overview.data]);
 
   const selectedSiteName = siteId === "all" ? "All Sites" : getSiteName(siteId, sites);
@@ -123,14 +125,14 @@ async function fetchCommandCenterOverview(companyId: string, siteId: string, per
   const latest = (table: string, select: string, order: string, apply?: (q: QueryBuilder) => QueryBuilder, limit = 1) => { let query = db.from(table).select(select).eq("company_id", companyId).order(order, { ascending: false }).limit(limit); if (apply) query = apply(query); return query; };
   const [companyRes, scansRes, reportsRes, jobsRes, alertsRes, incidentsRes, devicesRes, checkpointsRes, pendingRes, aiRes] = await Promise.all([
     db.from("companies").select("name").eq("id", companyId).maybeSingle(),
-    latest("scan_logs", "id,company_id,site_id,checkpoint_id,device_identifier,device_id,tag_uid,tag_status,scanned_at,gps_lat,gps_lng,gps_accuracy,sites(name),checkpoints(name,site_id,sites(name))", "scanned_at", (q) => siteFilter(q.gte("scanned_at", periodStart)), 120),
+    latest("scan_logs", "id,company_id,site_id,checkpoint_id,device_identifier,device_id,tag_uid,tag_status,scanned_at,created_at,gps_lat,gps_lng,gps_accuracy,sites(name),checkpoints(name,site_id,sites(name))", "created_at", siteFilter, 120),
     latest("ai_reports", "id,report_type,summary_text,generated_at", "generated_at", (q) => q.gte("generated_at", periodStart), 30),
     latest("report_jobs", "id,report_type,status,error_message,created_at,completed_at,failed_at,scheduled_for,site_id,sites(name)", "created_at", (q) => siteFilter(q.gte("created_at", periodStart)), 50),
-    latest("alerts", "id,type,severity,message,is_read,created_at", "created_at", (q) => q.eq("type", "panic_button"), 30),
+    latest("alerts", "id,type,severity,message,is_read,created_at,event_occurred_at,device_identifier,site_id,session_id,location_lat,location_lng,gps_accuracy", "created_at", (q) => q.eq("type", "panic_button"), 30),
     latest("incidents", "id,title,severity,status,resolved,site_id,created_at,sites(name)", "created_at", siteFilter, 50),
     latest("devices", "id,device_name,device_identifier,status,pairing_status,last_seen_at,site_id,sites(name),battery_level,current_battery_level,current_gps_lat,current_gps_lng,current_gps_accuracy", "last_seen_at", siteFilter, 80),
     latest("checkpoints", "id,name,nfc_tag_id,site_id,created_at,sites(name)", "created_at", siteFilter, 80),
-    latest("scan_logs", "id,company_id,site_id,checkpoint_id,device_identifier,device_id,tag_uid,tag_status,scanned_at,gps_lat,gps_lng,sites(name)", "scanned_at", (q) => siteFilter(q.eq("tag_status", "unregistered").is("checkpoint_id", null).gte("scanned_at", periodStart)), 40),
+    latest("scan_logs", "id,company_id,site_id,checkpoint_id,device_identifier,device_id,tag_uid,tag_status,scanned_at,created_at,gps_lat,gps_lng,sites(name)", "created_at", (q) => siteFilter(q.eq("tag_status", "unregistered").is("checkpoint_id", null)), 40),
     latest("ai_insights", "id,type,summary,severity,created_at", "created_at", undefined, 10),
   ]);
   const rows = (res: QueryResponse, label: string) => {
@@ -146,7 +148,7 @@ async function fetchCommandCenterOverview(companyId: string, siteId: string, per
 }
 
 function buildOperationsModel(data: OverviewData | undefined, sessions: AnyRow[], periodStart: string, selectedSiteName: string) {
-  const scans = data?.scans ?? [], devices = data?.devices ?? [], alerts = data?.alerts ?? [], incidents = data?.incidents ?? [], reports = data?.reports ?? [], jobs = data?.reportJobs ?? [], checkpoints = data?.checkpoints ?? [], pendingTags = data?.pendingTags ?? [], aiInsights = (data?.aiInsights ?? []).filter((item) => item.type !== "camera_detection");
+  const scans = (data?.scans ?? []).filter((scan) => eventTime(scan) >= periodStart), devices = data?.devices ?? [], alerts = data?.alerts ?? [], incidents = data?.incidents ?? [], reports = data?.reports ?? [], jobs = data?.reportJobs ?? [], checkpoints = data?.checkpoints ?? [], pendingTags = (data?.pendingTags ?? []).filter((tag) => eventTime(tag) >= periodStart), aiInsights = (data?.aiInsights ?? []).filter((item) => item.type !== "camera_detection");
   const activeSessions = sessions.filter((s) => ["active", "in_progress", "running"].includes(String(s.status)));
   const nextSession = sessions.find((s) => ["scheduled", "awaiting_start"].includes(String(s.status)));
   const expectedSessions = sessions.filter((s) => String(s.scheduled_start ?? s.created_at ?? "") >= periodStart && !["cancelled", "paused"].includes(String(s.status)));
@@ -183,13 +185,14 @@ function buildOperationsModel(data: OverviewData | undefined, sessions: AnyRow[]
 }
 
 function isResolved(row: AnyRow) { return row.resolved === true || ["resolved", "closed"].includes(String(row.status)); }
+function eventTime(row: AnyRow) { return String(row.created_at ?? row.event_occurred_at ?? row.scanned_at ?? row.updated_at ?? ""); }
 function titleCase(value: string) { return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()); }
 function siteName(row: AnyRow, fallback = "All Sites") { return row.sites?.name ?? row.checkpoints?.sites?.name ?? fallback; }
 function checkpointName(scan: AnyRow) { return scan.checkpoints?.name ?? (scan.tag_uid ? `Tag ${scan.tag_uid}` : "Checkpoint scan"); }
 function deviceIdentity(row: AnyRow) { return row.device_name ?? row.device_identifier ?? row.device_id ?? "Patrol device"; }
 function activity(id: string, title: string, subtitle: string | undefined, route: string, timestamp: string | null | undefined, severity: Severity, site?: string): ActivityEvent { return { id, title, subtitle, route, timestamp, severity, site }; }
-function activityFromScan(scan: AnyRow) { return activity("scan-" + scan.id, scan.tag_status === "unregistered" ? "Unregistered tag scanned" : "Checkpoint scanned", `${checkpointName(scan)} - ${deviceIdentity(scan)}`, "/scan-logs", scan.scanned_at, scan.tag_status === "unregistered" ? "warning" : "normal", siteName(scan)); }
-function activityFromAlert(alert: AnyRow) { return activity("alert-" + alert.id, alert.is_read ? "SOS acknowledged" : "SOS triggered", alert.message ?? "Panic button alert", "/sos-alerts", alert.created_at, alert.is_read ? "warning" : "critical"); }
+function activityFromScan(scan: AnyRow) { return activity("scan-" + scan.id, scan.tag_status === "unregistered" ? "Unregistered tag scanned" : "Checkpoint scanned", `${checkpointName(scan)} - ${deviceIdentity(scan)}`, "/scan-logs", eventTime(scan), scan.tag_status === "unregistered" ? "warning" : "normal", siteName(scan)); }
+function activityFromAlert(alert: AnyRow) { return activity("alert-" + alert.id, alert.is_read ? "SOS acknowledged" : "SOS triggered", alert.message ?? "Panic button alert", "/sos-alerts", eventTime(alert), alert.is_read ? "warning" : "critical"); }
 function activityFromIncident(incident: AnyRow) { return activity("incident-" + incident.id, incident.title ?? "Incident created", incident.resolved ? "Resolved" : "Open", "/incidents", incident.created_at, ["critical", "high"].includes(String(incident.severity)) ? "critical" : "warning", siteName(incident)); }
 function activityFromDevice(device: AnyRow) { return activity("device-" + device.id, `${deviceIdentity(device)} ${device.status ?? "updated"}`, device.battery_level != null ? `Battery ${device.battery_level}%` : siteName(device), "/devices", device.last_seen_at, device.status === "online" ? "normal" : "offline", siteName(device)); }
 function activityFromReport(report: AnyRow) { return activity("report-" + report.id, `${titleCase(report.report_type ?? "Daily")} report generated`, report.summary_text ?? "Ready for review", "/reports", report.generated_at, "info"); }

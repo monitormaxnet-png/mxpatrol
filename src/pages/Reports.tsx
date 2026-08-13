@@ -30,7 +30,7 @@ import SiteSelector from "@/components/sites/SiteSelector";
 import { realtimeStatusLabel, useRealtimeConnectionStatus } from "@/hooks/useRealtimeConnectionStatus";
 import { SocPageShell } from "@/components/dashboard/SocComponents";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
-import { usePatrolSessionReports, usePatrolSessions } from "@/hooks/useScheduledPatrols";
+import { usePatrolSessionReports, usePatrolSessions, usePatrolTemplates } from "@/hooks/useScheduledPatrols";
 
 type DateRange = "today" | "7d" | "30d";
 type ReportTab = "all" | "generated" | "scheduled" | "pending" | "failed";
@@ -102,6 +102,22 @@ const reportLabel = (type?: string | null) => reportTypeLabels[type ?? ""] ?? `$
 const formatTime = (value?: string | null) => value ? format(new Date(value), "dd MMM yyyy HH:mm") : "Not available";
 const rangeLabel = (range: DateRange) => range === "today" ? "Today" : range === "7d" ? "Last 7 Days" : "Last 30 Days";
 
+function matchesTemplate(row: Record<string, unknown>, templateId: string) {
+  if (templateId === "all") return true;
+  return row.template_id === templateId || row.patrol_template_id === templateId;
+}
+
+function buildTemplateOptions(...sources: Array<Array<Record<string, any>>>) {
+  const templates = new Map<string, string>();
+  sources.flat().forEach((row) => {
+    const name = row.template_name ?? row.patrol_templates?.name ?? row.name;
+    const id = row.template_id ?? row.patrol_template_id ?? (typeof row.name === "string" ? row.id : undefined);
+    if (typeof id === "string" && id && typeof name === "string" && name) templates.set(id, name);
+  });
+  return Array.from(templates.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+
 async function countRows(table: string, companyId: string, since: string, apply?: (query: QueryLike<CountRow>) => QueryLike<CountRow>) {
   let query = db.from<CountRow>(table).select("id", { count: "exact", head: true }).eq("company_id", companyId).gte("created_at", since);
   if (apply) query = apply(query);
@@ -118,6 +134,7 @@ const Reports = () => {
   const [siteId, setSiteId] = useState("all");
   const [dateRange, setDateRange] = useState<DateRange>("7d");
   const [reportType, setReportType] = useState("all");
+  const [patrolTemplateId, setPatrolTemplateId] = useState("all");
   const [activeTab, setActiveTab] = useState<ReportTab>("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -127,6 +144,7 @@ const Reports = () => {
   const { data: scans = [], isLoading: scansLoading, error: scansError } = useLivePatrolScans(250, siteId);
   const { data: reportSessions = [] } = usePatrolSessions(250, siteId);
   const { data: sessionReportRows = [], isLoading: sessionReportsLoading, error: sessionReportsError } = usePatrolSessionReports(250, siteId);
+  const { data: patrolTemplates = [] } = usePatrolTemplates(siteId);
 
   const { data: company } = useQuery({
     queryKey: ["reports_company", companyId],
@@ -170,7 +188,9 @@ const Reports = () => {
 
   const companyName = company?.name ?? "Current company";
   const registeredScans = useMemo(() => scans.filter((scan) => scan.tag_status === "registered" || !!scan.checkpoint_id), [scans]);
-  const periodScans = useMemo(() => registeredScans.filter((scan) => scan.scanned_at >= since), [registeredScans, since]);
+  const templateOptions = useMemo(() => buildTemplateOptions(patrolTemplates, sessionReportRows, reportSessions), [patrolTemplates, reportSessions, sessionReportRows]);
+  const selectedTemplateName = useMemo(() => templateOptions.find((template) => template.id === patrolTemplateId)?.name ?? "All Patrol Templates", [patrolTemplateId, templateOptions]);
+  const periodScans = useMemo(() => registeredScans.filter((scan) => scan.scanned_at >= since && matchesTemplate(scan, patrolTemplateId)), [patrolTemplateId, registeredScans, since]);
   const reportTypes = useMemo(() => Array.from(new Set([...reports.map((report) => report.report_type), ...reportJobs.map((job) => job.report_type)])).sort(), [reportJobs, reports]);
 
   const filteredReports = useMemo(() => reports.filter((report) => {
@@ -201,8 +221,8 @@ const Reports = () => {
   }), [activeTab, reportJobs, reportType, search, since, siteId]);
 
   const selected = useMemo(() => filteredReports.find((report) => report.id === selectedId) ?? filteredReports[0] ?? null, [filteredReports, selectedId]);
-  const sessionReports = useMemo(() => sessionReportRows.filter((session) => (session.scheduled_start ?? "") >= since), [sessionReportRows, since]);
-  const expectedSessions = reportSessions.filter((session) => session.scheduled_start >= since && session.status !== "cancelled");
+  const sessionReports = useMemo(() => sessionReportRows.filter((session) => (session.scheduled_start ?? "") >= since && matchesTemplate(session, patrolTemplateId)), [patrolTemplateId, sessionReportRows, since]);
+  const expectedSessions = reportSessions.filter((session) => session.scheduled_start >= since && session.status !== "cancelled" && matchesTemplate(session, patrolTemplateId));
   const completedExpectedSessions = expectedSessions.filter((session) => ["completed", "completed_late"].includes(session.status));
   const compliance = expectedSessions.length === 0 ? (periodScans.length === 0 ? 0 : Math.round((periodScans.filter((scan) => scan.checkpoint_id || scan.tag_status === "registered").length / periodScans.length) * 1000) / 10) : Math.round((completedExpectedSessions.length / expectedSessions.length) * 1000) / 10;
   const patrolMinutes = useMemo(() => {
@@ -262,7 +282,7 @@ const Reports = () => {
     <SocPageShell title="Reports" subtitle="Generate and manage patrol, incident and activity reports" realtime={realtime}>
       <div className="space-y-5 text-white">
         <section className="grid gap-3 xl:grid-cols-4">
-          <div className="grid gap-3 md:grid-cols-4 xl:col-span-3">
+          <div className="grid gap-3 md:grid-cols-5 xl:col-span-3">
             <FilterBox label="Company"><span className="font-semibold text-white">{companyName}</span></FilterBox>
             <FilterBox label="Site"><SiteSelector value={siteId} onChange={setSiteId} /></FilterBox>
             <FilterBox label="Report Type">
@@ -271,6 +291,15 @@ const Reports = () => {
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
                   {reportTypes.map((type) => <SelectItem key={type} value={type}>{reportLabel(type)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FilterBox>
+            <FilterBox label="Patrol Template">
+              <Select value={patrolTemplateId} onValueChange={setPatrolTemplateId}>
+                <SelectTrigger className="h-9 border-white/10 bg-slate-950/70 text-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Patrol Templates</SelectItem>
+                  {templateOptions.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </FilterBox>
@@ -297,7 +326,7 @@ const Reports = () => {
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard icon={FileText} tone="purple" label="Reports Generated" value={filteredReports.length} detail={rangeLabel(dateRange)} />
-          <MetricCard icon={ShieldCheck} tone="green" label="Patrol Compliance" value={`${compliance}%`} detail={expectedSessions.length ? "Completed expected sessions" : "Registered scan ratio"} />
+          <MetricCard icon={ShieldCheck} tone="green" label="Patrol Compliance" value={`${compliance}%`} detail={patrolTemplateId === "all" ? (expectedSessions.length ? "Completed expected sessions" : "Registered scan ratio") : selectedTemplateName} />
           <MetricCard icon={Clock} tone="blue" label="Total Patrol Time" value={formatDuration(patrolMinutes)} detail="Derived from scan window" />
           <MetricCard icon={AlertCircle} tone="amber" label="Incidents Reported" value={metricsLoading ? "--" : metrics?.incidents ?? 0} detail={rangeLabel(dateRange)} />
           <MetricCard icon={FileText} tone="cyan" label="Total Scans" value={scansLoading ? "--" : periodScans.length} detail="Registered scans only" />
@@ -306,7 +335,7 @@ const Reports = () => {
 
         <ExecutiveSummary compliance={compliance} completed={completedExpectedSessions.length} expected={expectedSessions.length} scans={periodScans.length} patrolMinutes={patrolMinutes} incidents={metrics?.incidents ?? 0} sos={metrics?.sos ?? 0} />
 
-        <SessionExecutionReportsTable rows={sessionReports as unknown as SessionExecutionReportRow[]} loading={sessionReportsLoading} error={sessionReportsError} />
+        <SessionExecutionReportsTable rows={sessionReports as unknown as SessionExecutionReportRow[]} loading={sessionReportsLoading} error={sessionReportsError} templateName={selectedTemplateName} />
 
         {scansError && <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">Scan report data could not be loaded.</div>}
 
@@ -339,13 +368,13 @@ const Reports = () => {
 
         <footer className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-xs text-slate-400">
           <span className="inline-flex items-center gap-2"><Wifi className="h-4 w-4 text-emerald-300" />{realtimeStatusLabel(realtime.status)}</span>
-          <span>Compliance uses completed expected patrol sessions when available; raw exports still use registered scan_logs.</span>
+          <span>Compliance uses completed expected patrol sessions; Patrol Template narrows the report to occurrences of the same patrol.</span>
         </footer>
       </div>
     </SocPageShell>
   );
 };
-function SessionExecutionReportsTable({ rows, loading, error }: { rows: SessionExecutionReportRow[]; loading: boolean; error: unknown }) {
+function SessionExecutionReportsTable({ rows, loading, error, templateName }: { rows: SessionExecutionReportRow[]; loading: boolean; error: unknown; templateName: string }) {
   if (loading) return <State icon={Loader2} spin message="Loading session execution reports..." />;
   if (error) return <State icon={AlertCircle} tone="red" message="Session execution reports could not be loaded." />;
   return (
@@ -354,10 +383,11 @@ function SessionExecutionReportsTable({ rows, loading, error }: { rows: SessionE
         <div>
           <h2 className="text-sm font-black uppercase tracking-[0.12em] text-white">Session Execution Reports</h2>
           <p className="mt-1 text-xs text-slate-400">Schedule, session, checkpoints, missed checkpoints, incidents and SOS in one company-scoped view.</p>
+          <p className="mt-1 text-xs font-semibold text-emerald-300">Template scope: {templateName}</p>
         </div>
         <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-black uppercase text-emerald-300">Realtime</span>
       </div>
-      {rows.length === 0 ? <State icon={FileText} message="No session execution reports match this date range." /> : (
+      {rows.length === 0 ? <State icon={FileText} message="No session execution reports match this date range and patrol template." /> : (
         <div className="overflow-auto p-4">
           <table className="w-full min-w-[1180px] text-left text-sm">
             <thead className="border-b border-white/10 text-xs font-black uppercase tracking-widest text-slate-500">

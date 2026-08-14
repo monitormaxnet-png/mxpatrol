@@ -382,6 +382,19 @@ export function useCreatePatrolSchedule() {
   });
 }
 
+async function readFunctionError(error: unknown, fallback: string) {
+  const response = (error as any)?.context;
+  if (response && typeof response.json === "function") {
+    try {
+      const body = await response.json();
+      if (body?.error) return body.error as string;
+    } catch {
+      // ignore malformed body
+    }
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 type PatrolEntity = "template" | "route" | "schedule";
 
 const entityLabel: Record<PatrolEntity, string> = {
@@ -412,7 +425,7 @@ export function useUpdatePatrolEntity(entity: PatrolEntity) {
       const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
         body: { action: `update_${entity}`, id, [entity]: values },
       });
-      if (error) throw error;
+      if (error) throw new Error(await readFunctionError(error, `Failed to update ${entityLabel[entity].toLowerCase()}`));
       if (!data?.ok) throw new Error(data?.error || `Failed to update ${entityLabel[entity].toLowerCase()}`);
       return data;
     },
@@ -432,7 +445,7 @@ export function useDeletePatrolEntity(entity: PatrolEntity) {
       const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
         body: { action: `delete_${entity}`, id },
       });
-      if (error) throw error;
+      if (error) throw new Error(await readFunctionError(error, `Failed to delete ${entityLabel[entity].toLowerCase()}`));
       if (!data?.ok) throw new Error(data?.error || `Failed to delete ${entityLabel[entity].toLowerCase()}`);
       return data;
     },

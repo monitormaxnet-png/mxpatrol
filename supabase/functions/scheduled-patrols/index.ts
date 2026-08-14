@@ -186,6 +186,10 @@ async function assertDeviceBelongsToCompany(serviceClient: ServiceClient, device
   if (!data) throw new Error("Selected device is not registered to this company");
 }
 
+class RecordNotFoundError extends Error {
+  status = 404;
+}
+
 async function assertOwnedRecord(serviceClient: ServiceClient, table: string, id: string, companyId: string, label: string) {
   const { data, error } = await serviceClient
     .from(table)
@@ -194,7 +198,7 @@ async function assertOwnedRecord(serviceClient: ServiceClient, table: string, id
     .eq("company_id", companyId)
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw new Error(`${label} was not found for this company`);
+  if (!data) throw new RecordNotFoundError(`${label} no longer exists (it may have been deleted). Refresh and try again.`);
 }
 
 async function assertCheckpointsBelongToCompanyAndSite(serviceClient: ServiceClient, checkpointIds: string[], companyId: string, siteId: string | null | undefined) {
@@ -602,7 +606,8 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     console.error("scheduled-patrols error:", err);
-    return fail((err as Error)?.message || "Internal server error", 500, {
+    const status = (err as any)?.status === 404 ? 404 : 500;
+    return fail((err as Error)?.message || "Internal server error", status, {
       code: (err as any)?.code ?? null,
       message: (err as any)?.message ?? null,
       details: (err as any)?.details ?? null,

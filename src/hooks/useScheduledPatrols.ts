@@ -412,7 +412,7 @@ export function useUpdatePatrolEntity(entity: PatrolEntity) {
       const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
         body: { action: `update_${entity}`, id, [entity]: values },
       });
-      if (error) throw error;
+      if (error) throw new Error(await readFunctionError(error, `Failed to update ${entityLabel[entity].toLowerCase()}`));
       if (!data?.ok) throw new Error(data?.error || `Failed to update ${entityLabel[entity].toLowerCase()}`);
       return data;
     },

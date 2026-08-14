@@ -606,7 +606,8 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     console.error("scheduled-patrols error:", err);
-    return fail((err as Error)?.message || "Internal server error", 500, {
+    const status = (err as any)?.status === 404 ? 404 : 500;
+    return fail((err as Error)?.message || "Internal server error", status, {
       code: (err as any)?.code ?? null,
       message: (err as any)?.message ?? null,
       details: (err as any)?.details ?? null,

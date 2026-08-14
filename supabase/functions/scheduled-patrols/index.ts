@@ -311,7 +311,11 @@ Deno.serve(async (req) => {
           is_required: checkpoint.is_required ?? true,
         }));
         const { error: checkpointError } = await serviceClient.from("patrol_route_checkpoints").insert(rows);
-        if (checkpointError) throw checkpointError;
+        if (checkpointError) {
+          // Keep route creation atomic: a route must never survive without its checkpoint sequence.
+          await serviceClient.from("patrol_routes").delete().eq("id", route.id).eq("company_id", access.companyId);
+          throw checkpointError;
+        }
       }
 
       return ok({ route });

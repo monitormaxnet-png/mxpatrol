@@ -9,6 +9,15 @@ type AnyRow = Record<string, any>;
 
 const db = supabase as any;
 
+function upsertRowById<T extends AnyRow>(rows: T[] | undefined, row: T): T[] {
+  const current = rows ?? [];
+  if (!row?.id) return current;
+  const hydrated = { patrol_route_checkpoints: [], ...row } as T;
+  const exists = current.some((item) => item.id === row.id);
+  return exists ? current.map((item) => (item.id === row.id ? { ...item, ...hydrated } : item)) : [hydrated, ...current];
+}
+
+
 function isOptionalPatrolSchemaError(error: unknown) {
   const candidate = error as { code?: string; message?: string } | null | undefined;
   const code = candidate?.code ?? "";
@@ -222,8 +231,12 @@ export function useCreatePatrolRoute() {
       if (!createdRoute?.id) throw new Error("Route was not saved by the backend. Please retry.");
       return createdRoute;
     },
-    onSuccess: () => {
+    onSuccess: (createdRoute) => {
       toast.success("Patrol route created");
+      queryClient.setQueryData<PatrolRouteRow[]>(["patrol_routes", companyId, "all"], (current) => upsertRowById(current, createdRoute));
+      if (createdRoute.site_id) {
+        queryClient.setQueryData<PatrolRouteRow[]>(["patrol_routes", companyId, createdRoute.site_id], (current) => upsertRowById(current, createdRoute));
+      }
       queryClient.invalidateQueries({ queryKey: ["patrol_routes", companyId] });
       queryClient.invalidateQueries({ queryKey: ["patrol_templates", companyId] });
       queryClient.invalidateQueries({ queryKey: ["patrol_schedules", companyId] });

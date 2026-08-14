@@ -57,7 +57,7 @@ export function usePatrolRoutes(siteId = "all") {
     queryKey: ["patrol_routes", companyId, siteId],
     enabled: !!companyId,
     queryFn: async () => {
-      let query = db.from("patrol_routes").select("*, sites(name), patrol_route_checkpoints(id, sequence_order, checkpoint_id, expected_offset_minutes, expected_arrival_offset_minutes, is_required, checkpoints(id, name, nfc_tag_id, status, site_id, sites(name)))").eq("company_id", companyId).order("created_at", { ascending: false });
+      let query = db.from("patrol_routes").select("*, sites(name), patrol_route_checkpoints(id, sequence_order, checkpoint_id, expected_offset_minutes, expected_arrival_offset_minutes, is_required, checkpoints(id, name, nfc_tag_id, site_id, sites(name)))").eq("company_id", companyId).order("created_at", { ascending: false });
       if (siteId !== "all") query = query.eq("site_id", siteId);
       const { data, error } = await query;
       if (error) throw error;
@@ -261,7 +261,7 @@ export function useCreatePatrolRoute() {
         const { data: createdCheckpoints, error: checkpointError } = await db
           .from('patrol_route_checkpoints')
           .insert(checkpointRows)
-          .select('id, sequence_order, checkpoint_id, expected_offset_minutes, expected_arrival_offset_minutes, is_required, checkpoints(id, name, nfc_tag_id, status, site_id, sites(name))');
+          .select('id, sequence_order, checkpoint_id, expected_offset_minutes, expected_arrival_offset_minutes, is_required, checkpoints(id, name, nfc_tag_id, site_id, sites(name))');
         if (checkpointError) {
           await db.from('patrol_routes').delete().eq('id', createdRoute.id).eq('company_id', companyId);
           throw new Error('Route checkpoints insert failed: ' + checkpointError.message);

@@ -382,6 +382,19 @@ export function useCreatePatrolSchedule() {
   });
 }
 
+async function readFunctionError(error: unknown, fallback: string) {
+  const response = (error as any)?.context;
+  if (response && typeof response.json === "function") {
+    try {
+      const body = await response.json();
+      if (body?.error) return body.error as string;
+    } catch {
+      // ignore malformed body
+    }
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 type PatrolEntity = "template" | "route" | "schedule";
 
 const entityLabel: Record<PatrolEntity, string> = {

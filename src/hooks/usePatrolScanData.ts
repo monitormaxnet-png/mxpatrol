@@ -19,6 +19,9 @@ export type PatrolScanRow = {
   tag_status: string;
   is_offline_sync: boolean | null;
   site_id: string | null;
+  patrol_session_id?: string | null;
+  patrol_match_status?: string | null;
+  patrol_validation_status?: string | null;
   sites?: { name: string } | null;
   checkpoints: { name: string; nfc_tag_id: string; site_id?: string | null; sites?: { name: string } | null } | null;
   guards: { full_name: string; badge_number: string } | null;

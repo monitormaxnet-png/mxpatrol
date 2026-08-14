@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bell, CalendarDays, CheckCircle2, Crosshair, FileText, Map as MapIcon, MapPin, Radio, RefreshCw, Route, Search, ShieldAlert, ShieldCheck, Smartphone, Wifi, Zap } from "lucide-react";
+import { AlertTriangle, Bell, CalendarDays, CheckCircle2, Crosshair, Eye, FileText, Map as MapIcon, MapPin, Radio, RefreshCw, Route, Search, ShieldAlert, ShieldCheck, Smartphone, Wifi, Zap } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";

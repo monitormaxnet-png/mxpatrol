@@ -445,7 +445,7 @@ export function useDeletePatrolEntity(entity: PatrolEntity) {
       const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
         body: { action: `delete_${entity}`, id },
       });
-      if (error) throw error;
+      if (error) throw new Error(await readFunctionError(error, `Failed to delete ${entityLabel[entity].toLowerCase()}`));
       if (!data?.ok) throw new Error(data?.error || `Failed to delete ${entityLabel[entity].toLowerCase()}`);
       return data;
     },

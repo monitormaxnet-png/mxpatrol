@@ -245,7 +245,7 @@ export function useCreatePatrolRoute() {
         .insert(routePayload)
         .select('*')
         .single();
-      if (routeError) throw routeError;
+      if (routeError) throw new Error(`Route insert failed: ${routeError.message}`);
       if (!createdRoute?.id) throw new Error('Route was not saved by the database. Please retry.');
 
       if (route.checkpoints.length) {
@@ -262,7 +262,7 @@ export function useCreatePatrolRoute() {
           .from('patrol_route_checkpoints')
           .insert(checkpointRows)
           .select('id, sequence_order, checkpoint_id, expected_offset_minutes, expected_arrival_offset_minutes, is_required, checkpoints(id, name, nfc_tag_id, status, site_id, sites(name))');
-        if (checkpointError) throw checkpointError;
+        if (checkpointError) throw new Error(`Route checkpoints insert failed: ${checkpointError.message}`);
         return { ...createdRoute, patrol_route_checkpoints: createdCheckpoints ?? [] };
       }
 

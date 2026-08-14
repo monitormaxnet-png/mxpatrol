@@ -18,6 +18,10 @@ function upsertRowById<T extends AnyRow>(rows: T[] | undefined, row: T): T[] {
 }
 
 
+function removeEmpty<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
+}
+
 function isOptionalPatrolSchemaError(error: unknown) {
   const candidate = error as { code?: string; message?: string } | null | undefined;
   const code = candidate?.code ?? "";
@@ -222,14 +226,47 @@ export function useCreatePatrolRoute() {
 
   return useMutation({
     mutationFn: async (route: CreatePatrolRouteInput) => {
-      const { data, error } = await supabase.functions.invoke("scheduled-patrols", {
-        body: { action: "create_route", route },
+      if (!companyId) throw new Error('Company profile is still loading. Please retry.');
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user?.id) throw new Error('You must be signed in to create a patrol route.');
+
+      const routePayload = removeEmpty({
+        company_id: companyId,
+        site_id: route.site_id ?? null,
+        template_id: route.template_id ?? null,
+        name: route.name,
+        description: route.description || null,
+        status: route.status ?? 'active',
+        created_by: authData.user.id,
       });
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || "Failed to create patrol route");
-      const createdRoute = data.result?.route ?? data.route;
-      if (!createdRoute?.id) throw new Error("Route was not saved by the backend. Please retry.");
-      return createdRoute;
+
+      const { data: createdRoute, error: routeError } = await db
+        .from('patrol_routes')
+        .insert(routePayload)
+        .select('*')
+        .single();
+      if (routeError) throw routeError;
+      if (!createdRoute?.id) throw new Error('Route was not saved by the database. Please retry.');
+
+      if (route.checkpoints.length) {
+        const checkpointRows = route.checkpoints.map((checkpoint, index) => ({
+          company_id: companyId,
+          route_id: createdRoute.id,
+          checkpoint_id: checkpoint.checkpoint_id,
+          sequence_order: checkpoint.sequence_order ?? index + 1,
+          expected_arrival_offset_minutes: checkpoint.expected_offset_minutes ?? null,
+          expected_offset_minutes: checkpoint.expected_offset_minutes ?? null,
+          is_required: checkpoint.is_required ?? true,
+        }));
+        const { data: createdCheckpoints, error: checkpointError } = await db
+          .from('patrol_route_checkpoints')
+          .insert(checkpointRows)
+          .select('id, sequence_order, checkpoint_id, expected_offset_minutes, expected_arrival_offset_minutes, is_required, checkpoints(id, name, nfc_tag_id, status, site_id, sites(name))');
+        if (checkpointError) throw checkpointError;
+        return { ...createdRoute, patrol_route_checkpoints: createdCheckpoints ?? [] };
+      }
+
+      return { ...createdRoute, patrol_route_checkpoints: [] };
     },
     onSuccess: (createdRoute) => {
       toast.success("Patrol route created");

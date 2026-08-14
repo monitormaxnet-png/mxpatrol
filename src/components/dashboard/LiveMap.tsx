@@ -86,7 +86,11 @@ type LiveMapProps = {
   showCheckpoints?: boolean;
   showDevices?: boolean;
   showRoutes?: boolean;
+  showScans?: boolean;
   showSos?: boolean;
+  autoFollowDevice?: boolean;
+  resizeSignal?: number;
+  fitSignal?: number;
 };
 
 const LiveMap = ({
@@ -94,7 +98,11 @@ const LiveMap = ({
   showCheckpoints = true,
   showDevices = true,
   showRoutes = true,
+  showScans = true,
   showSos = true,
+  autoFollowDevice = false,
+  resizeSignal = 0,
+  fitSignal = 0,
 }: LiveMapProps) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTrails, setShowTrails] = useState(true);
@@ -216,11 +224,11 @@ const LiveMap = ({
     if (replayMode) replayPoints.forEach((point) => pts.push([point.lat, point.lng]));
     else {
       if (showDevices) filteredDevicePositions.forEach((device) => pts.push([device.lat, device.lng]));
-      if (showCheckpoints) scanEvents.forEach((scan) => pts.push([scan.lat, scan.lng]));
+      if (showScans) scanEvents.forEach((scan) => pts.push([scan.lat, scan.lng]));
       if (showSos) sosAlerts.forEach((alert) => pts.push([alert.lat, alert.lng]));
     }
     if (pts.length > 0) map.fitBounds(L.latLngBounds(pts as [number, number][]), { padding: [40, 40], maxZoom: 16 });
-  }, [checkpointsWithCoords, filteredDevicePositions, replayMode, replayPoints, scanEvents, showCheckpoints, showDevices, showSos, sosAlerts]);
+  }, [checkpointsWithCoords, filteredDevicePositions, replayMode, replayPoints, scanEvents, showCheckpoints, showDevices, showScans, showSos, sosAlerts]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -289,14 +297,14 @@ const LiveMap = ({
     scanMarkersRef.current = [];
     sosMarkersRef.current.forEach((marker) => marker.remove());
     sosMarkersRef.current = [];
-    if (replayMode || !showCheckpoints) return;
+    if (replayMode || !showScans) return;
     scanEvents.forEach((scan) => {
       const marker = L.marker([scan.lat, scan.lng], { icon: scanIcon(scan.tag_status) })
         .addTo(map)
         .bindPopup(`<div class="text-xs"><strong>Scan Event</strong><br/>Device: ${scan.device_name}<br/>Checkpoint: ${scan.checkpoint_name}<br/>Time: ${new Date(scan.scanned_at).toLocaleString()}<br/>GPS Accuracy: ${scan.accuracy ?? "n/a"}m<br/>Tag UID: ${scan.tag_uid ?? "n/a"}</div>`);
       scanMarkersRef.current.push(marker);
     });
-  }, [replayMode, scanEvents, showCheckpoints]);
+  }, [replayMode, scanEvents, showScans]);
 
 
   useEffect(() => {
@@ -380,6 +388,26 @@ const LiveMap = ({
     const timer = setTimeout(() => map.invalidateSize(), 300);
     return () => clearTimeout(timer);
   }, [isFullscreen, showDevicePanel, replayMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.invalidateSize();
+    const timer = setTimeout(() => map.invalidateSize(), 250);
+    return () => clearTimeout(timer);
+  }, [resizeSignal]);
+
+  useEffect(() => {
+    if (fitSignal > 0) fitBounds();
+  }, [fitBounds, fitSignal]);
+
+  useEffect(() => {
+    if (!autoFollowDevice || replayMode || filteredDevicePositions.length === 0) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const device = filteredDevicePositions[0];
+    map.flyTo([device.lat, device.lng], Math.max(map.getZoom(), 15), { duration: 0.5 });
+  }, [autoFollowDevice, filteredDevicePositions, replayMode]);
 
   useEffect(() => {
     if (!isFullscreen) return;

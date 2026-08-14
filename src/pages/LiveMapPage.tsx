@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { lazy, Suspense, useMemo, useState, type ComponentType } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
@@ -14,6 +14,7 @@ import {
   Map as MapIcon,
   MapPin,
   Maximize2,
+  Minimize2,
   MessageSquare,
   Navigation,
   Radio,
@@ -35,7 +36,8 @@ import { patrolSessionLabel, patrolSessionProgress, usePatrolSessions } from "@/
 const LiveMap = lazy(() => import("@/components/dashboard/LiveMap"));
 
 type Tone = "green" | "blue" | "amber" | "red" | "neutral";
-type LayerKey = "activePatrols" | "routes" | "checkpoints" | "devices" | "sos" | "geofences";
+type LayerKey = "routes" | "checkpoints" | "devices" | "scans" | "sos";
+type MapOptionKey = LayerKey | "autoFollow";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const activeStatuses = new Set(["active", "in_progress", "started", "patrolling", "running"]);
@@ -43,14 +45,15 @@ const delayedStatuses = new Set(["late", "delayed", "completed_late"]);
 const missedStatuses = new Set(["missed", "incomplete", "failed"]);
 const completedStatuses = new Set(["completed", "completed_late"]);
 
-const defaultLayers: Record<LayerKey, boolean> = {
-  activePatrols: true,
+const defaultMapOptions: Record<MapOptionKey, boolean> = {
   routes: true,
   checkpoints: true,
   devices: true,
+  scans: true,
   sos: true,
-  geofences: false,
+  autoFollow: false,
 };
+const mapOptionsStorageKey = "mxpatrol-live-map-options";
 
 export default function LiveMapPage() {
   useRealtimeSubscriptions();
@@ -58,7 +61,19 @@ export default function LiveMapPage() {
   const realtime = useRealtimeConnectionStatus("live-map-operations");
   const [siteId, setSiteId] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [layers, setLayers] = useState(defaultLayers);
+  const [mapOptions, setMapOptions] = useState<Record<MapOptionKey, boolean>>(() => {
+    try {
+      const saved = window.localStorage.getItem(mapOptionsStorageKey);
+      return saved ? { ...defaultMapOptions, ...JSON.parse(saved) } : defaultMapOptions;
+    } catch {
+      return defaultMapOptions;
+    }
+  });
+  const [isMapOptionsOpen, setIsMapOptionsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [mapResizeSignal, setMapResizeSignal] = useState(0);
+  const [fitMapSignal, setFitMapSignal] = useState(0);
+  const mapPanelRef = useRef<HTMLDivElement>(null);
 
   const { data: sessions = [], isLoading: sessionsLoading } = usePatrolSessions(120, siteId);
   const { data: devices = [] } = useDevices(siteId);
@@ -102,16 +117,66 @@ export default function LiveMapPage() {
   const attentionItems = useMemo(() => buildAttentionItems(sessions, devices, activeSosAlerts), [activeSosAlerts, devices, sessions]);
   const timeline = useMemo(() => buildTimeline(scans, mapScans, alerts, sessions), [alerts, mapScans, scans, sessions]);
 
+  useEffect(() => {
+    window.localStorage.setItem(mapOptionsStorageKey, JSON.stringify(mapOptions));
+  }, [mapOptions]);
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-map-options]")) return;
+      setIsMapOptionsOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === mapPanelRef.current);
+      window.setTimeout(() => setMapResizeSignal((value) => value + 1), 80);
+      window.setTimeout(() => setMapResizeSignal((value) => value + 1), 320);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleMapOption = useCallback((key: MapOptionKey) => {
+    setMapOptions((current) => ({ ...current, [key]: !current[key] }));
+  }, []);
+
+  const toggleMapOptionsPanel = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsMapOptionsOpen((open) => !open);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const panel = mapPanelRef.current;
+    if (!panel) return;
+    if (document.fullscreenElement === panel) {
+      await document.exitFullscreen();
+      return;
+    }
+    if (document.fullscreenElement) await document.exitFullscreen();
+    await panel.requestFullscreen();
+  }, []);
+
+  const fitMapToVisibleMarkers = useCallback(() => {
+    setFitMapSignal((value) => value + 1);
+    setIsMapOptionsOpen(false);
+  }, []);
+
   return (
     <SocPageShell title="Live Map" subtitle="Real-time tracking of active patrols and devices" realtime={realtime}>
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[260px_180px_180px]">
           <SiteSelector value={siteId} onChange={setSiteId} className="rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2" />
-          <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-slate-950/80 px-3 text-sm font-semibold text-slate-200 hover:border-blue-400/30 hover:text-blue-300">
+          <button type="button" data-map-options onPointerDown={toggleMapOptionsPanel} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-slate-950/80 px-3 text-sm font-semibold text-slate-200 hover:border-blue-400/30 hover:text-blue-300" aria-expanded={isMapOptionsOpen}>
             <Layers className="h-4 w-4" /> Map Options
           </button>
-          <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-slate-950/80 px-3 text-sm font-semibold text-slate-200 hover:border-emerald-400/30 hover:text-emerald-300">
-            <Maximize2 className="h-4 w-4" /> Fullscreen
+          <button type="button" onClick={() => void toggleFullscreen()} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-slate-950/80 px-3 text-sm font-semibold text-slate-200 hover:border-emerald-400/30 hover:text-emerald-300">
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />} {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
@@ -121,6 +186,12 @@ export default function LiveMapPage() {
           <SocStatusPill icon={Wifi} label={realtimeStatusLabel(realtime.status)} tone={realtime.status === "live" ? "green" : "amber"} />
         </div>
       </div>
+
+      {isMapOptionsOpen && !isFullscreen && (
+        <div data-map-options className="fixed left-4 right-4 top-24 z-[9999] sm:left-auto sm:right-6 sm:w-72">
+          <MapOptionsMenu options={mapOptions} onToggle={toggleMapOption} onFitMap={fitMapToVisibleMarkers} floating />
+        </div>
+      )}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <SocKpiCard title="Active Patrols" value={activeSessions.length} caption="View all" icon={Navigation} tone="green" loading={sessionsLoading} />
@@ -136,18 +207,17 @@ export default function LiveMapPage() {
           <div className="space-y-5">
             <div className="space-y-2">
               {([
-                ["activePatrols", "Active Patrols"],
-                ["routes", "Patrol Routes"],
-                ["checkpoints", "Checkpoints"],
                 ["devices", "Device Locations"],
+                ["checkpoints", "Checkpoints"],
+                ["scans", "Scan Markers"],
+                ["routes", "Patrol Routes"],
                 ["sos", "SOS Alerts"],
-                ["geofences", "Geofences"],
               ] as Array<[LayerKey, string]>).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 text-xs font-semibold text-slate-300">
                   <input
                     type="checkbox"
-                    checked={layers[key]}
-                    onChange={(event) => setLayers((current) => ({ ...current, [key]: event.target.checked }))}
+                    checked={mapOptions[key]}
+                    onChange={() => toggleMapOption(key)}
                     className="h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-400"
                   />
                   {label}
@@ -158,17 +228,34 @@ export default function LiveMapPage() {
           </div>
         </SocPanel>
 
-        <SocPanel
-          title="Live Emergency Map"
-          action={<span className="inline-flex items-center gap-2 text-xs font-bold text-emerald-300"><span className="h-2 w-2 rounded-full bg-emerald-400" /> Live</span>}
-          className="min-h-[560px]"
-        >
-          <div className="h-[520px] overflow-hidden rounded-xl border border-white/10 bg-black/30">
-            <Suspense fallback={<LoadingState label="Loading live map..." />}>
-              <LiveMap operationsMode showDevices={layers.devices || layers.activePatrols} showRoutes={layers.routes || layers.activePatrols} showCheckpoints={layers.checkpoints} showSos={layers.sos} />
-            </Suspense>
-          </div>
-        </SocPanel>
+        <div ref={mapPanelRef} className={isFullscreen ? "relative flex h-screen min-h-0 flex-col bg-slate-950 p-3" : ""}>
+          <SocPanel
+            title="Live Emergency Map"
+            action={
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-2 text-xs font-bold text-emerald-300"><span className="h-2 w-2 rounded-full bg-emerald-400" /> Live</span>
+                <button type="button" data-map-options onPointerDown={toggleMapOptionsPanel} className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 px-2 text-[10px] font-black text-slate-300 hover:border-blue-400/30 hover:text-blue-300">
+                  <Layers className="h-3.5 w-3.5" /> Options
+                </button>
+                <button type="button" onClick={() => void toggleFullscreen()} className="inline-flex h-8 items-center gap-1 rounded-lg border border-white/10 px-2 text-[10px] font-black text-slate-300 hover:border-emerald-400/30 hover:text-emerald-300">
+                  {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />} {isFullscreen ? "Exit" : "Full"}
+                </button>
+              </div>
+            }
+            className={isFullscreen ? "flex min-h-0 flex-1 flex-col" : "min-h-[560px]"}
+          >
+            <div className={`${isFullscreen ? "h-[calc(100vh-7rem)]" : "h-[520px]"} overflow-hidden rounded-xl border border-white/10 bg-black/30`}>
+              <Suspense fallback={<LoadingState label="Loading live map..." />}>
+                <LiveMap operationsMode showDevices={mapOptions.devices} showRoutes={mapOptions.routes} showCheckpoints={mapOptions.checkpoints} showScans={mapOptions.scans} showSos={mapOptions.sos} autoFollowDevice={mapOptions.autoFollow} resizeSignal={mapResizeSignal} fitSignal={fitMapSignal} />
+              </Suspense>
+            </div>
+          </SocPanel>
+          {isFullscreen && isMapOptionsOpen && (
+            <div data-map-options className="absolute right-4 top-16 z-[1300] w-72 max-w-[calc(100vw-2rem)]">
+              <MapOptionsMenu options={mapOptions} onToggle={toggleMapOption} onFitMap={fitMapToVisibleMarkers} floating />
+            </div>
+          )}
+        </div>
 
         <SocPanel title="Patrol Details" action={<button type="button" className="text-slate-400 hover:text-white" aria-label="Clear selection">×</button>}>
           <PatrolDetails session={selectedSession} device={selectedDevice} scans={scans} />
@@ -211,6 +298,33 @@ export default function LiveMapPage() {
         </SocPanel>
       </div>
     </SocPageShell>
+  );
+}
+
+function MapOptionsMenu({ options, onToggle, onFitMap, floating = false }: { options: Record<MapOptionKey, boolean>; onToggle: (key: MapOptionKey) => void; onFitMap: () => void; floating?: boolean }) {
+  const rows: Array<[MapOptionKey, string]> = [
+    ["devices", "Live device markers"],
+    ["checkpoints", "Checkpoint markers"],
+    ["scans", "Scan markers"],
+    ["routes", "Route lines"],
+    ["sos", "SOS alerts"],
+    ["autoFollow", "Auto-follow active device"],
+  ];
+  return (
+    <div data-map-options className={`${floating ? "" : "absolute left-0 top-12 md:left-auto md:right-0"} z-[1200] w-full max-w-[calc(100vw-2rem)] rounded-xl border border-white/10 bg-slate-950/95 p-3 shadow-2xl shadow-black/40 backdrop-blur`}>
+      <div className="mb-2 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+        <p className="text-xs font-black uppercase tracking-wider text-slate-400">Map Options</p>
+        <button type="button" onClick={onFitMap} className="text-[10px] font-black text-blue-300 hover:text-blue-200">Fit Visible</button>
+      </div>
+      <div className="space-y-2">
+        {rows.map(([key, label]) => (
+          <label key={key} className="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-200 hover:bg-white/5">
+            <span>{label}</span>
+            <input type="checkbox" checked={options[key]} onChange={() => onToggle(key)} className="h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-400" />
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
 

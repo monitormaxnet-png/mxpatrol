@@ -43,22 +43,8 @@ const WhatsApp = () => {
         </p>
       </div>
 
-      {/* Setup info banner */}
-      <Card className="glass-card border-primary/20">
-        <CardContent className="flex items-start gap-3 p-4">
-          <Info className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-          <div className="text-sm">
-            <p className="font-medium text-foreground">WhatsApp Integration Setup</p>
-            <p className="mt-1 text-muted-foreground">
-              Connect Twilio in project settings to enable WhatsApp messaging. Configure your Twilio WhatsApp sandbox
-              number and set the webhook URL to:{" "}
-              <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">
-                {`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`}
-              </code>
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <WhatsAppOnboardingChecklist />
+
 
       <Tabs defaultValue="conversations">
         <TabsList>

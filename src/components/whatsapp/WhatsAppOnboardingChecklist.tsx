@@ -121,7 +121,7 @@ const useWhatsAppOnboardingSignals = () => {
   const query = useQuery({
     queryKey: ["whatsapp-onboarding-signals"],
     queryFn: async () => {
-      const [inbound, conversations] = await Promise.all([
+      const [inbound, conversations, joinEvent] = await Promise.all([
         supabase
           .from("whatsapp_messages")
           .select("id, created_at")
@@ -133,15 +133,44 @@ const useWhatsAppOnboardingSignals = () => {
           .select("id, phone_number, updated_at")
           .order("updated_at", { ascending: false })
           .limit(1),
+        // The very first inbound message is the sandbox join confirmation event.
+        supabase
+          .from("whatsapp_messages")
+          .select("id, created_at, message_body, metadata, whatsapp_conversations(phone_number)")
+          .eq("direction", "inbound")
+          .order("created_at", { ascending: true })
+          .limit(1),
       ]);
 
       if (inbound.error) throw inbound.error;
       if (conversations.error) throw conversations.error;
+      if (joinEvent.error) throw joinEvent.error;
+
+      const je = joinEvent.data?.[0] as
+        | {
+            id: string;
+            created_at: string;
+            message_body: string | null;
+            metadata: Record<string, unknown> | null;
+            whatsapp_conversations?: { phone_number: string } | null;
+          }
+        | undefined;
 
       return {
         lastInbound: inbound.data?.[0] ?? null,
         lastConversation: conversations.data?.[0] ?? null,
+        joinEvent: je
+          ? {
+              id: je.id,
+              createdAt: je.created_at,
+              body: je.message_body ?? "",
+              sender:
+                je.whatsapp_conversations?.phone_number ??
+                (typeof je.metadata?.from === "string" ? (je.metadata.from as string) : "unknown"),
+            }
+          : null,
       };
+
     },
     // Poll fast while setup is incomplete, slow down once both signals landed.
     refetchInterval: (q) => {

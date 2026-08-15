@@ -58,7 +58,14 @@ const WhatsApp = () => {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-3" style={{ height: "calc(100vh - 280px)" }}>
+      <Tabs defaultValue="conversations">
+        <TabsList>
+          <TabsTrigger value="conversations">Conversations</TabsTrigger>
+          <TabsTrigger value="numbers">Authorized Numbers</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="conversations" className="mt-4">
+      <div className="grid gap-4 lg:grid-cols-3" style={{ height: "calc(100vh - 320px)" }}>
         {/* Conversation list */}
         <Card className="glass-card lg:col-span-1">
           <CardHeader className="pb-3">

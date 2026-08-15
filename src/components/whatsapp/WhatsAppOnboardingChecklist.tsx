@@ -372,7 +372,31 @@ export function WhatsAppOnboardingChecklist() {
                   : "Scan the QR code with your phone to open WhatsApp with the join message prefilled. Skip if you use an approved production sender."
               }
             >
+              {signals?.joinEvent && (
+                <div className="mb-3 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs">
+                  <p className="mb-2 font-medium text-foreground">Join confirmation event</p>
+                  <dl className="space-y-1">
+                    <div className="flex gap-2">
+                      <dt className="w-20 shrink-0 text-muted-foreground">Timestamp</dt>
+                      <dd className="font-mono text-foreground">
+                        {new Date(signals.joinEvent.createdAt).toLocaleString()}
+                      </dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="w-20 shrink-0 text-muted-foreground">Sender</dt>
+                      <dd className="font-mono text-foreground">{signals.joinEvent.sender}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="w-20 shrink-0 text-muted-foreground">Message</dt>
+                      <dd className="break-words font-mono text-foreground">
+                        {signals.joinEvent.body || <span className="text-muted-foreground">(empty body)</span>}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
               <SandboxJoinQr />
+
             </StepRow>
 
             <StepRow

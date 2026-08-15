@@ -346,7 +346,7 @@ async function createCheckpoint(
       data.nfc_tag_id = request.nfc_tag_id;
       const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
       if (/^(1|confirm|yes|create|create checkpoint)$/i.test(input.trim())) {
-        return await createCheckpoint(client, identity, next, input, media);
+        return await createCheckpoint(client, identity, next, input);
       }
       return {
         session: next,

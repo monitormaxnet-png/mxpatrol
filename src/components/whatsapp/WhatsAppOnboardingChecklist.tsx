@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Circle, Copy, Loader2, RefreshCw, QrCode, ExternalLink } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,7 +116,9 @@ function SandboxJoinQr() {
 
 
 const useWhatsAppOnboardingSignals = () => {
-  return useQuery({
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
     queryKey: ["whatsapp-onboarding-signals"],
     queryFn: async () => {
       const [inbound, conversations] = await Promise.all([
@@ -141,9 +143,37 @@ const useWhatsAppOnboardingSignals = () => {
         lastConversation: conversations.data?.[0] ?? null,
       };
     },
-    refetchInterval: 15000,
+    // Poll fast while setup is incomplete, slow down once both signals landed.
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      return d?.lastInbound && d?.lastConversation ? 30000 : 4000;
+    },
+    refetchOnWindowFocus: true,
   });
+
+  // Realtime: flip Step 1/2 the moment the sandbox join message arrives.
+  useEffect(() => {
+    const invalidate = () =>
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-onboarding-signals"] });
+
+    const channel = supabase
+      .channel("whatsapp-onboarding-signals")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "whatsapp_messages" }, invalidate)
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_conversations" }, invalidate)
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_authorized_numbers" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["whatsapp-authorized-numbers"] });
+        invalidate();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  return query;
 };
+
 
 function StepRow({
   index,

@@ -2324,6 +2324,78 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_authorized_numbers: {
+        Row: {
+          allowed_site_ids: string[]
+          authorized_by: string | null
+          company_id: string | null
+          created_at: string
+          display_name: string | null
+          guard_id: string | null
+          id: string
+          last_seen_at: string | null
+          link_code: string | null
+          link_code_expires_at: string | null
+          linked_at: string | null
+          metadata: Json
+          phone: string | null
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          allowed_site_ids?: string[]
+          authorized_by?: string | null
+          company_id?: string | null
+          created_at?: string
+          display_name?: string | null
+          guard_id?: string | null
+          id?: string
+          last_seen_at?: string | null
+          link_code?: string | null
+          link_code_expires_at?: string | null
+          linked_at?: string | null
+          metadata?: Json
+          phone?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          allowed_site_ids?: string[]
+          authorized_by?: string | null
+          company_id?: string | null
+          created_at?: string
+          display_name?: string | null
+          guard_id?: string | null
+          id?: string
+          last_seen_at?: string | null
+          link_code?: string | null
+          link_code_expires_at?: string | null
+          linked_at?: string | null
+          metadata?: Json
+          phone?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_authorized_numbers_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_authorized_numbers_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_conversations: {
         Row: {
           company_id: string
@@ -2416,6 +2488,170 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_nfc_capture_requests: {
+        Row: {
+          captured_at: string | null
+          checkpoint_name: string | null
+          company_id: string
+          created_at: string
+          device_identifier: string | null
+          expires_at: string
+          gps_lat: number | null
+          gps_lng: number | null
+          id: string
+          metadata: Json
+          nfc_tag_id: string | null
+          phone: string
+          purpose: string
+          requested_by: string | null
+          session_id: string | null
+          site_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          captured_at?: string | null
+          checkpoint_name?: string | null
+          company_id: string
+          created_at?: string
+          device_identifier?: string | null
+          expires_at?: string
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          metadata?: Json
+          nfc_tag_id?: string | null
+          phone: string
+          purpose?: string
+          requested_by?: string | null
+          session_id?: string | null
+          site_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          captured_at?: string | null
+          checkpoint_name?: string | null
+          company_id?: string
+          created_at?: string
+          device_identifier?: string | null
+          expires_at?: string
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          metadata?: Json
+          nfc_tag_id?: string | null
+          phone?: string
+          purpose?: string
+          requested_by?: string | null
+          session_id?: string | null
+          site_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_nfc_capture_requests_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_nfc_capture_requests_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_nfc_capture_requests_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_sessions: {
+        Row: {
+          authorized_number_id: string | null
+          company_id: string | null
+          created_at: string
+          current_flow: string | null
+          current_site_id: string | null
+          current_site_name: string | null
+          current_step: string | null
+          expires_at: string
+          id: string
+          last_inbound_at: string
+          last_menu: string | null
+          phone: string
+          site_scope: string
+          temporary_data: Json
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          authorized_number_id?: string | null
+          company_id?: string | null
+          created_at?: string
+          current_flow?: string | null
+          current_site_id?: string | null
+          current_site_name?: string | null
+          current_step?: string | null
+          expires_at?: string
+          id?: string
+          last_inbound_at?: string
+          last_menu?: string | null
+          phone: string
+          site_scope?: string
+          temporary_data?: Json
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          authorized_number_id?: string | null
+          company_id?: string | null
+          created_at?: string
+          current_flow?: string | null
+          current_site_id?: string | null
+          current_site_name?: string | null
+          current_step?: string | null
+          expires_at?: string
+          id?: string
+          last_inbound_at?: string
+          last_menu?: string | null
+          phone?: string
+          site_scope?: string
+          temporary_data?: Json
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_sessions_authorized_number_id_fkey"
+            columns: ["authorized_number_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_authorized_numbers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_sessions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_sessions_current_site_id_fkey"
+            columns: ["current_site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
             referencedColumns: ["id"]
           },
         ]

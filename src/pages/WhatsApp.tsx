@@ -7,6 +7,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWhatsAppConversations, useWhatsAppMessages, useWhatsAppRealtimeSubscription } from "@/hooks/useWhatsAppData";
 import { format } from "date-fns";
 import ReactMarkdown from "react-markdown";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AuthorizedNumbers } from "@/components/whatsapp/AuthorizedNumbers";
 
 const messageTypeConfig: Record<string, { label: string; color: "default" | "destructive" | "secondary" | "outline" }> = {
   text: { label: "Text", color: "secondary" },
@@ -58,7 +60,14 @@ const WhatsApp = () => {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-3" style={{ height: "calc(100vh - 280px)" }}>
+      <Tabs defaultValue="conversations">
+        <TabsList>
+          <TabsTrigger value="conversations">Conversations</TabsTrigger>
+          <TabsTrigger value="numbers">Authorized Numbers</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="conversations" className="mt-4">
+      <div className="grid gap-4 lg:grid-cols-3" style={{ height: "calc(100vh - 320px)" }}>
         {/* Conversation list */}
         <Card className="glass-card lg:col-span-1">
           <CardHeader className="pb-3">
@@ -204,7 +213,14 @@ const WhatsApp = () => {
           </CardContent>
         </Card>
       </div>
+        </TabsContent>
+
+        <TabsContent value="numbers" className="mt-4">
+          <AuthorizedNumbers />
+        </TabsContent>
+      </Tabs>
     </div>
+
   );
 };
 

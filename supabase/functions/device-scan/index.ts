@@ -494,8 +494,77 @@ Deno.serve(async (req) => {
     }
     let pendingTag: { id: string; status: string } | null = null;
     let alert: { id: string } | null = null;
+    let whatsappCaptured = false;
 
+    // Fulfil a pending "Add Checkpoint" request started from WhatsApp.
     if (!checkpointId && tagUid) {
+      const { data: captureRequests, error: captureError } = await serviceClient
+        .from("whatsapp_nfc_capture_requests")
+        .select("id, phone, checkpoint_name, site_id, company_id")
+        .eq("company_id", device.company_id)
+        .eq("status", "waiting")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (captureError) {
+        console.warn("device-scan whatsapp capture lookup failed", captureError);
+      } else if (captureRequests?.length) {
+        const request = captureRequests[0] as any;
+        const { error: updateError } = await serviceClient
+          .from("whatsapp_nfc_capture_requests")
+          .update({
+            status: "captured",
+            nfc_tag_id: tagUid,
+            device_identifier: deviceIdentifier,
+            gps_lat: gpsLat,
+            gps_lng: gpsLng,
+            captured_at: scannedAt,
+          })
+          .eq("id", request.id)
+          .eq("status", "waiting");
+
+        if (updateError) {
+          console.warn("device-scan whatsapp capture update failed", updateError);
+        } else {
+          whatsappCaptured = true;
+          const notice = [
+            "*✅ NFC TAG DETECTED*",
+            "",
+            `Checkpoint: ${request.checkpoint_name}`,
+            `Device used: ${device.device_name ?? deviceIdentifier}`,
+            "",
+            "1. Create Checkpoint",
+            "2. Cancel",
+            "",
+            "Reply with a number.",
+          ].join("\n");
+
+          try {
+            const notifyResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-send`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              },
+              body: JSON.stringify({
+                to: request.phone,
+                message: notice,
+                message_type: "system",
+                company_id: request.company_id,
+              }),
+            });
+            if (!notifyResponse.ok) {
+              console.warn("device-scan whatsapp notify failed", notifyResponse.status, await notifyResponse.text());
+            }
+          } catch (notifyError) {
+            console.warn("device-scan whatsapp notify error", notifyError);
+          }
+        }
+      }
+    }
+
+    if (!checkpointId && tagUid && !whatsappCaptured) {
       const message = [
         "New NFC Tag Detected",
         "",

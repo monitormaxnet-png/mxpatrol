@@ -254,9 +254,11 @@ export function WhatsAppOnboardingChecklist() {
               description={
                 sandboxDone
                   ? `Conversation active with ${signals!.lastConversation!.phone_number}.`
-                  : "Send the Twilio sandbox join code (e.g. “join able-tiger”) from your phone to the sandbox number. Skip if you use an approved production sender."
+                  : "Scan the QR code with your phone to open WhatsApp with the join message prefilled. Skip if you use an approved production sender."
               }
-            />
+            >
+              <SandboxJoinQr />
+            </StepRow>
 
             <StepRow
               index={3}

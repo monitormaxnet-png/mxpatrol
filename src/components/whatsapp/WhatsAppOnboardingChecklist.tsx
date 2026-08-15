@@ -214,16 +214,71 @@ function StepRow({
   );
 }
 
+const SETUP_COMPLETE_MARKER = "WhatsApp setup complete";
+
 export function WhatsAppOnboardingChecklist() {
   const { data: numbers = [], isLoading: numbersLoading } = useWhatsAppAuthorizedNumbers();
   const { data: signals, isLoading: signalsLoading, refetch, isFetching } = useWhatsAppOnboardingSignals();
+  const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const announcedRef = useRef(false);
 
   const activeNumbers = numbers.filter((n) => n.status === "active" && n.phone);
   const webhookDone = Boolean(signals?.lastInbound);
   const sandboxDone = Boolean(signals?.lastConversation);
   const numberDone = activeNumbers.length > 0;
   const completed = [webhookDone, sandboxDone, numberDone].filter(Boolean).length;
+  const allDone = webhookDone && sandboxDone && numberDone;
+
+  // Notify the team once, the first time all three steps are green.
+  useEffect(() => {
+    if (!allDone || announcedRef.current) return;
+    announcedRef.current = true;
+
+    const announce = async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData.user?.id;
+        if (!userId) return;
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("company_id")
+          .eq("id", userId)
+          .maybeSingle();
+        if (!profile?.company_id) return;
+
+        // Skip if we already logged this for the company.
+        const { data: existing } = await supabase
+          .from("alerts")
+          .select("id")
+          .eq("company_id", profile.company_id)
+          .ilike("message", `${SETUP_COMPLETE_MARKER}%`)
+          .limit(1);
+        if (existing && existing.length > 0) return;
+
+        const { error } = await supabase.from("alerts").insert({
+          company_id: profile.company_id,
+          type: "anomaly" as const,
+          severity: "low" as const,
+          message: `${SETUP_COMPLETE_MARKER} | Webhook live, sandbox conversation active, ${activeNumbers.length} authorized number${
+            activeNumbers.length === 1 ? "" : "s"
+          } (${activeNumbers.map((n) => n.phone).slice(0, 3).join(", ")}). WhatsApp operations are ready to use.`,
+        });
+        if (error) throw error;
+
+        queryClient.invalidateQueries({ queryKey: ["alerts"] });
+        toast({
+          title: "WhatsApp setup complete",
+          description: "Your team has been notified in the notification center.",
+        });
+      } catch {
+        announcedRef.current = false;
+      }
+    };
+
+    void announce();
+  }, [allDone, activeNumbers, queryClient]);
 
   const copyWebhook = async () => {
     try {
@@ -236,6 +291,7 @@ export function WhatsAppOnboardingChecklist() {
   };
 
   const loading = numbersLoading || signalsLoading;
+
 
   return (
     <Card className="glass-card border-primary/20">

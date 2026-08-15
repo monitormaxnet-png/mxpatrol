@@ -9,6 +9,8 @@ import { format } from "date-fns";
 import ReactMarkdown from "react-markdown";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AuthorizedNumbers } from "@/components/whatsapp/AuthorizedNumbers";
+import { WhatsAppOnboardingChecklist } from "@/components/whatsapp/WhatsAppOnboardingChecklist";
+
 
 const messageTypeConfig: Record<string, { label: string; color: "default" | "destructive" | "secondary" | "outline" }> = {
   text: { label: "Text", color: "secondary" },

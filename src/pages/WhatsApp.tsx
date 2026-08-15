@@ -204,7 +204,14 @@ const WhatsApp = () => {
           </CardContent>
         </Card>
       </div>
+        </TabsContent>
+
+        <TabsContent value="numbers" className="mt-4">
+          <AuthorizedNumbers />
+        </TabsContent>
+      </Tabs>
     </div>
+
   );
 };
 

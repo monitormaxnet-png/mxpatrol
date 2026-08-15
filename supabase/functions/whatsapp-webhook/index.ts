@@ -390,7 +390,10 @@ serve(async (req) => {
         ],
         options: mainMenu(identity, ctx.session).options,
       };
-    } else if (ctx.session.current_flow && !/^(menu|main menu|hi|hello)$/i.test(body.trim())) {
+    } else if (ctx.session.current_flow && /^(menu|main menu|hi|hello|cancel|exit|stop)$/i.test(body.trim())) {
+      ctx.session = await clearFlow(client, ctx.session);
+      message = mainMenu(identity, ctx.session);
+    } else if (ctx.session.current_flow) {
       const result = await handleFlowInput(client, identity, ctx.session, body, mediaUrls);
       ctx.session = result.session;
       message = result.message;

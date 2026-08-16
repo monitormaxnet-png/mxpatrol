@@ -72,7 +72,7 @@ const WhatsApp = () => {
                 <div className="flex flex-col items-center justify-center py-12 px-4">
                   <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/40" />
                   <p className="text-sm text-muted-foreground text-center">
-                    No conversations yet. Messages will appear here when guards message the WhatsApp number.
+                    No conversations yet. Messages will appear here when authorized users message the WhatsApp number.
                   </p>
                 </div>
               ) : (

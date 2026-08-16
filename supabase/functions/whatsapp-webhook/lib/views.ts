@@ -55,11 +55,14 @@ export async function liveNow(
     identity,
     siteId,
   );
-  const { data: alerts } = await client
+  let alertsQuery = client
     .from("alerts")
-    .select("id, type, severity")
+    .select("id, type, severity, site_id")
     .eq("company_id", identity.company_id)
     .eq("is_read", false);
+  if (siteId) alertsQuery = alertsQuery.eq("site_id", siteId);
+  else if (identity.allowed_site_ids.length) alertsQuery = alertsQuery.in("site_id", identity.allowed_site_ids);
+  const { data: alerts } = await alertsQuery;
 
   const active = (devices ?? []).filter((d: any) => d.status === "online").length;
   const sos = (alerts ?? []).filter((a: any) => a.type === "panic_button").length;
@@ -133,6 +136,7 @@ export async function attention(
   client: SupabaseClient,
   identity: Identity,
   filter: "all" | "sos" | "missed" | "offline" = "all",
+  siteId: string | null = null,
 ): Promise<OutMessage> {
   let query = client
     .from("alerts")
@@ -141,6 +145,9 @@ export async function attention(
     .eq("is_read", false)
     .order("created_at", { ascending: false })
     .limit(10);
+
+  if (siteId) query = query.eq("site_id", siteId);
+  else if (identity.allowed_site_ids.length) query = query.in("site_id", identity.allowed_site_ids);
 
   if (filter === "sos") query = query.eq("type", "panic_button");
   if (filter === "missed") query = query.eq("type", "missed_checkpoint");
@@ -377,12 +384,15 @@ export async function reportSummary(
     identity,
     siteId,
   );
-  const { data: alerts } = await client
+  let alertsQuery = client
     .from("alerts")
-    .select("id, type, message")
+    .select("id, type, message, site_id")
     .eq("company_id", identity.company_id)
     .gte("created_at", from)
     .lte("created_at", to);
+  if (siteId) alertsQuery = alertsQuery.eq("site_id", siteId);
+  else if (identity.allowed_site_ids.length) alertsQuery = alertsQuery.in("site_id", identity.allowed_site_ids);
+  const { data: alerts } = await alertsQuery;
   const { data: devices } = await siteFilter<any>(
     client.from("devices").select("id, status, device_identifier, site_id"),
     identity,

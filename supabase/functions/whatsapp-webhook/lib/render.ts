@@ -28,7 +28,7 @@ export function twiml(body: string): string {
  * Uses an approved Content template (quick-reply buttons / list picker) when one is
  * configured, and falls back to plain numbered text otherwise.
  */
-export async function sendWhatsApp(to: string, message: OutMessage): Promise<boolean> {
+export async function sendWhatsApp(to: string, message: OutMessage, forcePlainText = false): Promise<boolean> {
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
   const twilioKey = Deno.env.get("TWILIO_API_KEY");
   const from = Deno.env.get("TWILIO_WHATSAPP_NUMBER");
@@ -40,7 +40,7 @@ export async function sendWhatsApp(to: string, message: OutMessage): Promise<boo
   const buttonSid = Deno.env.get("TWILIO_WA_BUTTONS_CONTENT_SID");
   const listSid = Deno.env.get("TWILIO_WA_LIST_CONTENT_SID");
   const optionCount = message.options?.length ?? 0;
-  const contentSid = optionCount > 0 && optionCount <= 3 ? buttonSid : optionCount > 3 ? listSid : null;
+  const contentSid = forcePlainText ? null : optionCount > 0 && optionCount <= 3 ? buttonSid : optionCount > 3 ? listSid : null;
 
   const body: Record<string, string> = {
     To: `whatsapp:${to.replace(/^whatsapp:/i, "")}`,
@@ -73,7 +73,7 @@ export async function sendWhatsApp(to: string, message: OutMessage): Promise<boo
     console.error(`[WA] send failed [${response.status}]: ${text}`);
     if (contentSid) {
       // Template rejected/not approved — retry as plain text so the user still gets a reply.
-      return await sendWhatsApp(to, { ...message, options: message.options, footer: message.footer });
+      return await sendWhatsApp(to, message, true);
     }
     return false;
   }

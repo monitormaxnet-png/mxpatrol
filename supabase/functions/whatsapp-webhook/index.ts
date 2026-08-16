@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { normalizePhone, type Identity, type OutMessage, type SessionRow, type SiteRow } from "./lib/types.ts";
+import { emptyTwiml, parseInboundWhatsAppRequest, type InboundWhatsAppMessage } from "./lib/request.ts";
 import { allowedSites, resolveIdentity } from "./lib/identity.ts";
 import { clearFlow, loadSession, patchSession } from "./lib/session.ts";
 import { renderText, sendLocation, twiml } from "./lib/render.ts";
@@ -22,7 +23,7 @@ import {
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type, x-twilio-signature, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const LOCKOUT: OutMessage = {
@@ -75,59 +76,84 @@ async function respondWith(ctx: Ctx, message: OutMessage): Promise<string> {
   return renderText(message);
 }
 
+async function ensureConversation(ctx: Ctx): Promise<{ id: string } | null> {
+  let { data: conversation } = await ctx.client
+    .from("whatsapp_conversations")
+    .select("id")
+    .eq("phone_number", ctx.identity.phone)
+    .eq("company_id", ctx.identity.company_id)
+    .maybeSingle();
+
+  if (!conversation) {
+    const { data: created, error } = await ctx.client
+      .from("whatsapp_conversations")
+      .insert({
+        phone_number: ctx.identity.phone,
+        company_id: ctx.identity.company_id,
+        guard_id: ctx.identity.guard_id,
+        is_active: true,
+      })
+      .select("id")
+      .maybeSingle();
+    if (error) throw error;
+    conversation = created;
+  }
+
+  return conversation;
+}
+
 async function recordMessages(ctx: Ctx, message: OutMessage) {
   try {
-    let { data: conversation } = await ctx.client
-      .from("whatsapp_conversations")
-      .select("id")
-      .eq("phone_number", ctx.identity.phone)
-      .eq("company_id", ctx.identity.company_id)
-      .maybeSingle();
+    const conversation = await ensureConversation(ctx);
+    if (!conversation) return;
 
-    if (!conversation) {
-      const { data: created } = await ctx.client
-        .from("whatsapp_conversations")
-        .insert({
-          phone_number: ctx.identity.phone,
-          company_id: ctx.identity.company_id,
-          guard_id: ctx.identity.guard_id,
-          is_active: true,
-        })
-        .select("id")
-        .maybeSingle();
-      conversation = created;
-    }
-
-    if (conversation) {
-      await ctx.client.from("whatsapp_messages").insert({
-        conversation_id: conversation.id,
-        company_id: ctx.identity.company_id,
-        direction: "outbound",
-        message_body: renderText(message),
-        message_type: "system",
-      });
-      await ctx.client.from("whatsapp_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversation.id);
-    }
+    await ctx.client.from("whatsapp_messages").insert({
+      conversation_id: conversation.id,
+      company_id: ctx.identity.company_id,
+      direction: "outbound",
+      message_body: renderText(message),
+      message_type: "system",
+    });
+    await ctx.client.from("whatsapp_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversation.id);
   } catch (error) {
     console.warn("[WA] message logging failed:", error);
   }
 }
 
-async function storeInbound(ctx: Ctx, body: string) {
+async function hasDuplicateInbound(ctx: Ctx, messageSid: string | null): Promise<boolean> {
+  if (!messageSid) return false;
+  const { data, error } = await ctx.client
+    .from("whatsapp_messages")
+    .select("id")
+    .eq("company_id", ctx.identity.company_id)
+    .eq("direction", "inbound")
+    .eq("twilio_sid", messageSid)
+    .limit(1);
+  if (error) {
+    console.warn("[WA] duplicate check failed:", error.message);
+    return false;
+  }
+  return Boolean(data?.length);
+}
+
+async function storeInbound(ctx: Ctx, inbound: InboundWhatsAppMessage) {
   try {
-    const { data: conversation } = await ctx.client
-      .from("whatsapp_conversations")
-      .select("id")
-      .eq("phone_number", ctx.identity.phone)
-      .eq("company_id", ctx.identity.company_id)
-      .maybeSingle();
+    const conversation = await ensureConversation(ctx);
     if (!conversation) return;
     await ctx.client.from("whatsapp_messages").insert({
       conversation_id: conversation.id,
       company_id: ctx.identity.company_id,
       direction: "inbound",
-      message_body: body,
+      message_body: inbound.body || (inbound.mediaUrls.length ? "[media]" : ""),
       message_type: "text",
+      twilio_sid: inbound.messageSid,
+      metadata: {
+        to: inbound.to || null,
+        account_sid: inbound.accountSid,
+        profile_name: inbound.profileName,
+        wa_id: inbound.waId,
+        media_count: inbound.mediaUrls.length,
+      },
     });
   } catch (error) {
     console.warn("[WA] inbound logging failed:", error);
@@ -179,8 +205,11 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       return await activePatrols(ctx.client, ctx.identity, siteId);
     }
 
-    case "attention":
-      return await attention(ctx.client, ctx.identity, intent.filter ?? "all");
+    case "attention": {
+      const { siteId, ask } = await ensureSiteContext(ctx, true);
+      if (ask) return ask;
+      return await attention(ctx.client, ctx.identity, intent.filter ?? "all", siteId);
+    }
 
     case "devices": {
       const { siteId, ask } = await ensureSiteContext(ctx, true);
@@ -286,12 +315,15 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
     if (!ctx.identity.canAcknowledge) {
       return optionMenu("NOT ALLOWED", ["You don't have permission to acknowledge alerts."], [{ id: "menu", label: "Main Menu" }]);
     }
-    const { error } = await ctx.client
+    let ackQuery = ctx.client
       .from("alerts")
       .update({ is_read: true })
       .eq("company_id", ctx.identity.company_id)
       .eq("type", "panic_button")
       .eq("is_read", false);
+    if (ctx.session.current_site_id) ackQuery = ackQuery.eq("site_id", ctx.session.current_site_id);
+    else if (ctx.identity.allowed_site_ids.length) ackQuery = ackQuery.in("site_id", ctx.identity.allowed_site_ids);
+    const { error } = await ackQuery;
     if (error) {
       return optionMenu("COULD NOT ACKNOWLEDGE", [error.message], [{ id: "menu", label: "Main Menu" }]);
     }
@@ -302,7 +334,9 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   }
 
   if (id === "sos" || id === "missed" || id === "offline") {
-    return await attention(ctx.client, ctx.identity, id as "sos" | "missed" | "offline");
+    const { siteId, ask } = await ensureSiteContext(ctx, true);
+    if (ask) return ask;
+    return await attention(ctx.client, ctx.identity, id as "sos" | "missed" | "offline", siteId);
   }
 
   if (id === "problems") {
@@ -333,30 +367,10 @@ serve(async (req) => {
   );
 
   try {
-    const contentType = req.headers.get("content-type") ?? "";
-    let from = "";
-    let body = "";
-    const mediaUrls: string[] = [];
-
-    if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
-      const form = await req.formData();
-      from = String(form.get("From") ?? "");
-      body = String(form.get("Body") ?? "");
-      const count = Number(form.get("NumMedia") ?? 0);
-      for (let index = 0; index < count; index += 1) {
-        const url = form.get(`MediaUrl${index}`);
-        if (url) mediaUrls.push(String(url));
-      }
-      const buttonPayload = form.get("ButtonPayload") ?? form.get("ListId") ?? form.get("ButtonText");
-      if (buttonPayload && !body) body = String(buttonPayload);
-    } else {
-      const json = await req.json();
-      from = json.From ?? json.from ?? "";
-      body = json.Body ?? json.body ?? "";
-      if (Array.isArray(json.media)) mediaUrls.push(...json.media.map(String));
-    }
-
-    const phone = normalizePhone(from);
+    const inbound = await parseInboundWhatsAppRequest(req);
+    const phone = normalizePhone(inbound.from);
+    const body = inbound.body;
+    const mediaUrls = inbound.mediaUrls;
     if (!phone) {
       return new Response(JSON.stringify({ error: "Missing From" }), {
         status: 400,
@@ -367,7 +381,7 @@ serve(async (req) => {
     const resolved = await resolveIdentity(client, phone, body);
     if (resolved.kind === "unknown") {
       const text = renderText(LOCKOUT);
-      return contentType.includes("form")
+      return inbound.isTwilioForm
         ? new Response(twiml(text), { headers: { ...corsHeaders, "Content-Type": "text/xml" } })
         : new Response(JSON.stringify({ success: true, response: text }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -378,7 +392,16 @@ serve(async (req) => {
     const session = await loadSession(client, identity);
     const ctx: Ctx = { client, identity, session };
 
-    await storeInbound(ctx, body || (mediaUrls.length ? "[media]" : ""));
+    if (await hasDuplicateInbound(ctx, inbound.messageSid)) {
+      console.info("[WA] duplicate inbound ignored", { messageSid: inbound.messageSid, companyId: identity.company_id });
+      return inbound.isTwilioForm
+        ? new Response(emptyTwiml(), { headers: { ...corsHeaders, "Content-Type": "text/xml" } })
+        : new Response(JSON.stringify({ success: true, duplicate: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+    }
+
+    await storeInbound(ctx, inbound);
 
     let message: OutMessage;
 
@@ -413,7 +436,7 @@ serve(async (req) => {
 
     const text = await respondWith(ctx, message);
 
-    if (contentType.includes("form")) {
+    if (inbound.isTwilioForm) {
       return new Response(twiml(text), { headers: { ...corsHeaders, "Content-Type": "text/xml" } });
     }
     return new Response(JSON.stringify({ success: true, response: text }), {

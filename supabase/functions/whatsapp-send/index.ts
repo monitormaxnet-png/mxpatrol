@@ -35,14 +35,42 @@ serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { to, message, message_type, company_id } = await req.json();
+    const { to, message, message_type, company_id, content_sid, content_variables } = await req.json();
 
-    if (!to || !message || !company_id) {
-      return new Response(JSON.stringify({ error: "Missing required fields: to, message, company_id" }), {
+    if (!to || !company_id || (!message && !content_sid)) {
+      return new Response(
+        JSON.stringify({ error: "Missing required fields: to, company_id, and either message or content_sid" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (content_sid !== undefined && (typeof content_sid !== "string" || !/^HX[0-9a-fA-F]{32}$/.test(content_sid))) {
+      return new Response(JSON.stringify({ error: "content_sid must be a Twilio Content SID (HX...)" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    let templateVariables: Record<string, string> | null = null;
+    if (content_variables !== undefined && content_variables !== null) {
+      if (typeof content_variables !== "object" || Array.isArray(content_variables)) {
+        return new Response(JSON.stringify({ error: "content_variables must be an object of string values" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      templateVariables = {};
+      for (const [key, value] of Object.entries(content_variables as Record<string, unknown>)) {
+        if (typeof value !== "string" && typeof value !== "number") {
+          return new Response(JSON.stringify({ error: `content_variables.${key} must be a string` }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        templateVariables[key] = String(value);
+      }
+    }
+
 
     const cleanPhone = to.replace("whatsapp:", "").trim();
     const twilioFrom = Deno.env.get("TWILIO_WHATSAPP_NUMBER") || "";

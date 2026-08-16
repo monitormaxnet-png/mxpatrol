@@ -35,14 +35,42 @@ serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { to, message, message_type, company_id } = await req.json();
+    const { to, message, message_type, company_id, content_sid, content_variables } = await req.json();
 
-    if (!to || !message || !company_id) {
-      return new Response(JSON.stringify({ error: "Missing required fields: to, message, company_id" }), {
+    if (!to || !company_id || (!message && !content_sid)) {
+      return new Response(
+        JSON.stringify({ error: "Missing required fields: to, company_id, and either message or content_sid" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (content_sid !== undefined && (typeof content_sid !== "string" || !/^HX[0-9a-fA-F]{32}$/.test(content_sid))) {
+      return new Response(JSON.stringify({ error: "content_sid must be a Twilio Content SID (HX...)" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    let templateVariables: Record<string, string> | null = null;
+    if (content_variables !== undefined && content_variables !== null) {
+      if (typeof content_variables !== "object" || Array.isArray(content_variables)) {
+        return new Response(JSON.stringify({ error: "content_variables must be an object of string values" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      templateVariables = {};
+      for (const [key, value] of Object.entries(content_variables as Record<string, unknown>)) {
+        if (typeof value !== "string" && typeof value !== "number") {
+          return new Response(JSON.stringify({ error: `content_variables.${key} must be a string` }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        templateVariables[key] = String(value);
+      }
+    }
+
 
     const cleanPhone = to.replace("whatsapp:", "").trim();
     const twilioFrom = Deno.env.get("TWILIO_WHATSAPP_NUMBER") || "";
@@ -71,7 +99,18 @@ serve(async (req) => {
       conversation = newConv;
     }
 
-    // Send via Twilio
+    // Send via Twilio (template when content_sid given, otherwise plain text)
+    const params: Record<string, string> = {
+      To: `whatsapp:${cleanPhone}`,
+      From: `whatsapp:${twilioFrom}`,
+    };
+    if (content_sid) {
+      params.ContentSid = content_sid;
+      if (templateVariables) params.ContentVariables = JSON.stringify(templateVariables);
+    } else {
+      params.Body = message;
+    }
+
     const twilioResp = await fetch(`${GATEWAY_URL}/Messages.json`, {
       method: "POST",
       headers: {
@@ -79,18 +118,20 @@ serve(async (req) => {
         "X-Connection-Api-Key": TWILIO_API_KEY,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({
-        To: `whatsapp:${cleanPhone}`,
-        From: `whatsapp:${twilioFrom}`,
-        Body: message,
-      }),
+      body: new URLSearchParams(params),
     });
 
-    const twilioData = await twilioResp.json();
+    const twilioText = await twilioResp.text();
 
     if (!twilioResp.ok) {
-      throw new Error(`Twilio API error [${twilioResp.status}]: ${JSON.stringify(twilioData)}`);
+      console.error(`Twilio send failed [${twilioResp.status}]: ${twilioText}`);
+      return new Response(
+        JSON.stringify({ error: "Twilio request failed", status: twilioResp.status, details: twilioText }),
+        { status: twilioResp.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
+
+    const twilioData = JSON.parse(twilioText);
 
     // Store message
     if (conversation) {
@@ -98,15 +139,18 @@ serve(async (req) => {
         conversation_id: conversation.id,
         company_id,
         direction: "outbound",
-        message_body: message,
-        message_type: message_type || "alert",
+        message_body: content_sid
+          ? `[template ${content_sid}]${templateVariables ? ` ${JSON.stringify(templateVariables)}` : ""}`
+          : message,
+        message_type: message_type || (content_sid ? "template" : "alert"),
         twilio_sid: twilioData.sid,
       });
     }
 
-    return new Response(JSON.stringify({ success: true, sid: twilioData.sid }), {
+    return new Response(JSON.stringify({ success: true, sid: twilioData.sid, template: content_sid ?? null }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (error) {
     console.error("Send error:", error);
     return new Response(

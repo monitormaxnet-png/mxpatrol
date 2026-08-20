@@ -15,6 +15,10 @@ import {
   incidentsView,
   liveNow,
   mainMenu,
+  managementMenu,
+  checkpointsView,
+  patrolStatusView,
+  missedCheckpointsView,
   reportPeriodMenu,
   reportSummary,
   setupMenu,
@@ -46,9 +50,8 @@ function optionMenu(title: string, lines: string[], options: Array<{ id: string;
   return { title, lines, options };
 }
 
-function siteChooser(sites: SiteRow[], allowAll: boolean): OutMessage {
+function siteChooser(sites: SiteRow[]): OutMessage {
   const options = sites.slice(0, 9).map((site) => ({ id: `site:${site.id}`, label: site.name }));
-  if (allowAll) options.push({ id: "site:all", label: "All Sites" });
   return optionMenu("WHICH SITE?", ["Choose the site you want to work with."], options);
 }
 
@@ -161,8 +164,7 @@ async function storeInbound(ctx: Ctx, inbound: InboundWhatsAppMessage) {
 }
 
 /** Site context resolution: auto-select single site, remember choice, ask when ambiguous. */
-async function ensureSiteContext(ctx: Ctx, allowAll: boolean): Promise<{ siteId: string | null; ask?: OutMessage }> {
-  if (ctx.session.site_scope === "all") return { siteId: null };
+async function ensureSiteContext(ctx: Ctx): Promise<{ siteId: string | null; ask?: OutMessage }> {
   if (ctx.session.current_site_id) return { siteId: ctx.session.current_site_id };
 
   const sites = await allowedSites(ctx.client, ctx.identity);
@@ -175,13 +177,25 @@ async function ensureSiteContext(ctx: Ctx, allowAll: boolean): Promise<{ siteId:
     });
     return { siteId: sites[0].id };
   }
-  return { siteId: null, ask: siteChooser(sites, allowAll) };
+  return { siteId: null, ask: siteChooser(sites) };
 }
 
 async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
   switch (intent.action) {
     case "menu":
+      if (ctx.session.last_menu === "management" && ctx.identity.canManage) {
+        return managementMenu(ctx.identity, ctx.session);
+      }
+      ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "user" });
       return mainMenu(ctx.identity, ctx.session);
+
+    case "user":
+      ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "user" });
+      return mainMenu(ctx.identity, ctx.session);
+
+    case "management":
+      ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: ctx.identity.canManage ? "management" : "user" });
+      return managementMenu(ctx.identity, ctx.session);
 
     case "change_site": {
       const sites = await allowedSites(ctx.client, ctx.identity);
@@ -190,29 +204,29 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
         current_site_name: null,
         site_scope: "single",
       });
-      return siteChooser(sites, true);
+      return siteChooser(sites);
     }
 
     case "live": {
-      const { siteId, ask } = await ensureSiteContext(ctx, true);
+      const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
       return await liveNow(ctx.client, ctx.identity, siteId);
     }
 
     case "patrols": {
-      const { siteId, ask } = await ensureSiteContext(ctx, true);
+      const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
       return await activePatrols(ctx.client, ctx.identity, siteId);
     }
 
     case "attention": {
-      const { siteId, ask } = await ensureSiteContext(ctx, true);
+      const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
       return await attention(ctx.client, ctx.identity, intent.filter ?? "all", siteId);
     }
 
     case "devices": {
-      const { siteId, ask } = await ensureSiteContext(ctx, true);
+      const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
       const message = await deviceList(ctx.client, ctx.identity, siteId);
       if (intent.filter === "offline") {
@@ -229,16 +243,38 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
     }
 
     case "incidents": {
-      const { siteId, ask } = await ensureSiteContext(ctx, true);
+      const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
       return await incidentsView(ctx.client, ctx.identity, siteId);
     }
 
     case "reports": {
       if (!intent.period) return reportPeriodMenu();
-      const { siteId, ask } = await ensureSiteContext(ctx, true);
+      const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
       return await reportSummary(ctx.client, ctx.identity, siteId, intent.period, intent.problems_only ?? false);
+    }
+
+    case "completed_patrols":
+    case "incomplete_patrols":
+    case "late_patrols":
+    case "missed_patrols": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      const group = intent.action === "completed_patrols" ? "completed" : intent.action === "incomplete_patrols" ? "incomplete" : intent.action === "late_patrols" ? "late" : "missed";
+      return await patrolStatusView(ctx.client, ctx.identity, siteId, group);
+    }
+
+    case "missed_checkpoints": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return await missedCheckpointsView(ctx.client, ctx.identity, siteId);
+    }
+
+    case "checkpoints": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return await checkpointsView(ctx.client, ctx.identity, siteId);
     }
 
     case "setup":
@@ -251,6 +287,11 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
     case "add_checkpoint":
     case "create_patrol":
     case "report_incident": {
+      if (!ctx.identity.canManage) {
+        return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "Main Menu" }]);
+      }
+      const { ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
       const flow = intent.action === "register_device"
         ? "REGISTER_DEVICE"
         : intent.action === "add_checkpoint"
@@ -280,14 +321,6 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
 async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   if (id.startsWith("site:")) {
     const value = id.slice(5);
-    if (value === "all") {
-      ctx.session = await patchSession(ctx.client, ctx.session, {
-        current_site_id: null,
-        current_site_name: null,
-        site_scope: "all",
-      });
-      return mainMenu(ctx.identity, ctx.session);
-    }
     const sites = await allowedSites(ctx.client, ctx.identity);
     const site = sites.find((item: SiteRow) => item.id === value);
     if (!site) return null;
@@ -334,18 +367,18 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   }
 
   if (id === "sos" || id === "missed" || id === "offline") {
-    const { siteId, ask } = await ensureSiteContext(ctx, true);
+    const { siteId, ask } = await ensureSiteContext(ctx);
     if (ask) return ask;
     return await attention(ctx.client, ctx.identity, id as "sos" | "missed" | "offline", siteId);
   }
 
   if (id === "problems") {
-    const { siteId } = await ensureSiteContext(ctx, true);
+    const { siteId } = await ensureSiteContext(ctx);
     return await reportSummary(ctx.client, ctx.identity, siteId, "today", true);
   }
 
   if (id === "today" || id === "yesterday" || id === "week") {
-    const { siteId, ask } = await ensureSiteContext(ctx, true);
+    const { siteId, ask } = await ensureSiteContext(ctx);
     if (ask) return ask;
     return await reportSummary(ctx.client, ctx.identity, siteId, id as "today" | "yesterday" | "week");
   }

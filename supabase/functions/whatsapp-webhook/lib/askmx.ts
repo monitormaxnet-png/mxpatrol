@@ -7,6 +7,14 @@ export type Intent =
   | { action: "device_detail"; device: string }
   | { action: "incidents" }
   | { action: "reports"; period?: "today" | "yesterday" | "week"; problems_only?: boolean }
+  | { action: "completed_patrols" }
+  | { action: "incomplete_patrols" }
+  | { action: "late_patrols" }
+  | { action: "missed_patrols" }
+  | { action: "missed_checkpoints" }
+  | { action: "checkpoints" }
+  | { action: "management" }
+  | { action: "user" }
   | { action: "setup" }
   | { action: "register_device" }
   | { action: "add_checkpoint" }
@@ -24,6 +32,14 @@ const SCHEMA = `Return ONLY JSON matching one of these shapes:
 {"action":"device_detail","device":"RG360-08"}
 {"action":"incidents"}
 {"action":"reports","period":"today|yesterday|week","problems_only":true|false}
+{"action":"completed_patrols"}
+{"action":"incomplete_patrols"}
+{"action":"late_patrols"}
+{"action":"missed_patrols"}
+{"action":"missed_checkpoints"}
+{"action":"checkpoints"}
+{"action":"management"}
+{"action":"user"}
 {"action":"setup"}
 {"action":"register_device"}
 {"action":"add_checkpoint"}
@@ -44,6 +60,13 @@ export function keywordIntent(text: string): Intent | null {
   if (/^(reports?|summary)$/.test(value)) return { action: "reports" };
   if (/^(setup|settings)$/.test(value)) return { action: "setup" };
   if (/^(change site|switch site|site)$/.test(value)) return { action: "change_site" };
+  if (/^(management|manager|admin)$/i.test(value)) return { action: "management" };
+  if (/^(user|user assistant)$/i.test(value)) return { action: "user" };
+  if (/incomplete patrols?/.test(value)) return { action: "incomplete_patrols" };
+  if (/completed patrols?|complete patrols?/.test(value)) return { action: "completed_patrols" };
+  if (/(late|delayed).*patrols?/.test(value)) return { action: "late_patrols" };
+  if (/missed patrols?/.test(value)) return { action: "missed_patrols" };
+  if (/missed checkpoints?|checkpoints?.*missed/.test(value)) return { action: "missed_checkpoints" };
   if (/^(sos|panic)/.test(value)) return { action: "attention", filter: "sos" };
   if (/(which|what).*(devices?).*(offline|down)/.test(value)) return { action: "devices", filter: "offline" };
   const where = value.match(/where\s+is\s+([a-z0-9\-_.]+)/i);

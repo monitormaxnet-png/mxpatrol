@@ -33,6 +33,16 @@ export async function startFlow(
   session: SessionRow,
   flow: "REGISTER_DEVICE" | "CREATE_CHECKPOINT" | "CREATE_PATROL" | "REPORT_INCIDENT",
 ): Promise<FlowResult> {
+  if (!identity.canManage) {
+    return {
+      session,
+      message: {
+        title: "MANAGEMENT ACCESS UNAVAILABLE",
+        lines: ["Your account does not have permission to use management actions."],
+        options: [{ id: "menu", label: "Main Menu" }],
+      },
+    };
+  }
   if (flow === "REPORT_INCIDENT") {
     const next = await patchSession(client, session, {
       current_flow: flow,
@@ -42,17 +52,6 @@ export async function startFlow(
     return {
       session: next,
       message: { title: "REPORT INCIDENT", lines: ["What happened?"], footer: "Type *cancel* to stop." },
-    };
-  }
-
-  if (!identity.canSetup) {
-    return {
-      session,
-      message: {
-        title: "NOT ALLOWED",
-        lines: ["Only company administrators can change setup."],
-        options: [{ id: "menu", label: "Main Menu" }],
-      },
     };
   }
 

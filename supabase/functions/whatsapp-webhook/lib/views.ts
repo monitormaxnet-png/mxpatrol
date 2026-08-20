@@ -10,30 +10,56 @@ function siteFilter<T>(query: any, identity: Identity, siteId: string | null) {
 }
 
 export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
-  const options = [
-    { id: "live", label: "Live Now" },
-    { id: "attention", label: "Attention" },
-    { id: "devices", label: "Devices" },
-    { id: "incidents", label: "Incidents" },
-    { id: "reports", label: "Reports" },
-  ];
-  if (identity.canSetup) options.push({ id: "setup", label: "Setup" });
-
-  const context = session.current_site_name
-    ? `Viewing: ${session.current_site_name}`
-    : session.site_scope === "all"
-      ? "Viewing: All sites"
-      : null;
-
+  const context = session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site to continue.";
   return {
     title: "MX PATROL",
     lines: [
       `${greeting()} 👋`,
-      context ?? "",
+      context,
       "What would you like to do?",
-    ].filter(Boolean),
-    options,
-    footer: "You can also ask me something like:\n“Which devices are offline?”",
+    ],
+    options: [
+      { id: "live", label: "Live Now" },
+      { id: "attention", label: "Attention" },
+      { id: "devices", label: "Devices" },
+      { id: "incidents", label: "Incidents" },
+      { id: "reports", label: "Reports" },
+      { id: "completed_patrols", label: "Completed Patrols" },
+      { id: "incomplete_patrols", label: "Incomplete Patrols" },
+      { id: "late_patrols", label: "Late / Delayed Patrols" },
+      { id: "missed_patrols", label: "Missed Patrols" },
+      { id: "missed_checkpoints", label: "Missed Checkpoints List" },
+      { id: "change_site", label: "Change Site" },
+      { id: "menu", label: "Main Menu" },
+    ],
+    footer: "You can also ask me something like:\nWhich devices are offline?",
+  };
+}
+
+export function managementMenu(identity: Identity, session: SessionRow): OutMessage {
+  if (!identity.canManage) {
+    return {
+      title: "MANAGEMENT ACCESS UNAVAILABLE",
+      lines: ["Your account does not have permission to use management actions."],
+      options: [{ id: "menu", label: "User Assistant" }],
+    };
+  }
+  return {
+    title: "MX PATROL — MANAGEMENT",
+    lines: [session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site before making changes.", "What would you like to do?"],
+    options: [
+      { id: "register_device", label: "Register Device" },
+      { id: "add_checkpoint", label: "Register Checkpoint" },
+      { id: "report_incident", label: "Register Incident" },
+      { id: "devices", label: "View Devices" },
+      { id: "checkpoints", label: "View Checkpoints" },
+      { id: "incidents", label: "View Incidents" },
+      { id: "patrols", label: "Patrol Management" },
+      { id: "reports", label: "Reports" },
+      { id: "change_site", label: "Change Site" },
+      { id: "user", label: "User Assistant" },
+      { id: "menu", label: "Main Menu" },
+    ],
   };
 }
 
@@ -472,5 +498,87 @@ export function setupMenu(): OutMessage {
       { id: "add_checkpoint", label: "Add Checkpoint" },
       { id: "create_patrol", label: "Create Patrol" },
     ],
+  };
+}
+
+export async function checkpointsView(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
+  const { data } = await siteFilter<any>(
+    client.from("checkpoints").select("id, name, nfc_tag_id, site_id, created_at").order("name").limit(12),
+    identity,
+    siteId,
+  );
+  const rows = (data ?? []) as any[];
+  return {
+    title: "CHECKPOINTS",
+    lines: rows.length
+      ? [rows.map((row, index) => `${index + 1}. ${row.name}\nNFC: ${row.nfc_tag_id ? "Assigned" : "Awaiting assignment"}`).join("\n\n")]
+      : ["No checkpoints registered for this site."],
+    options: [{ id: "menu", label: "Main Menu" }],
+  };
+}
+
+const PATROL_STATUS_GROUPS = {
+  completed: ["completed", "completed_late"],
+  incomplete: ["incomplete"],
+  late: ["late", "delayed", "late_start", "completed_late"],
+  missed: ["missed"],
+} as const;
+
+export async function patrolStatusView(
+  client: SupabaseClient,
+  identity: Identity,
+  siteId: string | null,
+  group: keyof typeof PATROL_STATUS_GROUPS,
+): Promise<OutMessage> {
+  const statuses = [...PATROL_STATUS_GROUPS[group]];
+  const { data } = await siteFilter<any>(
+    client
+      .from("patrol_sessions")
+      .select("id, status, scheduled_start, actual_start, checkpoint_completed, checkpoint_total, site_id, sites(name), patrol_routes(name)")
+      .in("status", statuses)
+      .order("scheduled_start", { ascending: false })
+      .limit(8),
+    identity,
+    siteId,
+  );
+  const rows = (data ?? []) as any[];
+  const title = group === "completed" ? "COMPLETED PATROLS" : group === "incomplete" ? "INCOMPLETE PATROLS" : group === "late" ? "LATE / DELAYED PATROLS" : "MISSED PATROLS";
+  if (!rows.length) return { title, lines: ["No matching patrols for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
+  return {
+    title,
+    lines: [rows.map((row, index) => {
+      const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
+      const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
+      const scheduled = row.scheduled_start ? new Date(row.scheduled_start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" }) : "unknown";
+      const started = row.actual_start ? new Date(row.actual_start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" }) : "not started";
+      return `${index + 1}. ${route?.name ?? site?.name ?? "Patrol"}\nStatus: ${String(row.status).replace(/_/g, " ")}\nScheduled: ${scheduled}\nStarted: ${started}\nCheckpoints: ${row.checkpoint_completed ?? 0}/${row.checkpoint_total ?? 0}`;
+    }).join("\n\n")],
+    options: [{ id: "menu", label: "Main Menu" }],
+  };
+}
+
+export async function missedCheckpointsView(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
+  let query = client
+    .from("patrol_session_checkpoints")
+    .select("id, status, sequence_order, expected_scan_at, scanned_at, site_id, checkpoint_name, checkpoints(name), patrol_sessions(id, status, scheduled_start, patrol_routes(name), sites(name))")
+    .eq("company_id", identity.company_id)
+    .in("status", ["missed", "overdue"])
+    .order("expected_scan_at", { ascending: false })
+    .limit(10);
+  if (siteId) query = query.eq("site_id", siteId);
+  else if (identity.allowed_site_ids.length) query = query.in("site_id", identity.allowed_site_ids);
+  const { data } = await query;
+  const rows = (data ?? []) as any[];
+  if (!rows.length) return { title: "MISSED CHECKPOINTS", lines: ["No missed checkpoints for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
+  return {
+    title: "MISSED CHECKPOINTS",
+    lines: [rows.map((row, index) => {
+      const checkpoint = Array.isArray(row.checkpoints) ? row.checkpoints[0] : row.checkpoints;
+      const session = Array.isArray(row.patrol_sessions) ? row.patrol_sessions[0] : row.patrol_sessions;
+      const route = Array.isArray(session?.patrol_routes) ? session.patrol_routes[0] : session?.patrol_routes;
+      const when = row.expected_scan_at ? new Date(row.expected_scan_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" }) : "unknown time";
+      return `${index + 1}. ${checkpoint?.name ?? row.checkpoint_name ?? "Checkpoint"}\nPatrol: ${route?.name ?? "Session"}\nExpected: ${when}`;
+    }).join("\n\n")],
+    options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
   };
 }

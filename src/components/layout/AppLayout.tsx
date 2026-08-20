@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import AppSidebar from "./AppSidebar";
 import TopBar from "./TopBar";
 import { useAlertNotifications } from "@/hooks/useAlertNotifications";
@@ -11,11 +11,24 @@ const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { needsOnboarding, completeOnboarding } = useOnboardingStatus();
   const [showOnboarding, setShowOnboarding] = useState(true);
+  const location = useLocation();
+  const aiFirstCommandCenter = location.pathname === "/dashboard" || location.pathname === "/command-center";
 
   const handleOnboardingComplete = async () => {
     await completeOnboarding();
     setShowOnboarding(false);
   };
+
+  if (aiFirstCommandCenter) {
+    return (
+      <div className="min-h-screen bg-background">
+        {needsOnboarding && showOnboarding && (
+          <OnboardingWizard onComplete={handleOnboardingComplete} />
+        )}
+        <Outlet />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-background grid-pattern">

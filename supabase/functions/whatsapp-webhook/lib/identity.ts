@@ -1,4 +1,5 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+// deno-lint-ignore no-explicit-any
+type SupabaseClient = any;
 import type { Identity, Role } from "./types.ts";
 
 export type IdentityResult =

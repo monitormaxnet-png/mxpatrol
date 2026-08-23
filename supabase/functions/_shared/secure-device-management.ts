@@ -1,5 +1,6 @@
 // Shared helpers for secure patrol device management (used by WhatsApp and Edge Functions).
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+// deno-lint-ignore no-explicit-any
+type SupabaseClient = any;
 
 export type SecureDeviceAction =
   | "get_secure_device_summary"

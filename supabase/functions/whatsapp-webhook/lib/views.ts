@@ -1,4 +1,5 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+// deno-lint-ignore no-explicit-any
+type SupabaseClient = any;
 import type { Identity, OutMessage, SessionRow } from "./types.ts";
 import { greeting, timeAgo } from "./types.ts";
 import { deviceSecurityState, formatDeviceSecurityLine, formatSecureDeviceLabel, getSecureDeviceByIdentifier, getSecureDeviceEvents, getSecureDeviceRows, getSecureDeviceSummary } from "../../_shared/secure-device-management.ts";

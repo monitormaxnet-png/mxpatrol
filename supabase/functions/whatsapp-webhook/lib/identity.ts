@@ -24,7 +24,9 @@ async function buildIdentity(client: SupabaseClient, row: Record<string, any>): 
     role,
     allowed_site_ids: Array.isArray(row.allowed_site_ids) ? row.allowed_site_ids : [],
     canSetup: role === "admin",
+    canManage: role === "admin" || role === "supervisor",
     canAcknowledge: role === "admin" || role === "supervisor",
+
   };
 }
 

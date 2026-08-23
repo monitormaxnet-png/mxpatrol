@@ -320,9 +320,11 @@ export type Database = {
         Row: {
           company_id: string
           created_at: string
+          data_log_form_id: string | null
           id: string
           location_lat: number | null
           location_lng: number | null
+          location_note: string | null
           name: string
           nfc_tag_id: string
           patrol_id: string | null
@@ -332,9 +334,11 @@ export type Database = {
         Insert: {
           company_id: string
           created_at?: string
+          data_log_form_id?: string | null
           id?: string
           location_lat?: number | null
           location_lng?: number | null
+          location_note?: string | null
           name: string
           nfc_tag_id: string
           patrol_id?: string | null
@@ -344,9 +348,11 @@ export type Database = {
         Update: {
           company_id?: string
           created_at?: string
+          data_log_form_id?: string | null
           id?: string
           location_lat?: number | null
           location_lng?: number | null
+          location_note?: string | null
           name?: string
           nfc_tag_id?: string
           patrol_id?: string | null
@@ -359,6 +365,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkpoints_data_log_form_id_fkey"
+            columns: ["data_log_form_id"]
+            isOneToOne: false
+            referencedRelation: "data_log_forms"
             referencedColumns: ["id"]
           },
           {
@@ -457,6 +470,248 @@ export type Database = {
             columns: ["device_id"]
             isOneToOne: false
             referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      data_log_form_fields: {
+        Row: {
+          company_id: string
+          config_json: Json
+          created_at: string
+          field_type: string
+          form_id: string
+          id: string
+          is_active: boolean
+          label: string
+          options_json: Json
+          placeholder: string | null
+          required: boolean
+          sequence_order: number
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          config_json?: Json
+          created_at?: string
+          field_type: string
+          form_id: string
+          id?: string
+          is_active?: boolean
+          label: string
+          options_json?: Json
+          placeholder?: string | null
+          required?: boolean
+          sequence_order?: number
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          config_json?: Json
+          created_at?: string
+          field_type?: string
+          form_id?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          options_json?: Json
+          placeholder?: string | null
+          required?: boolean
+          sequence_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_log_form_fields_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_form_fields_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "data_log_forms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      data_log_forms: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          form_type: string
+          id: string
+          is_active: boolean
+          name: string
+          site_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          form_type: string
+          id?: string
+          is_active?: boolean
+          name: string
+          site_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          form_type?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          site_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_log_forms_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_forms_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_forms_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      data_log_submissions: {
+        Row: {
+          checkpoint_id: string
+          company_id: string
+          created_at: string
+          device_id: string | null
+          form_id: string
+          id: string
+          patrol_session_checkpoint_id: string | null
+          patrol_session_id: string | null
+          responses_json: Json
+          scan_log_id: string | null
+          site_id: string | null
+          status: string
+          submitted_at: string
+          submitted_by: string | null
+          validation_errors: Json
+        }
+        Insert: {
+          checkpoint_id: string
+          company_id: string
+          created_at?: string
+          device_id?: string | null
+          form_id: string
+          id?: string
+          patrol_session_checkpoint_id?: string | null
+          patrol_session_id?: string | null
+          responses_json?: Json
+          scan_log_id?: string | null
+          site_id?: string | null
+          status?: string
+          submitted_at?: string
+          submitted_by?: string | null
+          validation_errors?: Json
+        }
+        Update: {
+          checkpoint_id?: string
+          company_id?: string
+          created_at?: string
+          device_id?: string | null
+          form_id?: string
+          id?: string
+          patrol_session_checkpoint_id?: string | null
+          patrol_session_id?: string | null
+          responses_json?: Json
+          scan_log_id?: string | null
+          site_id?: string | null
+          status?: string
+          submitted_at?: string
+          submitted_by?: string | null
+          validation_errors?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_log_submissions_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_submissions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_submissions_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "data_log_forms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_submissions_patrol_session_checkpoint_id_fkey"
+            columns: ["patrol_session_checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_session_checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_submissions_patrol_session_id_fkey"
+            columns: ["patrol_session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_session_reports"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "data_log_submissions_patrol_session_id_fkey"
+            columns: ["patrol_session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_submissions_scan_log_id_fkey"
+            columns: ["scan_log_id"]
+            isOneToOne: true
+            referencedRelation: "scan_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_submissions_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_log_submissions_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1392,6 +1647,9 @@ export type Database = {
           checkpoint_name_snapshot: string | null
           company_id: string
           created_at: string
+          data_log_form_id: string | null
+          data_log_required: boolean
+          data_log_status: string
           gps_accuracy: number | null
           gps_lat: number | null
           gps_lng: number | null
@@ -1412,6 +1670,9 @@ export type Database = {
           checkpoint_name_snapshot?: string | null
           company_id: string
           created_at?: string
+          data_log_form_id?: string | null
+          data_log_required?: boolean
+          data_log_status?: string
           gps_accuracy?: number | null
           gps_lat?: number | null
           gps_lng?: number | null
@@ -1432,6 +1693,9 @@ export type Database = {
           checkpoint_name_snapshot?: string | null
           company_id?: string
           created_at?: string
+          data_log_form_id?: string | null
+          data_log_required?: boolean
+          data_log_status?: string
           gps_accuracy?: number | null
           gps_lat?: number | null
           gps_lng?: number | null
@@ -1459,6 +1723,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_session_checkpoints_data_log_form_id_fkey"
+            columns: ["data_log_form_id"]
+            isOneToOne: false
+            referencedRelation: "data_log_forms"
             referencedColumns: ["id"]
           },
           {
@@ -2041,6 +2312,8 @@ export type Database = {
           client_scan_id: string | null
           company_id: string
           created_at: string
+          data_log_required: boolean
+          data_log_status: string
           device_id: string | null
           device_identifier: string | null
           device_metadata: Json | null
@@ -2072,6 +2345,8 @@ export type Database = {
           client_scan_id?: string | null
           company_id: string
           created_at?: string
+          data_log_required?: boolean
+          data_log_status?: string
           device_id?: string | null
           device_identifier?: string | null
           device_metadata?: Json | null
@@ -2103,6 +2378,8 @@ export type Database = {
           client_scan_id?: string | null
           company_id?: string
           created_at?: string
+          data_log_required?: boolean
+          data_log_status?: string
           device_id?: string | null
           device_identifier?: string | null
           device_metadata?: Json | null
@@ -2836,6 +3113,22 @@ export type Database = {
       refresh_patrol_session_event_counts: {
         Args: { p_session_id: string }
         Returns: undefined
+      }
+      submit_data_log_submission: {
+        Args: {
+          p_responses_json: Json
+          p_scan_log_id: string
+          p_submitted_by?: string
+        }
+        Returns: {
+          completed: number
+          patrol_session_id: string
+          progress_percent: number
+          required: number
+          session_checkpoint_id: string
+          status: string
+          submission_id: string
+        }[]
       }
     }
     Enums: {

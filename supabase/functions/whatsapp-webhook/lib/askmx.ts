@@ -21,6 +21,11 @@ export type Intent =
   | { action: "create_patrol" }
   | { action: "report_incident" }
   | { action: "change_site" }
+  | { action: "secure_devices" }
+  | { action: "secure_device_status" }
+  | { action: "secure_device_problems" }
+  | { action: "secure_device_detail"; device?: string }
+  | { action: "secure_device_action"; secureAction: "request_device_lock" | "request_device_disable" | "request_device_enable" | "request_maintenance_mode" | "request_exit_maintenance" | "request_app_update" | "request_integrity_check" | "revoke_device"; device?: string }
   | { action: "unknown"; reply?: string };
 
 const SCHEMA = `Return ONLY JSON matching one of these shapes:
@@ -46,6 +51,11 @@ const SCHEMA = `Return ONLY JSON matching one of these shapes:
 {"action":"create_patrol"}
 {"action":"report_incident"}
 {"action":"change_site"}
+{"action":"secure_devices"}
+{"action":"secure_device_status"}
+{"action":"secure_device_problems"}
+{"action":"secure_device_detail","device":"MX-021"}
+{"action":"secure_device_action","secureAction":"request_device_lock|request_device_disable|request_maintenance_mode|request_app_update|request_integrity_check|revoke_device","device":"MX-021"}
 {"action":"unknown","reply":"one short helpful sentence"}`;
 
 /** Fast keyword routing so common phrasing never needs the model. */
@@ -61,6 +71,23 @@ export function keywordIntent(text: string): Intent | null {
   if (/^(setup|settings)$/.test(value)) return { action: "setup" };
   if (/^(change site|switch site|site)$/.test(value)) return { action: "change_site" };
   if (/^(management|manager|admin)$/i.test(value)) return { action: "management" };
+  if (/^(secure devices?|device security|secure patrol devices?)$/i.test(value)) return { action: "secure_devices" };
+  if (/^(secure device status|device security status)$/i.test(value)) return { action: "secure_device_status" };
+  if (/(security problems|secure.*problems|devices?.*(outdated|developer mode|kiosk|insecure|security issue)|which devices need app update)/i.test(value)) return { action: "secure_device_problems" };
+  const secureInfo = value.match(/(?:secure info|device info|security info)\s+([a-z0-9\-_.]+)/i);
+  if (secureInfo) return { action: "secure_device_detail", device: secureInfo[1] };
+  const secureAction = value.match(/^(lock|disable|enable|revoke|update|maintenance|maintain|security check|integrity check)\s+(?:device\s+)?([a-z0-9\-_.]+)?/i);
+  if (secureAction) {
+    const verb = secureAction[1].toLowerCase();
+    const action = verb === "lock" ? "request_device_lock"
+      : verb === "disable" ? "request_device_disable"
+      : verb === "enable" ? "request_device_enable"
+      : verb === "revoke" ? "revoke_device"
+      : verb === "update" ? "request_app_update"
+      : verb === "security check" || verb === "integrity check" ? "request_integrity_check"
+      : "request_maintenance_mode";
+    return { action: "secure_device_action", secureAction: action as any, device: secureAction[2] };
+  }
   if (/^(user|user assistant)$/i.test(value)) return { action: "user" };
   if (/incomplete patrols?/.test(value)) return { action: "incomplete_patrols" };
   if (/completed patrols?|complete patrols?/.test(value)) return { action: "completed_patrols" };

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.100.
 import type { Identity, OutMessage, SessionRow, SiteRow } from "./types.ts";
 import { allowedSites } from "./identity.ts";
 import { clearFlow, patchSession } from "./session.ts";
+import { formatSecureDeviceLabel, getSecureDeviceRows, requestSecureDeviceCommand, type SecureDeviceAction } from "../../_shared/secure-device-management.ts";
 
 export type FlowResult = { message: OutMessage; session: SessionRow };
 
@@ -121,6 +122,8 @@ export async function handleFlowInput(
       return await createPatrol(client, identity, session, input);
     case "REPORT_INCIDENT":
       return await reportIncident(client, identity, session, input, mediaUrls);
+    case "SECURE_DEVICE_ACTION":
+      return await secureDeviceAction(client, identity, session, input);
     default:
       return { session: await clearFlow(client, session), message: CANCELLED };
   }
@@ -255,6 +258,78 @@ async function registerDevice(
 
 /* ------------------------------ add checkpoint ----------------------------- */
 
+const DATA_LOG_OPTIONS = [
+  { id: "1", label: "No form" },
+  { id: "2", label: "Use existing form" },
+  { id: "3", label: "Create checklist" },
+  { id: "4", label: "Create data-entry form" },
+  { id: "5", label: "Create checklist + data form" },
+];
+
+const CHECKLIST_FIELDS = [
+  { label: "Door locked?", field_type: "yes_no", required: true, sequence_order: 1 },
+  { label: "Fire extinguisher present?", field_type: "yes_no", required: true, sequence_order: 2 },
+  { label: "Lights working?", field_type: "yes_no", required: true, sequence_order: 3 },
+  { label: "Area clear?", field_type: "pass_fail", required: true, sequence_order: 4 },
+  { label: "Any damage observed?", field_type: "pass_fail", required: true, sequence_order: 5 },
+];
+
+const DATA_ENTRY_FIELDS = [
+  { label: "Notes", field_type: "long_text", required: false, sequence_order: 1 },
+  { label: "Photo", field_type: "photo", required: false, sequence_order: 2 },
+  { label: "Meter Reading", field_type: "meter_reading", required: false, sequence_order: 3 },
+];
+
+function dataLogOptionSummary(data: Record<string, any>) {
+  if (!data.data_log_choice || data.data_log_choice === "none") return "No form";
+  if (data.data_log_form_name) return String(data.data_log_form_name);
+  if (data.pending_form?.name) return String(data.pending_form.name);
+  return "Data Log Form";
+}
+
+async function createDataLogForm(client: SupabaseClient, identity: Identity, data: Record<string, any>) {
+  if (!data.pending_form) return data.data_log_form_id ?? null;
+  const pending = data.pending_form as { name: string; form_type: string; fields: Array<Record<string, any>> };
+  const { data: form, error: formError } = await client
+    .from("data_log_forms")
+    .insert({
+      company_id: identity.company_id,
+      site_id: data.site_id,
+      name: pending.name,
+      description: "Created from WhatsApp Management AI during checkpoint registration",
+      form_type: pending.form_type,
+      created_by: identity.user_id,
+      is_active: true,
+    })
+    .select("id, name, form_type")
+    .maybeSingle();
+
+  if (formError) throw formError;
+  const formId = form?.id;
+  if (!formId) throw new Error("Data Log Form was not created");
+
+  const rows = pending.fields.map((field) => ({
+    form_id: formId,
+    company_id: identity.company_id,
+    label: field.label,
+    field_type: field.field_type,
+    required: field.required,
+    sequence_order: field.sequence_order,
+    options_json: field.options_json ?? [],
+    config_json: field.config_json ?? {},
+    is_active: true,
+  }));
+  const { error: fieldsError } = await client.from("data_log_form_fields").insert(rows);
+  if (fieldsError) {
+    await client.from("data_log_forms").delete().eq("id", formId);
+    throw fieldsError;
+  }
+  data.data_log_form_name = form?.name;
+  data.data_log_form_type = form?.form_type;
+  data.data_log_field_count = rows.length;
+  return formId;
+}
+
 async function createCheckpoint(
   client: SupabaseClient,
   identity: Identity,
@@ -265,55 +340,35 @@ async function createCheckpoint(
 
   if (session.current_step === "WAITING_FOR_NAME") {
     data.checkpoint_name = input.trim().slice(0, 80);
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_ZONE", temporary_data: data });
+    return { session: next, message: { title: "1/6 - CHECKPOINT NAME", lines: ["Checkpoint name: " + data.checkpoint_name, "", "2/6 - Zone / Location", "Reply with the zone or location."] } };
+  }
+
+  if (session.current_step === "WAITING_FOR_ZONE") {
+    data.location_note = input.trim().slice(0, 120);
     const sites = await allowedSites(client, identity);
     data.site_choices = sites;
     const next = await patchSession(client, session, { current_step: "WAITING_FOR_SITE", temporary_data: data });
-    return {
-      session: next,
-      message: {
-        title: "SELECT SITE",
-        lines: [`Which site should “${data.checkpoint_name}” belong to?`],
-        options: siteOptions(sites),
-      },
-    };
+    return { session: next, message: { title: "3/6 - SITE", lines: ["Zone / Location: " + data.location_note, "Which site should this checkpoint belong to?"], options: siteOptions(sites) } };
   }
 
   if (session.current_step === "WAITING_FOR_SITE") {
     const sites = (data.site_choices ?? []) as SiteRow[];
     const site = pickChoice(input, sites, (s) => s.name);
-    if (!site) {
-      return { session, message: { title: "SELECT SITE", lines: ["I didn't catch that site."], options: siteOptions(sites) } };
-    }
+    if (!site) return { session, message: { title: "SELECT SITE", lines: ["I didn't catch that site."], options: siteOptions(sites) } };
     data.site_id = site.id;
     data.site_name = site.name;
 
-    await client
-      .from("whatsapp_nfc_capture_requests")
-      .update({ status: "cancelled" })
-      .eq("phone", identity.phone)
-      .eq("status", "waiting");
-
+    await client.from("whatsapp_nfc_capture_requests").update({ status: "cancelled" }).eq("phone", identity.phone).eq("status", "waiting");
     const { data: request, error } = await client
       .from("whatsapp_nfc_capture_requests")
-      .insert({
-        company_id: identity.company_id,
-        site_id: site.id,
-        session_id: session.id,
-        phone: identity.phone,
-        requested_by: identity.user_id,
-        purpose: "create_checkpoint",
-        checkpoint_name: data.checkpoint_name,
-        status: "waiting",
-      })
+      .insert({ company_id: identity.company_id, site_id: site.id, session_id: session.id, phone: identity.phone, requested_by: identity.user_id, purpose: "create_checkpoint", checkpoint_name: data.checkpoint_name, status: "waiting" })
       .select("id")
       .maybeSingle();
 
     if (error) {
       console.error("[WA] nfc capture request failed:", error.message);
-      return {
-        session: await clearFlow(client, session),
-        message: { title: "COULD NOT START", lines: [error.message], options: [{ id: "menu", label: "Main Menu" }] },
-      };
+      return { session: await clearFlow(client, session), message: { title: "COULD NOT START", lines: [error.message], options: [{ id: "menu", label: "Main Menu" }] } };
     }
 
     data.capture_request_id = request?.id;
@@ -321,87 +376,126 @@ async function createCheckpoint(
     return {
       session: next,
       message: {
-        title: "WAITING FOR NFC SCAN…",
+        title: "4/6 - NFC TAG ASSIGNMENT",
         lines: [
-          "Now use an enrolled MX Patrol device to scan the NFC tag you want to use for:",
+          "Use an enrolled MX Patrol device to scan the NFC tag for:",
           "",
-          `*${data.checkpoint_name}* — ${site.name}`,
+          "Checkpoint: " + data.checkpoint_name,
+          "Zone: " + data.location_note,
+          "Site: " + site.name,
           "",
-          "I'll message you as soon as the tag is detected.",
+          "Do not scan through WhatsApp. I will continue once MX Patrol captures the NFC tag.",
         ],
-        footer: "Type *cancel* to stop.",
+        footer: "Type cancel to stop.",
       },
     };
   }
 
   if (session.current_step === "WAITING_FOR_NFC") {
-    const { data: request } = await client
-      .from("whatsapp_nfc_capture_requests")
-      .select("id, status, nfc_tag_id, device_identifier")
-      .eq("id", data.capture_request_id)
-      .maybeSingle();
-
+    const { data: request } = await client.from("whatsapp_nfc_capture_requests").select("id, status, nfc_tag_id, device_identifier").eq("id", data.capture_request_id).maybeSingle();
     if (request?.status === "captured" && request.nfc_tag_id) {
       data.nfc_tag_id = request.nfc_tag_id;
+      data.nfc_device_identifier = request.device_identifier;
+      const next = await patchSession(client, session, { current_step: "WAITING_FOR_DATA_LOG", temporary_data: data });
+      return { session: next, message: { title: "5/6 - DATA LOG FORM", lines: ["NFC tag assigned successfully.", "", "Should this checkpoint collect additional information when scanned?"], options: DATA_LOG_OPTIONS } };
+    }
+    return { session, message: { title: "STILL WAITING", lines: ["No tag has been scanned yet. Tap the NFC tag with an enrolled MX Patrol device."], footer: "Type cancel to stop." } };
+  }
+
+  if (session.current_step === "WAITING_FOR_DATA_LOG") {
+    const choice = input.trim().toLowerCase();
+    if (/^(1|no|none|no form)$/i.test(choice)) {
+      data.data_log_choice = "none";
+      data.data_log_form_id = null;
       const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
-      if (/^(1|confirm|yes|create|create checkpoint)$/i.test(input.trim())) {
-        return await createCheckpoint(client, identity, next, input);
-      }
+      return await createCheckpoint(client, identity, next, "summary");
+    }
+
+    if (/^(2|existing|use existing)/i.test(choice)) {
+      const { data: forms, error } = await client.from("data_log_forms").select("id, name, form_type, data_log_form_fields(id)").eq("company_id", identity.company_id).eq("is_active", true).or("site_id.is.null,site_id.eq." + data.site_id).order("name", { ascending: true }).limit(9);
+      if (error) return { session, message: { title: "FORM LOOKUP FAILED", lines: [error.message], options: DATA_LOG_OPTIONS } };
+      if (!forms?.length) return { session, message: { title: "NO FORMS FOUND", lines: ["No reusable Data Log Forms are available for this site yet."], options: DATA_LOG_OPTIONS } };
+      data.form_choices = forms;
+      const next = await patchSession(client, session, { current_step: "WAITING_FOR_EXISTING_FORM", temporary_data: data });
+      return { session: next, message: { title: "SELECT DATA LOG FORM", lines: forms.map((form: any, index: number) => String(index + 1) + ". " + form.name), footer: "Reply with the form number, or cancel." } };
+    }
+
+    const checkpointName = String(data.checkpoint_name ?? "Checkpoint");
+    if (/^(3|checklist|create checklist)/i.test(choice)) {
+      data.data_log_choice = "new";
+      data.pending_form = { name: checkpointName + " Inspection", form_type: "checklist", fields: CHECKLIST_FIELDS };
+    } else if (/^(4|data|data-entry|entry)/i.test(choice)) {
+      data.data_log_choice = "new";
+      data.pending_form = { name: checkpointName + " Data Log", form_type: "data_entry", fields: DATA_ENTRY_FIELDS };
+    } else if (/^(5|mixed|both|checklist.*data)/i.test(choice)) {
+      data.data_log_choice = "new";
+      data.pending_form = { name: checkpointName + " Inspection", form_type: "mixed", fields: [...CHECKLIST_FIELDS, ...DATA_ENTRY_FIELDS.map((field, index) => ({ ...field, sequence_order: CHECKLIST_FIELDS.length + index + 1 }))] };
+    } else {
+      return { session, message: { title: "DATA LOG FORM", lines: ["Choose how data should be collected."], options: DATA_LOG_OPTIONS } };
+    }
+
+    data.data_log_form_name = data.pending_form.name;
+    data.data_log_form_type = data.pending_form.form_type;
+    data.data_log_field_count = data.pending_form.fields.length;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
+    return await createCheckpoint(client, identity, next, "summary");
+  }
+
+  if (session.current_step === "WAITING_FOR_EXISTING_FORM") {
+    const forms = (data.form_choices ?? []) as Array<any>;
+    const form = pickChoice(input, forms, (f) => f.name);
+    if (!form) return { session, message: { title: "SELECT DATA LOG FORM", lines: ["I didn't catch that form."], options: forms.map((f, index) => ({ id: String(index + 1), label: f.name })) } };
+    data.data_log_choice = "existing";
+    data.data_log_form_id = form.id;
+    data.data_log_form_name = form.name;
+    data.data_log_form_type = form.form_type;
+    data.data_log_field_count = Array.isArray(form.data_log_form_fields) ? form.data_log_form_fields.length : 0;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
+    return await createCheckpoint(client, identity, next, "summary");
+  }
+
+  if (session.current_step === "WAITING_FOR_CONFIRM") {
+    if (input.trim().toLowerCase() === "summary") {
       return {
-        session: next,
+        session,
         message: {
-          title: "✅ NFC TAG DETECTED",
+          title: "6/6 - CONFIRM REGISTRATION",
           lines: [
-            `Checkpoint: ${data.checkpoint_name}`,
-            `Site: ${data.site_name}`,
-            `Device used: ${request.device_identifier ?? "Unknown"}`,
-          ],
-          options: [{ id: "confirm", label: "Create Checkpoint" }, { id: "cancel", label: "Cancel" }],
+            "Name: " + data.checkpoint_name,
+            "Zone: " + data.location_note,
+            "Site: " + data.site_name,
+            "NFC: Assigned",
+            "Data Log Form: " + dataLogOptionSummary(data),
+            data.data_log_field_count != null ? "Fields: " + data.data_log_field_count : null,
+          ].filter(Boolean) as string[],
+          options: [{ id: "1", label: "Register Checkpoint" }, { id: "2", label: "Cancel" }],
         },
       };
     }
 
-    return {
-      session,
-      message: {
-        title: "STILL WAITING",
-        lines: ["No tag has been scanned yet. Tap the NFC tag with an enrolled MX Patrol device."],
-        footer: "Type *cancel* to stop.",
-      },
-    };
-  }
-
-  if (session.current_step === "WAITING_FOR_CONFIRM") {
-    if (!/^(1|confirm|yes|y|create)/i.test(input.trim())) {
+    if (!/^(1|confirm|yes|y|register|create)/i.test(input.trim())) {
       await client.from("whatsapp_nfc_capture_requests").update({ status: "cancelled" }).eq("id", data.capture_request_id);
       return { session: await clearFlow(client, session), message: CANCELLED };
     }
 
-    const { error } = await client.from("checkpoints").insert({
-      company_id: identity.company_id,
-      site_id: data.site_id,
-      name: data.checkpoint_name,
-      nfc_tag_id: data.nfc_tag_id,
-    });
+    let formId = data.data_log_form_id ?? null;
+    try {
+      formId = await createDataLogForm(client, identity, data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Data Log Form could not be created";
+      console.error("[WA] data log form create failed:", message);
+      return { session: await clearFlow(client, session), message: { title: "COULD NOT CREATE FORM", lines: [message], options: [{ id: "menu", label: "Main Menu" }] } };
+    }
 
+    const { error } = await client.from("checkpoints").insert({ company_id: identity.company_id, site_id: data.site_id, name: data.checkpoint_name, location_note: data.location_note, nfc_tag_id: data.nfc_tag_id, data_log_form_id: formId });
     if (error) {
       console.error("[WA] checkpoint insert failed:", error.message);
-      return {
-        session: await clearFlow(client, session),
-        message: { title: "COULD NOT CREATE", lines: [error.message], options: [{ id: "menu", label: "Main Menu" }] },
-      };
+      if (formId && data.pending_form) await client.from("data_log_forms").delete().eq("id", formId);
+      return { session: await clearFlow(client, session), message: { title: "COULD NOT CREATE", lines: [error.message], options: [{ id: "menu", label: "Main Menu" }] } };
     }
 
     await client.from("whatsapp_nfc_capture_requests").update({ status: "completed" }).eq("id", data.capture_request_id);
-
-    return {
-      session: await clearFlow(client, session),
-      message: {
-        title: `✅ ${data.checkpoint_name} created`,
-        lines: [`The checkpoint is now active at ${data.site_name}.`],
-        options: [{ id: "setup", label: "Setup" }, { id: "menu", label: "Main Menu" }],
-      },
-    };
+    return { session: await clearFlow(client, session), message: { title: "OK - " + data.checkpoint_name + " created", lines: ["Name: " + data.checkpoint_name, "Zone: " + data.location_note, "Site: " + data.site_name, "NFC Status: Assigned", "Data Log Form: " + dataLogOptionSummary(data), "Status: Active"], options: [{ id: "setup", label: "Setup" }, { id: "menu", label: "Main Menu" }] } };
   }
 
   return { session: await clearFlow(client, session), message: CANCELLED };
@@ -760,6 +854,118 @@ async function reportIncident(
         options: [{ id: "incidents", label: "View Incidents" }, { id: "menu", label: "Main Menu" }],
       },
     };
+  }
+
+  return { session: await clearFlow(client, session), message: CANCELLED };
+}
+
+/* --------------------------- secure device action -------------------------- */
+
+const SECURE_ACTION_LABELS: Record<string, string> = {
+  request_device_lock: "Lock Device",
+  request_device_disable: "Disable Device",
+  request_device_enable: "Enable Device",
+  request_maintenance_mode: "Maintenance Mode",
+  request_exit_maintenance: "Exit Maintenance",
+  request_app_update: "Require App Update",
+  request_integrity_check: "Run Security Check",
+  revoke_device: "Revoke Device",
+};
+
+export async function startSecureDeviceAction(
+  client: SupabaseClient,
+  identity: Identity,
+  session: SessionRow,
+  action: SecureDeviceAction,
+  deviceIdentifier?: string | null,
+): Promise<FlowResult> {
+  if (!identity.canManage) {
+    return { session, message: { title: "MANAGEMENT ACCESS UNAVAILABLE", lines: ["Your account does not have permission to manage secure patrol devices."], options: [{ id: "menu", label: "Main Menu" }] } };
+  }
+
+  const data: Record<string, any> = { secure_action: action };
+  if (deviceIdentifier) {
+    data.device_identifier = deviceIdentifier;
+    const step = action === "request_maintenance_mode" ? "WAITING_FOR_DURATION" : "WAITING_FOR_CONFIRM";
+    const next = await patchSession(client, session, { current_flow: "SECURE_DEVICE_ACTION", current_step: step, temporary_data: data });
+    return await secureDeviceAction(client, identity, next, "summary");
+  }
+
+  const rows = await getSecureDeviceRows(client, identity, session.current_site_id);
+  data.device_choices = rows.slice(0, 9);
+  const next = await patchSession(client, session, { current_flow: "SECURE_DEVICE_ACTION", current_step: "WAITING_FOR_DEVICE", temporary_data: data });
+  return {
+    session: next,
+    message: {
+      title: SECURE_ACTION_LABELS[action] ?? "Secure Device Action",
+      lines: ["Which device do you want to manage?"],
+      options: data.device_choices.map((row: Record<string, any>) => ({ id: String(row.device_identifier), label: formatSecureDeviceLabel(row) })),
+      footer: "Type cancel to stop.",
+    },
+  };
+}
+
+async function secureDeviceAction(client: SupabaseClient, identity: Identity, session: SessionRow, input: string): Promise<FlowResult> {
+  const data = { ...(session.temporary_data ?? {}) } as Record<string, any>;
+  const action = data.secure_action as SecureDeviceAction;
+
+  if (session.current_step === "WAITING_FOR_DEVICE") {
+    const choices = (data.device_choices ?? []) as Array<Record<string, any>>;
+    const device = pickChoice(input, choices, (row) => String(row.device_identifier ?? row.device_name ?? ""));
+    if (!device) {
+      return { session, message: { title: "SELECT DEVICE", lines: ["I did not catch that device."], options: choices.map((row) => ({ id: String(row.device_identifier), label: formatSecureDeviceLabel(row) })) } };
+    }
+    data.device_identifier = device.device_identifier;
+    const step = action === "request_maintenance_mode" ? "WAITING_FOR_DURATION" : "WAITING_FOR_CONFIRM";
+    const next = await patchSession(client, session, { current_step: step, temporary_data: data });
+    return await secureDeviceAction(client, identity, next, "summary");
+  }
+
+  if (session.current_step === "WAITING_FOR_DURATION") {
+    if (input.trim().toLowerCase() !== "summary") {
+      const minutes = Number(input.trim());
+      if (![10, 20, 30, 60].includes(minutes)) {
+        return { session, message: { title: "MAINTENANCE DURATION", lines: ["Choose how long maintenance mode should remain active."], options: [10, 20, 30, 60].map((value) => ({ id: String(value), label: value + " minutes" })) } };
+      }
+      data.duration_minutes = minutes;
+      data.expires_at = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+    }
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
+    return await secureDeviceAction(client, identity, next, "summary");
+  }
+
+  if (session.current_step === "WAITING_FOR_CONFIRM") {
+    if (input.trim().toLowerCase() === "summary") {
+      const lines = [
+        "Device: " + data.device_identifier,
+        "Action: " + (SECURE_ACTION_LABELS[action] ?? action),
+        action === "request_maintenance_mode" ? "Duration: " + (data.duration_minutes ?? 10) + " minutes" : null,
+        "This will queue a secure remote command and record an audit event.",
+      ].filter(Boolean) as string[];
+      return { session, message: { title: "CONFIRM SECURE COMMAND", lines, options: [{ id: "1", label: "Confirm" }, { id: "2", label: "Cancel" }] } };
+    }
+    if (!/^(1|confirm|yes|y)$/i.test(input.trim())) {
+      return { session: await clearFlow(client, session), message: CANCELLED };
+    }
+    try {
+      const payload = action === "request_maintenance_mode" ? { duration_minutes: data.duration_minutes ?? 10, expires_at: data.expires_at } : {};
+      const result = await requestSecureDeviceCommand(client, identity, session.current_site_id, action, String(data.device_identifier), payload, "whatsapp");
+      return {
+        session: await clearFlow(client, session),
+        message: {
+          title: "SECURE COMMAND QUEUED",
+          lines: [
+            "Device: " + String(result.device.device_identifier ?? data.device_identifier),
+            "Action: " + (SECURE_ACTION_LABELS[action] ?? action),
+            result.queued ? "Status: queued for device pickup" : "Status: sent to online device",
+          ],
+          options: [{ id: "secure_devices", label: "Secure Device Menu" }, { id: "menu", label: "Main Menu" }],
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Secure command failed";
+      return { session: await clearFlow(client, session), message: { title: "SECURE COMMAND FAILED", lines: [message], options: [{ id: "secure_devices", label: "Secure Device Menu" }] } };
+    }
   }
 
   return { session: await clearFlow(client, session), message: CANCELLED };

@@ -6,7 +6,7 @@ import { allowedSites, resolveIdentity } from "./lib/identity.ts";
 import { clearFlow, loadSession, patchSession } from "./lib/session.ts";
 import { renderText, sendLocation, twiml } from "./lib/render.ts";
 import { classifyIntent, keywordIntent, type Intent } from "./lib/askmx.ts";
-import { handleFlowInput, startFlow } from "./lib/flows.ts";
+import { handleFlowInput, startFlow, startSecureDeviceAction } from "./lib/flows.ts";
 import {
   activePatrols,
   attention,
@@ -22,6 +22,11 @@ import {
   reportPeriodMenu,
   reportSummary,
   setupMenu,
+  secureDeviceInfo,
+  secureDeviceList,
+  secureDeviceMenu,
+  secureDeviceProblems,
+  secureDeviceStatus,
 } from "./lib/views.ts";
 
 const corsHeaders = {
@@ -277,6 +282,43 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       return await checkpointsView(ctx.client, ctx.identity, siteId);
     }
 
+
+    case "secure_devices": {
+      ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "management" });
+      const { ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return secureDeviceMenu(ctx.identity, ctx.session);
+    }
+
+    case "secure_device_status": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return await secureDeviceStatus(ctx.client, ctx.identity, siteId);
+    }
+
+    case "secure_device_problems": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return await secureDeviceProblems(ctx.client, ctx.identity, siteId);
+    }
+
+    case "secure_device_detail": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      if (!intent.device) return await secureDeviceList(ctx.client, ctx.identity, siteId);
+      return await secureDeviceInfo(ctx.client, ctx.identity, siteId, intent.device);
+    }
+
+    case "secure_device_action": {
+      if (!ctx.identity.canManage) {
+        return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "Main Menu" }]);
+      }
+      const { ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      const result = await startSecureDeviceAction(ctx.client, ctx.identity, ctx.session, intent.secureAction as any, intent.device ?? null);
+      ctx.session = result.session;
+      return result.message;
+    }
     case "setup":
       if (!ctx.identity.canSetup) {
         return optionMenu("NOT ALLOWED", ["Only company administrators can change setup."], [{ id: "menu", label: "Main Menu" }]);
@@ -344,6 +386,54 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
     return message;
   }
 
+
+  if (id === "secure_devices") {
+    const { ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    return secureDeviceMenu(ctx.identity, ctx.session);
+  }
+
+  if (id === "secure_device_status") {
+    const { siteId, ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    return await secureDeviceStatus(ctx.client, ctx.identity, siteId);
+  }
+
+  if (id === "secure_device_problems") {
+    const { siteId, ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    return await secureDeviceProblems(ctx.client, ctx.identity, siteId);
+  }
+
+  if (id === "secure_device_list") {
+    const { siteId, ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    return await secureDeviceList(ctx.client, ctx.identity, siteId);
+  }
+
+  if (id.startsWith("secure_info:")) {
+    const { siteId, ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    return await secureDeviceInfo(ctx.client, ctx.identity, siteId, id.slice("secure_info:".length));
+  }
+
+  if (id.startsWith("secure_action:")) {
+    const { ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    const action = id.slice("secure_action:".length);
+    const result = await startSecureDeviceAction(ctx.client, ctx.identity, ctx.session, action as any);
+    ctx.session = result.session;
+    return result.message;
+  }
+
+  if (id.startsWith("secure_action_device:")) {
+    const { ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    const [, action, device] = id.split(":");
+    const result = await startSecureDeviceAction(ctx.client, ctx.identity, ctx.session, action as any, device);
+    ctx.session = result.session;
+    return result.message;
+  }
   if (id === "ack") {
     if (!ctx.identity.canAcknowledge) {
       return optionMenu("NOT ALLOWED", ["You don't have permission to acknowledge alerts."], [{ id: "menu", label: "Main Menu" }]);

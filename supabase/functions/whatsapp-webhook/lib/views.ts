@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import type { Identity, OutMessage, SessionRow } from "./types.ts";
 import { greeting, timeAgo } from "./types.ts";
+import { deviceSecurityState, formatDeviceSecurityLine, formatSecureDeviceLabel, getSecureDeviceByIdentifier, getSecureDeviceEvents, getSecureDeviceRows, getSecureDeviceSummary } from "../../_shared/secure-device-management.ts";
 
 function siteFilter<T>(query: any, identity: Identity, siteId: string | null) {
   let next = query.eq("company_id", identity.company_id);
@@ -52,6 +53,7 @@ export function managementMenu(identity: Identity, session: SessionRow): OutMess
       { id: "add_checkpoint", label: "Register Checkpoint" },
       { id: "report_incident", label: "Register Incident" },
       { id: "devices", label: "View Devices" },
+      { id: "secure_devices", label: "Secure Patrol Devices" },
       { id: "checkpoints", label: "View Checkpoints" },
       { id: "incidents", label: "View Incidents" },
       { id: "patrols", label: "Patrol Management" },
@@ -105,6 +107,8 @@ export async function liveNow(
     options: [
       { id: "patrols", label: "View Active Patrols" },
       { id: "devices", label: "View Devices" },
+      { id: "secure_devices", label: "Secure Patrol Devices" },
+      { id: "secure_devices", label: "Secure Patrol Devices" },
       { id: "attention", label: "View Live Problems" },
     ],
   };
@@ -152,6 +156,8 @@ export async function activePatrols(
     lines: [lines.join("\n\n")],
     options: [
       { id: "devices", label: "View Devices" },
+      { id: "secure_devices", label: "Secure Patrol Devices" },
+      { id: "secure_devices", label: "Secure Patrol Devices" },
       { id: "attention", label: "Problems" },
       { id: "menu", label: "Main Menu" },
     ],
@@ -580,5 +586,125 @@ export async function missedCheckpointsView(client: SupabaseClient, identity: Id
       return `${index + 1}. ${checkpoint?.name ?? row.checkpoint_name ?? "Checkpoint"}\nPatrol: ${route?.name ?? "Session"}\nExpected: ${when}`;
     }).join("\n\n")],
     options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
+  };
+}
+
+function managementOnly(identity: Identity): OutMessage | null {
+  if (identity.canManage) return null;
+  return {
+    title: "MANAGEMENT ACCESS UNAVAILABLE",
+    lines: ["Your account does not have permission to manage secure patrol devices."],
+    options: [{ id: "menu", label: "Main Menu" }],
+  };
+}
+
+export function secureDeviceMenu(identity: Identity, session: SessionRow): OutMessage {
+  const denied = managementOnly(identity);
+  if (denied) return denied;
+  return {
+    title: "SECURE PATROL DEVICES",
+    lines: [session.current_site_name ? "Viewing: " + session.current_site_name : "Choose a site before managing devices.", "What would you like to do?"],
+    options: [
+      { id: "secure_device_status", label: "Device Status" },
+      { id: "secure_device_problems", label: "Security Problems" },
+      { id: "secure_action:request_device_lock", label: "Lock Device" },
+      { id: "secure_action:request_device_disable", label: "Disable Device" },
+      { id: "secure_action:request_maintenance_mode", label: "Maintenance Mode" },
+      { id: "secure_action:request_app_update", label: "Require App Update" },
+      { id: "secure_device_list", label: "Device Info" },
+      { id: "secure_action:revoke_device", label: "Revoke Device" },
+      { id: "management", label: "Management Menu" },
+    ],
+  };
+}
+
+export async function secureDeviceStatus(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
+  const denied = managementOnly(identity);
+  if (denied) return denied;
+  const summary = await getSecureDeviceSummary(client, identity, siteId);
+  return {
+    title: "DEVICE SECURITY STATUS",
+    lines: [
+      "Total devices: " + summary.total,
+      "Secure devices: " + summary.secure,
+      "Attention: " + summary.attention,
+      "Disabled: " + summary.disabled,
+      "Offline: " + summary.offline,
+      "Outdated apps: " + summary.outdated,
+      "Kiosk inactive: " + summary.kiosk_disabled,
+    ],
+    options: [
+      { id: "secure_device_list", label: "View Device List" },
+      { id: "secure_device_problems", label: "Security Problems" },
+      { id: "secure_devices", label: "Main Secure Menu" },
+    ],
+  };
+}
+
+export async function secureDeviceProblems(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
+  const denied = managementOnly(identity);
+  if (denied) return denied;
+  const summary = await getSecureDeviceSummary(client, identity, siteId);
+  const problemRows = summary.rows.filter((row: Record<string, any>) => deviceSecurityState(row) !== "Secure" || row.status === "offline");
+  if (!problemRows.length) {
+    return { title: "SECURITY PROBLEMS", lines: ["No secure-device problems found for the active site."], options: [{ id: "secure_devices", label: "Secure Device Menu" }] };
+  }
+  return {
+    title: "SECURITY PROBLEMS",
+    lines: [
+      "Found " + problemRows.length + " device" + (problemRows.length === 1 ? "" : "s") + " with security issues.",
+      "",
+      problemRows.slice(0, 6).map((row: Record<string, any>, index: number) => formatDeviceSecurityLine(row, index)).join("\n\n"),
+    ],
+    options: [
+      { id: "secure_action:request_device_lock", label: "Lock Device" },
+      { id: "secure_action:request_maintenance_mode", label: "Maintenance Mode" },
+      { id: "secure_action:request_app_update", label: "Require App Update" },
+      { id: "secure_devices", label: "Main Secure Menu" },
+    ],
+  };
+}
+
+export async function secureDeviceList(client: SupabaseClient, identity: Identity, siteId: string | null, action?: string | null): Promise<OutMessage> {
+  const denied = managementOnly(identity);
+  if (denied) return denied;
+  const rows = await getSecureDeviceRows(client, identity, siteId);
+  if (!rows.length) return { title: "SECURE DEVICES", lines: ["No devices are available for the active site."], options: [{ id: "secure_devices", label: "Secure Device Menu" }] };
+  return {
+    title: action ? "SELECT DEVICE" : "SECURE DEVICES",
+    lines: [action ? "Choose the device you want to manage." : "Choose a device for details."],
+    options: rows.slice(0, 9).map((row: Record<string, any>) => ({
+      id: action ? "secure_action_device:" + action + ":" + row.device_identifier : "secure_info:" + row.device_identifier,
+      label: formatSecureDeviceLabel(row) + " - " + deviceSecurityState(row),
+    })),
+  };
+}
+
+export async function secureDeviceInfo(client: SupabaseClient, identity: Identity, siteId: string | null, needle: string): Promise<OutMessage> {
+  const denied = managementOnly(identity);
+  if (denied) return denied;
+  const device = await getSecureDeviceByIdentifier(client, identity, siteId, needle);
+  if (!device) return { title: "DEVICE NOT FOUND", lines: ["I could not find that device in the active site."], options: [{ id: "secure_device_list", label: "Secure Device List" }] };
+  const events = await getSecureDeviceEvents(client, identity, siteId, String(device.id));
+  const eventLines = events.length ? events.slice(0, 4).map((event: Record<string, any>) => "- " + String(event.event_type).replace(/_/g, " ") + " (" + timeAgo(event.occurred_at) + ")") : ["No recent security events."];
+  return {
+    title: "DEVICE INFO",
+    lines: [
+      "Device ID: " + (device.device_identifier ?? "Unknown"),
+      "Name: " + (device.device_name ?? "Unnamed device"),
+      "Status: " + (device.status ?? "unknown"),
+      "Kiosk: " + (device.kiosk_active ? "Locked" : "Inactive"),
+      "Security: " + deviceSecurityState(device),
+      "App Version: " + (device.app_version ?? "unknown"),
+      "Last Seen: " + timeAgo(device.last_seen_at),
+      "",
+      "Recent security events:",
+      eventLines.join("\n"),
+    ],
+    options: [
+      { id: "secure_action_device:request_device_lock:" + device.device_identifier, label: "Lock Device" },
+      { id: "secure_action_device:request_maintenance_mode:" + device.device_identifier, label: "Maintenance Mode" },
+      { id: "secure_devices", label: "Main Secure Menu" },
+    ],
   };
 }

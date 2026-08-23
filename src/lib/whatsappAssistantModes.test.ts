@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { keywordIntent } from "../../supabase/functions/whatsapp-webhook/lib/askmx";
-import { mainMenu, managementMenu } from "../../supabase/functions/whatsapp-webhook/lib/views";
+import { mainMenu, managementMenu, secureDeviceMenu } from "../../supabase/functions/whatsapp-webhook/lib/views";
 import { startFlow } from "../../supabase/functions/whatsapp-webhook/lib/flows";
 import type { Identity, SessionRow } from "../../supabase/functions/whatsapp-webhook/lib/types";
 
@@ -67,6 +67,7 @@ describe("WhatsApp assistant role menus", () => {
     expect(menu.options?.map((option) => option.id)).toContain("register_device");
     expect(menu.options?.map((option) => option.id)).toContain("add_checkpoint");
     expect(menu.options?.map((option) => option.id)).toContain("report_incident");
+    expect(menu.options?.map((option) => option.id)).toContain("secure_devices");
   });
 });
 
@@ -83,6 +84,12 @@ describe("WhatsApp assistant allowlisted intents", () => {
     expect(keywordIntent("which checkpoints were missed?")).toEqual({ action: "missed_checkpoints" });
   });
 
+
+  it("maps secure-device language to management actions", () => {
+    expect(keywordIntent("show devices with security problems")).toEqual({ action: "secure_device_problems" });
+    expect(keywordIntent("lock device MX-021")).toEqual({ action: "secure_device_action", secureAction: "request_device_lock", device: "mx-021" });
+    expect(keywordIntent("maintenance MX-043")).toEqual({ action: "secure_device_action", secureAction: "request_maintenance_mode", device: "mx-043" });
+  });
   it("maps role switching words without trusting message-provided role data", () => {
     expect(keywordIntent("management")).toEqual({ action: "management" });
     expect(keywordIntent("user")).toEqual({ action: "user" });

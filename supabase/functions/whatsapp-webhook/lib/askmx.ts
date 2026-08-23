@@ -1,3 +1,4 @@
+declare const Deno: { env: { get(key: string): string | undefined } };
 export type Intent =
   | { action: "menu" }
   | { action: "live" }

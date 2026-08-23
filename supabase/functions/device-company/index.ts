@@ -31,14 +31,32 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data, error } = await serviceClient
-      .from("devices")
-      .select("company_id, site_id, device_identifier, device_name, pairing_status")
-      .eq("device_identifier", device_identifier)
-      .eq("pairing_status", "paired")
-      .maybeSingle();
+    const runQuery = () =>
+      serviceClient
+        .from("devices")
+        .select("company_id, site_id, device_identifier, device_name, pairing_status")
+        .eq("device_identifier", device_identifier)
+        .eq("pairing_status", "paired")
+        .maybeSingle();
 
-    if (error) throw error;
+    let data: any = null;
+    let error: any = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const result = await runQuery();
+      data = result.data;
+      error = result.error;
+      // PGRST002 = PostgREST schema cache not loaded yet (backend warming up)
+      if (!error || error.code !== "PGRST002") break;
+      console.warn(`device-company schema cache not ready, retrying (${attempt + 1}/4)`);
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+
+    if (error) {
+      if (error.code === "PGRST002") {
+        return respond(false, { error: "Backend warming up, please retry", device: null }, 503);
+      }
+      throw error;
+    }
 
     if (!data?.company_id) {
       return respond(true, { device: null });

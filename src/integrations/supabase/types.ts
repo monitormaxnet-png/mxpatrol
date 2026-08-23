@@ -875,9 +875,116 @@ export type Database = {
           },
         ]
       }
+      device_request_nonces: {
+        Row: {
+          action: string
+          created_at: string
+          device_id: string
+          id: string
+          nonce: string
+          payload_hash: string | null
+          request_timestamp: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          device_id: string
+          id?: string
+          nonce: string
+          payload_hash?: string | null
+          request_timestamp: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          device_id?: string
+          id?: string
+          nonce?: string
+          payload_hash?: string | null
+          request_timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_request_nonces_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_security_events: {
+        Row: {
+          app_version: string | null
+          company_id: string
+          device_id: string | null
+          device_identifier: string | null
+          event_type: string
+          id: string
+          initiated_by: string | null
+          metadata: Json
+          occurred_at: string
+          severity: string
+          site_id: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          company_id: string
+          device_id?: string | null
+          device_identifier?: string | null
+          event_type: string
+          id?: string
+          initiated_by?: string | null
+          metadata?: Json
+          occurred_at?: string
+          severity?: string
+          site_id?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          company_id?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          event_type?: string
+          id?: string
+          initiated_by?: string | null
+          metadata?: Json
+          occurred_at?: string
+          severity?: string
+          site_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_security_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_security_events_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_security_events_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       devices: {
         Row: {
+          adb_detected: boolean
+          app_build_number: string | null
+          app_package_name: string | null
+          app_signature_sha256: string | null
           app_type: Database["public"]["Enums"]["app_type"] | null
+          app_version: string | null
           auth_token_hash: string | null
           battery_level: number | null
           company_id: string
@@ -887,19 +994,38 @@ export type Database = {
           current_gps_at: string | null
           current_gps_lat: number | null
           current_gps_lng: number | null
+          developer_mode_detected: boolean
           device_identifier: string
+          device_key_registered_at: string | null
           device_name: string | null
+          device_owner_active: boolean
           device_type: string
+          disabled_at: string | null
           enrolled_via: string | null
           guard_id: string | null
           id: string
+          installation_id: string | null
+          is_debug_build: boolean
+          kiosk_active: boolean
+          last_integrity_check_at: string | null
+          last_secure_auth_at: string | null
           last_seen_at: string | null
+          maintenance_expires_at: string | null
           metadata: Json
+          minimum_app_version: string | null
           notes: string | null
           pairing_code: string | null
           pairing_expires_at: string | null
           pairing_status: string
+          public_key: string | null
+          public_key_algorithm: string | null
           registration_date: string
+          revoked_at: string | null
+          revoked_by: string | null
+          root_risk_detected: boolean
+          secure_mode_enabled: boolean
+          secure_mode_status: string
+          secure_offline_trust_expires_at: string | null
           serial_number: string | null
           site_id: string | null
           site_location: string | null
@@ -908,7 +1034,12 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          adb_detected?: boolean
+          app_build_number?: string | null
+          app_package_name?: string | null
+          app_signature_sha256?: string | null
           app_type?: Database["public"]["Enums"]["app_type"] | null
+          app_version?: string | null
           auth_token_hash?: string | null
           battery_level?: number | null
           company_id: string
@@ -918,19 +1049,38 @@ export type Database = {
           current_gps_at?: string | null
           current_gps_lat?: number | null
           current_gps_lng?: number | null
+          developer_mode_detected?: boolean
           device_identifier: string
+          device_key_registered_at?: string | null
           device_name?: string | null
+          device_owner_active?: boolean
           device_type?: string
+          disabled_at?: string | null
           enrolled_via?: string | null
           guard_id?: string | null
           id?: string
+          installation_id?: string | null
+          is_debug_build?: boolean
+          kiosk_active?: boolean
+          last_integrity_check_at?: string | null
+          last_secure_auth_at?: string | null
           last_seen_at?: string | null
+          maintenance_expires_at?: string | null
           metadata?: Json
+          minimum_app_version?: string | null
           notes?: string | null
           pairing_code?: string | null
           pairing_expires_at?: string | null
           pairing_status?: string
+          public_key?: string | null
+          public_key_algorithm?: string | null
           registration_date?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          root_risk_detected?: boolean
+          secure_mode_enabled?: boolean
+          secure_mode_status?: string
+          secure_offline_trust_expires_at?: string | null
           serial_number?: string | null
           site_id?: string | null
           site_location?: string | null
@@ -939,7 +1089,12 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          adb_detected?: boolean
+          app_build_number?: string | null
+          app_package_name?: string | null
+          app_signature_sha256?: string | null
           app_type?: Database["public"]["Enums"]["app_type"] | null
+          app_version?: string | null
           auth_token_hash?: string | null
           battery_level?: number | null
           company_id?: string
@@ -949,19 +1104,38 @@ export type Database = {
           current_gps_at?: string | null
           current_gps_lat?: number | null
           current_gps_lng?: number | null
+          developer_mode_detected?: boolean
           device_identifier?: string
+          device_key_registered_at?: string | null
           device_name?: string | null
+          device_owner_active?: boolean
           device_type?: string
+          disabled_at?: string | null
           enrolled_via?: string | null
           guard_id?: string | null
           id?: string
+          installation_id?: string | null
+          is_debug_build?: boolean
+          kiosk_active?: boolean
+          last_integrity_check_at?: string | null
+          last_secure_auth_at?: string | null
           last_seen_at?: string | null
+          maintenance_expires_at?: string | null
           metadata?: Json
+          minimum_app_version?: string | null
           notes?: string | null
           pairing_code?: string | null
           pairing_expires_at?: string | null
           pairing_status?: string
+          public_key?: string | null
+          public_key_algorithm?: string | null
           registration_date?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          root_risk_detected?: boolean
+          secure_mode_enabled?: boolean
+          secure_mode_status?: string
+          secure_offline_trust_expires_at?: string | null
           serial_number?: string | null
           site_id?: string | null
           site_location?: string | null
@@ -3148,6 +3322,13 @@ export type Database = {
         | "update_policy"
         | "install_app"
         | "uninstall_app"
+        | "disable_device"
+        | "enable_device"
+        | "enter_maintenance"
+        | "exit_maintenance"
+        | "force_security_check"
+        | "require_app_update"
+        | "revoke_device"
       device_action:
         | "enrolled"
         | "activated"
@@ -3304,6 +3485,13 @@ export const Constants = {
         "update_policy",
         "install_app",
         "uninstall_app",
+        "disable_device",
+        "enable_device",
+        "enter_maintenance",
+        "exit_maintenance",
+        "force_security_check",
+        "require_app_update",
+        "revoke_device",
       ],
       device_action: [
         "enrolled",

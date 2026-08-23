@@ -1,4 +1,5 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+// deno-lint-ignore no-explicit-any
+type SupabaseClient = any;
 import type { Identity, OutMessage, SessionRow, SiteRow } from "./types.ts";
 import { allowedSites } from "./identity.ts";
 import { clearFlow, patchSession } from "./session.ts";

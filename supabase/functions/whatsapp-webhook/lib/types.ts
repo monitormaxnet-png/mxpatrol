@@ -20,8 +20,8 @@ export type Identity = {
   allowed_site_ids: string[];
   canManage: boolean;
   canSetup: boolean;
-  canManage: boolean;
   canAcknowledge: boolean;
+
 
 };
 

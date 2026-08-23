@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+
+-keep class com.getcapacitor.** { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keep class com.monitormaxnet.mxpatrol.secure.** { *; }
+-keepclassmembers class * { @com.getcapacitor.PluginMethod <methods>; }

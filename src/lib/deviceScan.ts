@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import type { StructuredScanResult } from "@/lib/scanResult";
+import { signSecureDevicePayload, type SecureDeviceAuth } from "@/lib/secureDevice";
 
 export type DeviceScanPayload = {
   id?: string;
@@ -23,6 +24,7 @@ export type DeviceScanPayload = {
   face_confidence?: number | null;
   is_offline_sync?: boolean;
   client_scan_id?: string | null;
+  device_auth?: SecureDeviceAuth | null;
 };
 
 export type DeviceScanResult = {
@@ -53,8 +55,10 @@ const normalizeCheckpoint = (value: unknown): DeviceScanResult["checkpoint"] => 
 };
 
 export async function saveDeviceScan(scan: DeviceScanPayload): Promise<DeviceScanResult> {
+  const deviceAuth = scan.device_auth ?? await signSecureDevicePayload("nfc_scan", scan.device_identifier, scan);
+  const requestBody = deviceAuth ? { ...scan, device_auth: deviceAuth } : scan;
   const { data, error } = await supabase.functions.invoke("device-scan", {
-    body: scan,
+    body: requestBody,
   });
 
   if (error) {

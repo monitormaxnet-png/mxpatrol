@@ -4,11 +4,16 @@ import { supabase } from "@/integrations/supabase/client";
 const DEVICE_COMPANY_CACHE_KEY = "mxpatrol_device_company";
 
 export type DeviceCompany = {
+  id?: string | null;
   companyId: string;
   siteId: string | null;
   deviceIdentifier: string;
   deviceName: string | null;
   pairingStatus: string | null;
+  secureModeEnabled?: boolean;
+  secureModeStatus?: string | null;
+  minimumAppVersion?: string | null;
+  maintenanceExpiresAt?: string | null;
 };
 
 type CachedDeviceCompany = DeviceCompany & {
@@ -26,11 +31,16 @@ const readCachedDeviceCompany = (deviceIdentifier: string): DeviceCompany | null
     if (cached.deviceIdentifier !== deviceIdentifier || !cached.companyId) return null;
 
     return {
+      id: cached.id ?? null,
       companyId: cached.companyId,
       siteId: cached.siteId ?? null,
       deviceIdentifier: cached.deviceIdentifier,
       deviceName: cached.deviceName ?? null,
       pairingStatus: cached.pairingStatus ?? null,
+      secureModeEnabled: cached.secureModeEnabled ?? false,
+      secureModeStatus: cached.secureModeStatus ?? null,
+      minimumAppVersion: cached.minimumAppVersion ?? null,
+      maintenanceExpiresAt: cached.maintenanceExpiresAt ?? null,
     };
   } catch {
     return null;
@@ -64,11 +74,16 @@ export async function resolveDeviceCompany(): Promise<DeviceCompany | null> {
     if (!device?.company_id) return null;
 
     const resolved: DeviceCompany = {
+      id: device.id ?? null,
       companyId: device.company_id,
       siteId: device.site_id ?? null,
       deviceIdentifier: device.device_identifier ?? deviceIdentifier,
       deviceName: device.device_name ?? null,
       pairingStatus: device.pairing_status ?? null,
+      secureModeEnabled: Boolean(device.secure_mode_enabled),
+      secureModeStatus: device.secure_mode_status ?? null,
+      minimumAppVersion: device.minimum_app_version ?? null,
+      maintenanceExpiresAt: device.maintenance_expires_at ?? null,
     };
 
     cacheDeviceCompany(resolved);

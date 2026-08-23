@@ -124,6 +124,20 @@ Deno.serve(async (req) => {
           status: "online",
           enrolled_via: "qr",
           last_seen_at: new Date().toISOString(),
+          public_key: device_metadata.public_key || null,
+          public_key_algorithm: device_metadata.public_key_algorithm || null,
+          device_key_registered_at: device_metadata.public_key ? new Date().toISOString() : null,
+          secure_mode_enabled: Boolean(device_metadata.public_key),
+          secure_mode_status: device_metadata.public_key ? "active" : "not_configured",
+          app_version: device_metadata.secure_device_state?.appVersion || null,
+          app_package_name: device_metadata.secure_device_state?.packageName || null,
+          app_signature_sha256: device_metadata.secure_device_state?.appSignatureSha256 || null,
+          is_debug_build: Boolean(device_metadata.secure_device_state?.isDebugBuild),
+          device_owner_active: Boolean(device_metadata.secure_device_state?.deviceOwner),
+          kiosk_active: Boolean(device_metadata.secure_device_state?.kioskActive),
+          developer_mode_detected: Boolean(device_metadata.secure_device_state?.developerModeDetected),
+          adb_detected: Boolean(device_metadata.secure_device_state?.adbDetected),
+          last_integrity_check_at: new Date().toISOString(),
         })
         .eq("id", existingDevice.id);
       if (updateErr) throw updateErr;
@@ -143,6 +157,20 @@ Deno.serve(async (req) => {
           enrolled_via: "qr",
           pairing_status: "paired",
           last_seen_at: new Date().toISOString(),
+          public_key: device_metadata.public_key || null,
+          public_key_algorithm: device_metadata.public_key_algorithm || null,
+          device_key_registered_at: device_metadata.public_key ? new Date().toISOString() : null,
+          secure_mode_enabled: Boolean(device_metadata.public_key),
+          secure_mode_status: device_metadata.public_key ? "active" : "not_configured",
+          app_version: device_metadata.secure_device_state?.appVersion || null,
+          app_package_name: device_metadata.secure_device_state?.packageName || null,
+          app_signature_sha256: device_metadata.secure_device_state?.appSignatureSha256 || null,
+          is_debug_build: Boolean(device_metadata.secure_device_state?.isDebugBuild),
+          device_owner_active: Boolean(device_metadata.secure_device_state?.deviceOwner),
+          kiosk_active: Boolean(device_metadata.secure_device_state?.kioskActive),
+          developer_mode_detected: Boolean(device_metadata.secure_device_state?.developerModeDetected),
+          adb_detected: Boolean(device_metadata.secure_device_state?.adbDetected),
+          last_integrity_check_at: new Date().toISOString(),
         })
         .select("id")
         .single();

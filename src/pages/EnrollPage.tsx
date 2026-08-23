@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useOfflineEnrollQueue } from "@/hooks/useOfflineEnrollQueue";
 import { getPatrolDeviceInfo } from "@/lib/deviceInfo";
+import { ensureSecureDeviceKey, getSecureDeviceState } from "@/lib/secureDevice";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
 
 type WizardStep = 0 | 1 | 2; // scan → confirm → success
@@ -106,6 +107,8 @@ export default function EnrollPage() {
 
   const processEnrollment = async () => {
     setProcessState("processing");
+    const secureKey = await ensureSecureDeviceKey();
+    const secureState = await getSecureDeviceState();
     const enrollPayload = {
       qr_token: scannedToken,
       device_metadata: {
@@ -116,6 +119,9 @@ export default function EnrollPage() {
         user_agent: navigator.userAgent,
         screen: `${screen.width}x${screen.height}`,
         language: navigator.language,
+        public_key: secureKey?.publicKey,
+        public_key_algorithm: secureKey?.publicKeyAlgorithm,
+        secure_device_state: secureState,
       },
     };
 
@@ -171,6 +177,8 @@ export default function EnrollPage() {
     setProcessState("processing");
 
     try {
+      const secureKey = await ensureSecureDeviceKey();
+      const secureState = await getSecureDeviceState();
       const { data, error: fnError } = await supabase.functions.invoke("device-pair", {
         body: {
           pairing_code: normalizedCode,
@@ -182,6 +190,9 @@ export default function EnrollPage() {
             model: navigator.userAgent,
             os: navigator.platform,
             nfc_enabled: true,
+            public_key: secureKey?.publicKey,
+            public_key_algorithm: secureKey?.publicKeyAlgorithm,
+            secure_device_state: secureState,
           },
         },
       });

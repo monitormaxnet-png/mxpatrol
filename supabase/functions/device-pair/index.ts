@@ -108,6 +108,24 @@ Deno.serve(async (req) => {
       if (device_metadata.device_name) updateData.device_name = device_metadata.device_name;
       if (device_metadata.imei || device_metadata.serial_number) updateData.serial_number = device_metadata.imei || device_metadata.serial_number;
       if (device_metadata.device_type) updateData.device_type = device_metadata.device_type;
+      if (device_metadata.public_key) {
+        updateData.public_key = device_metadata.public_key;
+        updateData.public_key_algorithm = device_metadata.public_key_algorithm || "ECDSA_P256_SHA256";
+        updateData.device_key_registered_at = new Date().toISOString();
+        updateData.secure_mode_enabled = true;
+        updateData.secure_mode_status = "active";
+      }
+      if (device_metadata.secure_device_state) {
+        updateData.app_version = device_metadata.secure_device_state.appVersion || null;
+        updateData.app_package_name = device_metadata.secure_device_state.packageName || null;
+        updateData.app_signature_sha256 = device_metadata.secure_device_state.appSignatureSha256 || null;
+        updateData.is_debug_build = Boolean(device_metadata.secure_device_state.isDebugBuild);
+        updateData.device_owner_active = Boolean(device_metadata.secure_device_state.deviceOwner);
+        updateData.kiosk_active = Boolean(device_metadata.secure_device_state.kioskActive);
+        updateData.developer_mode_detected = Boolean(device_metadata.secure_device_state.developerModeDetected);
+        updateData.adb_detected = Boolean(device_metadata.secure_device_state.adbDetected);
+        updateData.last_integrity_check_at = new Date().toISOString();
+      }
       const notes = [
         device_metadata.model && `Model: ${device_metadata.model}`,
         device_metadata.os && `OS: ${device_metadata.os}`,

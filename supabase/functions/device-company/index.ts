@@ -9,7 +9,7 @@ const corsHeaders = {
 function respond(ok: boolean, payload: Record<string, unknown>, status = 200): Response {
   return new Response(
     JSON.stringify({ ok, ...payload }),
-    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 }
 
@@ -28,20 +28,20 @@ Deno.serve(async (req) => {
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
     const runQuery = () =>
       serviceClient
         .from("devices")
-        .select("company_id, site_id, device_identifier, device_name, pairing_status")
+        .select("id, company_id, site_id, device_identifier, device_name, pairing_status, secure_mode_enabled, secure_mode_status, minimum_app_version, maintenance_expires_at")
         .eq("device_identifier", device_identifier)
         .eq("pairing_status", "paired")
         .maybeSingle();
 
     let data: any = null;
     let error: any = null;
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
       const result = await runQuery();
       data = result.data;
       error = result.error;
@@ -64,11 +64,16 @@ Deno.serve(async (req) => {
 
     return respond(true, {
       device: {
+        id: data.id,
         company_id: data.company_id,
         site_id: data.site_id ?? null,
         device_identifier: data.device_identifier,
         device_name: data.device_name ?? null,
         pairing_status: data.pairing_status ?? null,
+        secure_mode_enabled: data.secure_mode_enabled ?? false,
+        secure_mode_status: data.secure_mode_status ?? "not_configured",
+        minimum_app_version: data.minimum_app_version ?? null,
+        maintenance_expires_at: data.maintenance_expires_at ?? null,
       },
     });
   } catch (err: any) {
@@ -76,7 +81,3 @@ Deno.serve(async (req) => {
     return respond(false, { error: err.message || "Internal server error" }, 500);
   }
 });
-
-
-
-

@@ -36,6 +36,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import com.getcapacitor.BridgeActivity;
+import com.monitormaxnet.mxpatrol.secure.SecureDevicePlugin;
 
 import org.json.JSONException;
 import org.json.JSONObject;

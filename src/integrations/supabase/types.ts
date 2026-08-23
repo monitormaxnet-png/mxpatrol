@@ -3322,6 +3322,13 @@ export type Database = {
         | "update_policy"
         | "install_app"
         | "uninstall_app"
+        | "disable_device"
+        | "enable_device"
+        | "enter_maintenance"
+        | "exit_maintenance"
+        | "force_security_check"
+        | "require_app_update"
+        | "revoke_device"
       device_action:
         | "enrolled"
         | "activated"
@@ -3478,6 +3485,13 @@ export const Constants = {
         "update_policy",
         "install_app",
         "uninstall_app",
+        "disable_device",
+        "enable_device",
+        "enter_maintenance",
+        "exit_maintenance",
+        "force_security_check",
+        "require_app_update",
+        "revoke_device",
       ],
       device_action: [
         "enrolled",

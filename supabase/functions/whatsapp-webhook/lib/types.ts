@@ -19,7 +19,9 @@ export type Identity = {
   role: Role;
   allowed_site_ids: string[];
   canSetup: boolean;
+  canManage: boolean;
   canAcknowledge: boolean;
+
 };
 
 export type SessionRow = {

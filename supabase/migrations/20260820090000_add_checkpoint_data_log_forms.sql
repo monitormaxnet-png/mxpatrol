@@ -422,3 +422,10 @@ REVOKE ALL ON FUNCTION public.submit_data_log_submission(uuid, jsonb, uuid) FROM
 GRANT EXECUTE ON FUNCTION public.submit_data_log_submission(uuid, jsonb, uuid) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION public.match_scan_to_patrol_session(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.match_scan_to_patrol_session(uuid) TO service_role;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.data_log_forms TO authenticated;
+GRANT ALL ON public.data_log_forms TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.data_log_form_fields TO authenticated;
+GRANT ALL ON public.data_log_form_fields TO service_role;
+GRANT SELECT, INSERT ON public.data_log_submissions TO authenticated;
+GRANT ALL ON public.data_log_submissions TO service_role;

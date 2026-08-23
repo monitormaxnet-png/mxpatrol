@@ -109,7 +109,6 @@ export async function liveNow(
       { id: "patrols", label: "View Active Patrols" },
       { id: "devices", label: "View Devices" },
       { id: "secure_devices", label: "Secure Patrol Devices" },
-      { id: "secure_devices", label: "Secure Patrol Devices" },
       { id: "attention", label: "View Live Problems" },
     ],
   };
@@ -157,7 +156,6 @@ export async function activePatrols(
     lines: [lines.join("\n\n")],
     options: [
       { id: "devices", label: "View Devices" },
-      { id: "secure_devices", label: "Secure Patrol Devices" },
       { id: "secure_devices", label: "Secure Patrol Devices" },
       { id: "attention", label: "Problems" },
       { id: "menu", label: "Main Menu" },

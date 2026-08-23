@@ -71,13 +71,13 @@ create index if not exists device_security_events_company_site_time_idx
 alter table public.device_request_nonces enable row level security;
 alter table public.device_security_events enable row level security;
 
-drop policy if exists  Company members can view device security events on public.device_security_events;
-create policy Company members can view device security events
+drop policy if exists "Company members can view device security events" on public.device_security_events;
+create policy "Company members can view device security events"
   on public.device_security_events for select
   using (company_id in (select profiles.company_id from public.profiles where profiles.id = auth.uid()));
 
-drop policy if exists Company admins can manage device security events on public.device_security_events;
-create policy Company admins can manage device security events
+drop policy if exists "Company admins can manage device security events" on public.device_security_events;
+create policy "Company admins can manage device security events"
   on public.device_security_events for all
   using (company_id in (select profiles.company_id from public.profiles where profiles.id = auth.uid()))
   with check (company_id in (select profiles.company_id from public.profiles where profiles.id = auth.uid()));

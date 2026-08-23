@@ -5,6 +5,7 @@ import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useSites } from "@/hooks/useSites";
+import { LiveSecureDeviceManagementPanel } from "@/components/command-center/LiveSecureDeviceManagementPanel";
 
 type IconComponent = ComponentType<{ className?: string }>;
 type Tone = "green" | "blue" | "amber" | "red" | "neutral";
@@ -45,7 +46,8 @@ export default function CommandCenter() {
     const names = sites.map((site) => site.name).filter(Boolean);
     return names.length ? names : ["Airport Junction", "Main Gate Complex", "Warehouse A"];
   }, [sites]);
-  return <div className="min-h-screen overflow-hidden bg-[#030811] text-white"><div className="mx-auto min-h-screen max-w-[1320px] px-3 py-3 sm:px-4"><WebViewBar /><div className="grid min-h-[calc(100vh-5.25rem)] overflow-hidden rounded-2xl border border-cyan-400/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.13),transparent_30%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_32%),linear-gradient(145deg,rgba(2,6,23,0.96),rgba(3,12,24,0.98))] shadow-[0_0_55px_rgba(14,165,233,0.10)] lg:grid-cols-[22rem_1fr]"><ManagementAssistantPanel canManage={canManage} role={role} open={managementOpen} onToggle={() => setManagementOpen((value) => !value)} /><main className="min-w-0 border-t border-cyan-400/15 lg:border-l lg:border-t-0"><TopHeader selectedSite={selectedSite} siteChoices={siteChoices} onSiteChange={setSelectedSite} userLabel={user?.email ?? "Site Supervisor"} /><div className="space-y-3 p-3 sm:p-4"><DashboardGrid />{canManage ? <SecureDeviceManagementPanel selectedSite={selectedSite} /> : null}{canManage ? <DataLogFormWorkflow selectedSite={selectedSite} /> : null}<LiveMapOverview selectedSite={selectedSite} /><UserAssistantChat selectedSite={selectedSite} message={message} onMessageChange={setMessage} /></div></main></div></div></div>;
+  const selectedSiteId = sites.find((site) => site.name === selectedSite)?.id ?? null;
+  return <div className="min-h-screen overflow-hidden bg-[#030811] text-white"><div className="mx-auto min-h-screen max-w-[1320px] px-3 py-3 sm:px-4"><WebViewBar /><div className="grid min-h-[calc(100vh-5.25rem)] overflow-hidden rounded-2xl border border-cyan-400/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.13),transparent_30%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_32%),linear-gradient(145deg,rgba(2,6,23,0.96),rgba(3,12,24,0.98))] shadow-[0_0_55px_rgba(14,165,233,0.10)] lg:grid-cols-[22rem_1fr]"><ManagementAssistantPanel canManage={canManage} role={role} open={managementOpen} onToggle={() => setManagementOpen((value) => !value)} /><main className="min-w-0 border-t border-cyan-400/15 lg:border-l lg:border-t-0"><TopHeader selectedSite={selectedSite} siteChoices={siteChoices} onSiteChange={setSelectedSite} userLabel={user?.email ?? "Site Supervisor"} /><div className="space-y-3 p-3 sm:p-4"><DashboardGrid />{canManage ? <LiveSecureDeviceManagementPanel selectedSite={selectedSite} siteId={selectedSiteId} /> : null}{canManage ? <DataLogFormWorkflow selectedSite={selectedSite} /> : null}<LiveMapOverview selectedSite={selectedSite} /><UserAssistantChat selectedSite={selectedSite} message={message} onMessageChange={setMessage} /></div></main></div></div></div>;
 }
 
 function WebViewBar() {

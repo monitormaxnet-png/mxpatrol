@@ -19,7 +19,7 @@ describe("WhatsApp webhook request parsing", () => {
       new Request("https://example.test/functions/v1/whatsapp-webhook", {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: form,
+        body: form.toString(),
       }),
     );
 
@@ -47,7 +47,7 @@ describe("WhatsApp webhook request parsing", () => {
       new Request("https://example.test/functions/v1/whatsapp-webhook", {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: form,
+        body: form.toString(),
       }),
     );
 

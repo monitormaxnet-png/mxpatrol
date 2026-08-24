@@ -615,12 +615,14 @@ export async function patrolStatusView(
   );
   const rows = (data ?? []) as any[];
   const title = group === "completed" ? "COMPLETED PATROLS" : group === "incomplete" ? "INCOMPLETE PATROLS" : group === "late" ? "LATE / DELAYED PATROLS" : "MISSED PATROLS";
-  if (!rows.length) return { title, lines: ["No matching patrols for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
+  const backOptions = [{ id: "patrol_status", label: "Patrol Status" }, { id: "menu", label: "Main Menu" }];
+  if (!rows.length) return { title, lines: ["No matching patrols for the active site."], options: backOptions };
   return {
     title,
     lines: [rows.map((row, index) => formatPatrolStatusRow(row, index, group)).join("\n\n")],
-    options: [{ id: "menu", label: "Main Menu" }],
+    options: backOptions,
   };
+
 }
 
 /** Exported for tests: every patrol line carries the canonical scheduled time. */

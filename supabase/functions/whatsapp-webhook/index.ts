@@ -26,7 +26,7 @@ import {
   secureDeviceList,
   secureDeviceMenu,
   secureDeviceProblems,
-  secureDeviceStatus,,
+  secureDeviceStatus,
   MANAGEMENT_HOME_KEY,
   WA_SUBMENUS,
   backTarget,

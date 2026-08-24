@@ -183,13 +183,14 @@ const MANAGEMENT_ONLY_ACTIONS = new Set([
   'create_schedule',
   'pending_nfc',
   'generate_report',
-  'patrol_status',
+  
   'routes',
   'schedules',
 ]);
 
 /** Natural-language intents. Evaluated only for non-numeric input, so menu numbers never fall through. */
 const NL_INTENTS: Array<[RegExp, string]> = [
+  [/patrol\s+status/, 'menu:patrol_status'],
   [/(missed\s+checkpoint|checkpoint.*miss)/, 'missed_checkpoints'],
   [/missed\s+patrol/, 'missed_patrols'],
   [/(late|delayed)\s+patrol/, 'late_patrols'],
@@ -236,6 +237,7 @@ function applyAction(state: RouterState, action: string, canManage: boolean): Re
   if (action.startsWith('menu:')) {
     let key = action.slice(5);
     if (key === 'reports') key = state.mode === 'management' ? 'management_reports' : 'user_reports';
+    if (key === 'patrol_status') key = state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status';
     if (!ASSISTANT_MENUS[key]) return { kind: 'unknown', state };
     if (key.startsWith('management_') && !canManage) return { kind: 'denied', state, action: key };
     const next = { ...state, activeMenu: key };

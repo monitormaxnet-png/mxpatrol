@@ -361,19 +361,32 @@ export async function attachDeviceByCode(client: SupabaseClient, actor: Manageme
 
 export type PendingFormInput = {
   name: string;
-  form_type: string;
-  fields: Array<{ label: string; field_type: string; required?: boolean; sequence_order?: number }>;
+  form_type?: string;
+  fields: unknown;
 };
 
+/**
+ * Creates a Data Log Form + its fields. If field insertion fails the form is
+ * removed again so no orphan form can survive a failed checkpoint registration.
+ */
 async function createDataLogForm(client: SupabaseClient, actor: ManagementActor, siteId: string, pending: PendingFormInput) {
+  let fields: NormalizedFormField[];
+  try {
+    fields = normalizeFormFields(pending?.fields);
+  } catch (error) {
+    throw new ManagementActionError(error instanceof Error ? error.message : "Invalid Data Log Form fields", 400);
+  }
+  const formName = text(pending?.name, "Form name", { min: 2, max: 120 });
+  const formType = normalizeFormType(pending?.form_type, fields);
+
   const { data: form, error } = await client
     .from("data_log_forms")
     .insert({
       company_id: actor.company_id,
       site_id: siteId,
-      name: text(pending.name, "Form name", { max: 120 }),
+      name: formName,
       description: "Created by the MX Patrol Management AI during checkpoint registration",
-      form_type: pending.form_type,
+      form_type: formType,
       created_by: actor.user_id ?? null,
       is_active: true,
     })
@@ -382,25 +395,31 @@ async function createDataLogForm(client: SupabaseClient, actor: ManagementActor,
   if (error) throw new ManagementActionError(error.message, 500);
   if (!form?.id) throw new ManagementActionError("Data Log Form was not created", 500);
 
-  const rows = (pending.fields ?? []).map((field, index) => ({
+  const rows = fields.map((field) => ({
     form_id: form.id,
     company_id: actor.company_id,
     label: field.label,
     field_type: field.field_type,
-    required: field.required ?? false,
-    sequence_order: field.sequence_order ?? index + 1,
-    options_json: [],
+    required: field.required,
+    sequence_order: field.sequence_order,
+    placeholder: field.placeholder,
+    options_json: field.options_json,
     config_json: {},
     is_active: true,
   }));
-  if (rows.length) {
-    const { error: fieldError } = await client.from("data_log_form_fields").insert(rows);
-    if (fieldError) {
-      await client.from("data_log_forms").delete().eq("id", form.id);
-      throw new ManagementActionError(fieldError.message, 500);
-    }
+
+  const { error: fieldError } = await client.from("data_log_form_fields").insert(rows);
+  if (fieldError) {
+    await client.from("data_log_form_fields").delete().eq("form_id", form.id);
+    await client.from("data_log_forms").delete().eq("id", form.id).eq("company_id", actor.company_id);
+    throw new ManagementActionError(fieldError.message, 500);
   }
-  return { id: form.id as string, name: form.name as string, field_count: rows.length };
+  return { id: form.id as string, name: form.name as string, form_type: formType, field_count: rows.length };
+}
+
+async function rollbackForm(client: SupabaseClient, actor: ManagementActor, formId: string) {
+  await client.from("data_log_form_fields").delete().eq("form_id", formId);
+  await client.from("data_log_forms").delete().eq("id", formId).eq("company_id", actor.company_id);
 }
 
 export async function createCheckpoint(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
@@ -430,19 +449,33 @@ export async function createCheckpoint(client: SupabaseClient, actor: Management
   }
 
   let form: { id: string; name: string; field_count: number } | null = null;
+  let createdFormId: string | null = null;
   let formId = typeof input.data_log_form_id === "string" && input.data_log_form_id ? input.data_log_form_id : null;
+
   if (input.new_form) {
+    if (formId) throw new ManagementActionError("Choose either an existing Data Log Form or a new one, not both");
     form = await createDataLogForm(client, actor, site.id, input.new_form as PendingFormInput);
+    createdFormId = form.id;
     formId = form.id;
   } else if (formId) {
-    const { data: existingForm } = await client
+    // Tenant + site scope: company must match and the form must be global or
+    // belong to the active site. Never allow attaching another tenant's form.
+    const { data: existingForm, error: formError } = await client
       .from("data_log_forms")
-      .select("id, name")
+      .select("id, name, site_id, is_active, data_log_form_fields(id)")
       .eq("company_id", actor.company_id)
       .eq("id", formId)
       .maybeSingle();
-    if (!existingForm) throw new ManagementActionError("Selected Data Log Form was not found", 404);
-    form = { id: existingForm.id, name: existingForm.name, field_count: 0 };
+    if (formError) throw new ManagementActionError(formError.message, 500);
+    if (!existingForm || existingForm.is_active === false) {
+      throw new ManagementActionError("Selected Data Log Form was not found", 404);
+    }
+    if (existingForm.site_id && existingForm.site_id !== site.id) {
+      throw new ManagementActionError("That Data Log Form belongs to another site", 403);
+    }
+    const fieldCount = Array.isArray(existingForm.data_log_form_fields) ? existingForm.data_log_form_fields.length : 0;
+    if (!fieldCount) throw new ManagementActionError("That Data Log Form has no fields yet, so it cannot be attached", 400);
+    form = { id: existingForm.id, name: existingForm.name, field_count: fieldCount };
   }
 
   const { data, error } = await client
@@ -461,13 +494,21 @@ export async function createCheckpoint(client: SupabaseClient, actor: Management
     .select("id, name, nfc_tag_id, data_log_form_id, site_id")
     .maybeSingle();
 
-  if (error) {
-    if (form && input.new_form) await client.from("data_log_forms").delete().eq("id", form.id);
-    throw new ManagementActionError(error.message, 500);
+  if (error || !data) {
+    if (createdFormId) await rollbackForm(client, actor, createdFormId);
+    throw new ManagementActionError(error?.message ?? "Checkpoint could not be created", 500);
   }
-  if (!data) throw new ManagementActionError("Checkpoint could not be created", 500);
+
+  // The checkpoint must never be reported as created without its form relation.
+  if (formId && data.data_log_form_id !== formId) {
+    await client.from("checkpoints").delete().eq("id", data.id).eq("company_id", actor.company_id);
+    if (createdFormId) await rollbackForm(client, actor, createdFormId);
+    throw new ManagementActionError("Data Log Form could not be attached to the checkpoint", 500);
+  }
+
   return checkpointResult(data, site, form, false);
 }
+
 
 function checkpointResult(
   row: Record<string, any>,

@@ -26,6 +26,15 @@ import {
   describePatrol,
   type AssistantPatrolRow,
 } from '@/lib/assistantPatrolFormat';
+import {
+  advanceWorkflow,
+  isWorkflowAction,
+  startWorkflow,
+  type WorkflowContext,
+  type WorkflowOption,
+  type WorkflowReply,
+  type WorkflowState,
+} from '@/lib/assistantWorkflows';
 
 type Message = { id: number; from: 'assistant' | 'user'; title?: string; body: ReactNode };
 type SessionRow = AssistantPatrolRow & { patrol_routes?: { name: string } | null; patrol_templates?: { name: string } | null; sites?: { name: string } | null };
@@ -66,6 +75,7 @@ export default function CommandCenter() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inlinePanel, setInlinePanel] = useState<ReactNode | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<null | { label: string; run: () => Promise<void> }>(null);
+  const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
 
   const activeSite = sites.find((site) => site.id === state.activeSiteId) ?? sites[0] ?? null;
   const selectedSiteId = activeSite?.id ?? null;
@@ -78,6 +88,21 @@ export default function CommandCenter() {
   const scans = useScanLogs(selectedSiteId ?? 'all');
   const checkpoints = useCheckpoints(selectedSiteId ?? 'all');
   const reportJobs = useReportJobs();
+
+  const configOptions = useQuery({
+    queryKey: ['assistant_workflow_options', selectedSiteId],
+    enabled: !!selectedSiteId && canManage,
+    queryFn: async () => {
+      const [routes, forms] = await Promise.all([
+        supabase.from('patrol_routes').select('id, name').eq('site_id', selectedSiteId!).eq('status', 'active').order('name'),
+        supabase.from('data_log_forms').select('id, name').eq('is_active', true).order('name'),
+      ]);
+      if (routes.error) throw routes.error;
+      if (forms.error) throw forms.error;
+      return { routes: routes.data ?? [], forms: forms.data ?? [] };
+    },
+  });
+
 
   const patrols = useQuery({
     queryKey: ['assistant_patrol_sessions', selectedSiteId],
@@ -119,6 +144,65 @@ export default function CommandCenter() {
 
   const addAssistant = (title: string, body: ReactNode) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'assistant', title, body }]);
   const addUser = (body: string) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'user', body }]);
+
+  const workflowContext: WorkflowContext = useMemo(() => ({
+    siteId: selectedSiteId,
+    siteName: selectedSite,
+    canManage,
+    checkpoints: ((checkpoints.data ?? []) as any[]).map((row) => ({ id: String(row.id), name: String(row.name) })),
+    routes: (configOptions.data?.routes ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name) })),
+    forms: (configOptions.data?.forms ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name) })),
+  }), [selectedSiteId, selectedSite, canManage, checkpoints.data, configOptions.data]);
+
+  /** Runs the canonical management service shared with the WhatsApp Management AI. */
+  const runManagementAction = async (payload: { action: string; input: Record<string, unknown> }) => {
+    const { data, error } = await supabase.functions.invoke('management-actions', { body: payload });
+    if (error) {
+      let detail = error.message;
+      const context = (error as any)?.context;
+      if (context && typeof context.text === 'function') {
+        const raw = await context.text().catch(() => '');
+        try { detail = JSON.parse(raw)?.error ?? detail; } catch { detail = raw || detail; }
+      }
+      throw new Error(detail);
+    }
+    if ((data as any)?.error) throw new Error((data as any).error);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['devices'] }),
+      queryClient.invalidateQueries({ queryKey: ['incidents'] }),
+      queryClient.invalidateQueries({ queryKey: ['checkpoints'] }),
+      queryClient.invalidateQueries({ queryKey: ['assistant_config'] }),
+      queryClient.invalidateQueries({ queryKey: ['assistant_workflow_options'] }),
+    ]);
+    return data as { summary: string; duplicate: boolean; record: Record<string, unknown> };
+  };
+
+  const showWorkflowReply = (reply: WorkflowReply) => {
+    if (reply.kind === 'cancelled' || reply.kind === 'denied') {
+      setWorkflow(null);
+      return addAssistant(reply.title, <WorkflowBody lines={reply.lines} />);
+    }
+    if (reply.kind === 'confirm') {
+      setWorkflow(reply.state);
+      setPendingConfirm({
+        label: 'Save this record to MX Patrol?',
+        run: async () => {
+          const result = await runManagementAction(reply.payload);
+          setWorkflow(null);
+          addAssistant(result.duplicate ? 'ALREADY SAVED' : 'SAVED', (
+            <div>
+              <p>{result.summary}</p>
+              <p className='mt-2 text-slate-400'>Reference: {String(result.record?.reference ?? result.record?.id ?? '')}</p>
+            </div>
+          ));
+        },
+      });
+      return addAssistant(reply.title, <WorkflowBody lines={reply.lines} />);
+    }
+    setWorkflow(reply.state);
+    return addAssistant(reply.title, <WorkflowBody lines={reply.lines} options={reply.options} />);
+  };
+
 
   const showMenu = (key: string) => {
     const node = menuNode(key);
@@ -195,8 +279,9 @@ export default function CommandCenter() {
       setInlinePanel(<LiveSecureDeviceManagementPanel selectedSite={selectedSite} siteId={selectedSiteId} />);
       return addAssistant('SECURE PATROL DEVICES', <p>Secure device controls are open below. Every command requires confirmation and is queued by the backend.</p>);
     }
-    if (['register_device', 'register_checkpoint', 'register_incident', 'create_patrol', 'create_route', 'create_schedule'].includes(action)) {
-      return addAssistant(action.replace(/_/g, ' ').toUpperCase(), <InlineWorkflow title='Guided management workflow' steps={WORKFLOW_STEPS[action] ?? ['Details', 'Confirm']} />);
+    if (isWorkflowAction(action)) {
+      if (!canManage) return addAssistant('MANAGEMENT ACCESS REQUIRED', <p>Your account ({role}) does not have permission for management actions.</p>);
+      return showWorkflowReply(startWorkflow(action, workflowContext));
     }
     return showMenu(state.activeMenu);
   };
@@ -215,9 +300,15 @@ export default function CommandCenter() {
     }
     if (pendingConfirm && /^(no|cancel)$/i.test(text)) {
       setPendingConfirm(null);
-      addAssistant('CANCELLED', <p>Nothing was changed.</p>);
+      setWorkflow(null);
+      addAssistant('CANCELLED', <p>Nothing was changed. No partial record was created.</p>);
       return;
     }
+
+    if (workflow) {
+      return showWorkflowReply(advanceWorkflow(workflow, text, workflowContext));
+    }
+
 
     const result = resolveAssistantInput(state, text, { canManage });
     setState(result.state);
@@ -241,14 +332,16 @@ export default function CommandCenter() {
   return <div className='min-h-screen bg-[#030811] text-white'><div className='mx-auto flex min-h-screen max-w-6xl flex-col px-3 py-3 sm:px-4'><header className='mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-400/20 bg-slate-950/80 px-4 py-3'><TTechMxPatrolLogo variant='header' priority className='w-44' /><div className='flex flex-wrap items-center gap-2'><label className='flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-100'><MapPin className='h-4 w-4' /><select value={selectedSiteId ?? ''} onChange={(event) => setState((prev) => ({ ...prev, activeSiteId: event.target.value }))} className='bg-transparent font-semibold outline-none'>{sites.map((site) => <option key={site.id} value={site.id} className='bg-slate-950'>{site.name}</option>)}</select></label><span className='inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 text-sm font-semibold text-emerald-200'><span className='h-2 w-2 rounded-full bg-emerald-400' /> Online</span><span className='inline-flex h-10 items-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 text-sm font-semibold text-cyan-100'>{mode === 'management' ? <UserCog className='h-4 w-4' /> : <Bot className='h-4 w-4' />}{mode === 'management' ? 'Management' : 'User AI'}</span></div></header><main className='flex min-h-0 flex-1 flex-col rounded-2xl border border-cyan-400/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_30%),linear-gradient(145deg,rgba(2,6,23,0.96),rgba(3,12,24,0.98))]'><section className='border-b border-cyan-400/15 p-4'><p className='text-xs font-black uppercase tracking-[0.16em] text-emerald-300'>{mode === 'management' ? 'Management Web AI Assistant' : 'User Web AI Assistant'}</p><h1 className='mt-2 text-2xl font-black'>{mode === 'management' ? 'Authorized management access' : 'Ask MX Patrol what you need'}</h1><p className='mt-1 text-sm text-slate-400'>Signed in as {user?.email ?? role}. Active site: {selectedSite}.</p></section><section className='grid flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]'><div className='flex min-h-[34rem] flex-col rounded-2xl border border-white/10 bg-slate-950/60'><div className='flex-1 space-y-3 overflow-y-auto p-4'><AssistantBubble title={homeNode.title}><MenuView site={selectedSite} node={homeNode} /></AssistantBubble>{messages.map((message) => message.from === 'user' ? <UserBubble key={message.id}>{message.body}</UserBubble> : <AssistantBubble key={message.id} title={message.title ?? 'MX PATROL'}>{message.body}</AssistantBubble>)}{pendingConfirm ? <div className='rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-100'><p className='font-bold'>{pendingConfirm.label}</p><div className='mt-2 flex gap-2'><button type='button' onClick={() => submit('confirm')} className='rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 font-semibold text-emerald-200'>Confirm</button><button type='button' onClick={() => submit('cancel')} className='rounded-xl border border-white/10 px-3 py-2 font-semibold text-slate-300'>Cancel</button></div></div> : null}{inlinePanel ? <div className='rounded-2xl border border-emerald-400/25'>{inlinePanel}</div> : null}</div><div className='border-t border-white/10 p-3'><div className='flex items-center gap-3'><input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit(); }} className='h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-4 text-sm text-white outline-none placeholder:text-slate-500' placeholder={mode === 'management' ? 'Type a number or management command...' : 'Type a number or ask MX Patrol...'} /><button onClick={() => submit()} className='flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]' aria-label='Send'><Send className='h-5 w-5' /></button></div><p className='mt-2 text-center text-[11px] text-slate-500'>Reply with the number shown in the current menu. Type back, menu or cancel any time.</p></div></div><aside className='space-y-3'>{mode === 'management' || canManage ? <Shortcut onClick={switchMode} icon={mode === 'management' ? Bot : Lock} label={mode === 'management' ? 'User Assistant' : 'Management'} /> : null}<Shortcut onClick={() => submit('live now')} icon={ShieldCheck} label='Live Now' /><Shortcut onClick={() => submit('which devices are offline')} icon={Smartphone} label='Offline Devices' /><Shortcut onClick={() => { setInlinePanel(null); submit('menu'); }} icon={X} label='Close Inline Panel' /><div className='rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-sm text-slate-300'><p className='font-black uppercase tracking-[0.12em] text-emerald-300'>Hidden system</p><p className='mt-2 leading-6'>Dashboard, map, patrols, routes, schedules and admin tools stay behind assistant actions.</p></div></aside></section></main></div></div>;
 }
 
-const WORKFLOW_STEPS: Record<string, string[]> = {
-  register_device: ['Device Name', 'Device Identifier', 'Site', 'Confirm'],
-  register_checkpoint: ['Checkpoint Name', 'Zone / Location', 'NFC Assignment', 'Data Log Form', 'Confirm'],
-  register_incident: ['Incident Type', 'Severity', 'Location', 'Description', 'Confirm'],
-  create_patrol: ['Template Name', 'Site', 'Description', 'Confirm'],
-  create_route: ['Route Name', 'Checkpoints', 'Sequence', 'Confirm'],
-  create_schedule: ['Route', 'Frequency', 'Start / End Time', 'Days', 'Confirm'],
-};
+function WorkflowBody({ lines, options }: { lines: string[]; options?: WorkflowOption[] }) {
+  return (
+    <div>
+      {lines.map((line, index) => <p key={line + index} className={index === 0 ? '' : 'mt-1'}>{line}</p>)}
+      {options?.length ? <NumberList items={options.map((option) => option.label)} /> : null}
+      <p className='mt-3 text-[11px] uppercase tracking-[0.12em] text-slate-500'>Type cancel to abandon this workflow.</p>
+    </div>
+  );
+}
+
 
 function filterPatrols(rows: AssistantPatrolRow[], group: keyof typeof PATROL_STATUS_GROUPS) {
   const statuses = PATROL_STATUS_GROUPS[group] as readonly string[];
@@ -327,4 +420,3 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` · ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` · ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
 
-function InlineWorkflow({ title, steps }: { title: string; steps: string[] }) { return <div><p className='font-bold text-emerald-200'>{title}</p><NumberList items={steps} /><p className='mt-3 text-amber-200'>Management writes require confirmation before saving.</p></div>; }

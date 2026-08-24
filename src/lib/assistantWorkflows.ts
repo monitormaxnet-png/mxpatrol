@@ -129,6 +129,186 @@ function choiceStep(key: string, title: string, prompt: string, options: Workflo
   };
 }
 
+/* ---------------------- checkpoint + data log form flow -------------------- */
+
+export type DraftFormField = { label: string; field_type: string; required: boolean; options_json: string[]; sequence_order: number };
+
+/** Rebuild the ordered field list from the per-field answers held in workflow data. */
+export function collectDraftFields(data: Record<string, unknown>): DraftFormField[] {
+  const fields: DraftFormField[] = [];
+  for (let index = 0; ; index += 1) {
+    const label = data[`f${index}_label`];
+    const type = data[`f${index}_type`];
+    if (typeof label !== 'string' || typeof type !== 'string') break;
+    fields.push({
+      label,
+      field_type: type,
+      required: data[`f${index}_required`] === 'yes',
+      options_json: Array.isArray(data[`f${index}_options`]) ? (data[`f${index}_options`] as string[]) : [],
+      sequence_order: fields.length + 1,
+    });
+  }
+  return fields;
+}
+
+const FIELD_TYPE_LINES = DATA_LOG_FIELD_TYPES.map((type, index) => `${index + 1}. ${type.label}`);
+
+function fieldLabelStep(index: number): StepDef {
+  return {
+    key: `f${index}_label`,
+    title: `Field ${index + 1} label`,
+    prompt: () => [`What should field ${index + 1} be called? e.g. Door locked?`],
+    parse: (input) => {
+      const value = input.trim();
+      if (value.length < 2) return { ok: false, error: 'Field labels need at least 2 characters.' };
+      return { ok: true, patch: { [`f${index}_label`]: value.slice(0, 120) } };
+    },
+  };
+}
+
+function fieldTypeStep(index: number): StepDef {
+  return {
+    key: `f${index}_type`,
+    title: `Field ${index + 1} type`,
+    prompt: (_ctx, data) => [`Field type for "${data[`f${index}_label`]}"?`, ...FIELD_TYPE_LINES],
+    options: () => DATA_LOG_FIELD_TYPES.map((type) => ({ id: type.id, label: type.label })),
+    parse: (input) => {
+      const type = pickFieldType(input);
+      if (!type) return { ok: false, error: 'Reply with one of the field type numbers listed.' };
+      return { ok: true, patch: { [`f${index}_type`]: type.id } };
+    },
+  };
+}
+
+function fieldOptionsStep(index: number): StepDef {
+  return {
+    key: `f${index}_options`,
+    title: `Field ${index + 1} options`,
+    prompt: () => ['List the choices separated by commas, e.g. Clear, Minor issue, Escalate'],
+    parse: (input) => {
+      const options = parseFieldOptions(input);
+      if (options.length < 2) return { ok: false, error: 'Provide at least two comma-separated options.' };
+      return { ok: true, patch: { [`f${index}_options`]: options } };
+    },
+  };
+}
+
+function fieldRequiredStep(index: number): StepDef {
+  const options: WorkflowOption[] = [{ id: 'yes', label: 'Required' }, { id: 'no', label: 'Optional' }];
+  return {
+    key: `f${index}_required`,
+    title: `Field ${index + 1} required?`,
+    prompt: (_ctx, data) => [`Is "${data[`f${index}_label`]}" required?`],
+    options: () => options,
+    parse: (input) => {
+      const option = pickOption(input, options);
+      if (!option) return { ok: false, error: 'Reply 1 for required or 2 for optional.' };
+      return { ok: true, patch: { [`f${index}_required`]: option.id } };
+    },
+  };
+}
+
+function fieldMoreStep(index: number): StepDef {
+  const options: WorkflowOption[] = [{ id: 'yes', label: 'Add another field' }, { id: 'no', label: 'Done, continue' }];
+  return {
+    key: `f${index}_more`,
+    title: 'Add another field?',
+    prompt: (_ctx, data) => [`${collectDraftFields(data).length} field(s) captured. Add another field?`],
+    options: () => options,
+    parse: (input) => {
+      const option = pickOption(input, options);
+      if (!option) return { ok: false, error: 'Reply 1 to add another field or 2 to continue.' };
+      return { ok: true, patch: { [`f${index}_more`]: option.id } };
+    },
+  };
+}
+
+function dataLogChoiceOptions(ctx: WorkflowContext): WorkflowOption[] {
+  return [
+    { id: 'none', label: 'No Data Log Form' },
+    ...(ctx.forms.length ? [{ id: 'existing', label: 'Choose an existing form' }] : []),
+    { id: 'new_form', label: 'Create a new Data Log Form' },
+  ];
+}
+
+function checkpointSteps(data: Record<string, unknown>, ctx: WorkflowContext): StepDef[] {
+  const steps: StepDef[] = [
+    textStep('name', 'Checkpoint name', 'What should this checkpoint be called?', { min: 2, max: 80 }),
+    textStep('location_note', 'Zone / location', 'Which zone or location is it in?', { min: 2, max: 120 }),
+    {
+      key: 'nfc_tag_id',
+      title: 'NFC assignment',
+      prompt: () => ['Send the NFC tag UID for this checkpoint, or reply *later* to register it with pending NFC assignment.'],
+      parse: (input) => {
+        const value = input.trim().toLowerCase();
+        if (['later', 'skip', 'pending', 'none'].includes(value)) return { ok: true, patch: { nfc_tag_id: '' } };
+        const uid = value.replace(/[^a-f0-9]/g, '');
+        if (uid.length < 6) return { ok: false, error: 'That does not look like an NFC UID. Send the UID, or reply *later*.' };
+        return { ok: true, patch: { nfc_tag_id: uid } };
+      },
+    },
+    {
+      key: 'data_log_choice',
+      title: 'Data Log Form',
+      prompt: () => ['Should this checkpoint collect data when scanned?'],
+      options: (context) => dataLogChoiceOptions(context),
+      parse: (input, context) => {
+        const option = pickOption(input, dataLogChoiceOptions(context));
+        if (!option) return { ok: false, error: 'Reply with one of the numbers listed.' };
+        return { ok: true, patch: { data_log_choice: option.id, data_log_label: option.label } };
+      },
+    },
+  ];
+
+  const choice = data.data_log_choice;
+
+  if (choice === 'existing') {
+    steps.push({
+      key: 'data_log_form_id',
+      title: 'Select form',
+      prompt: (context) => ['Which Data Log Form should be attached?', ...context.forms.map((form, index) => `${index + 1}. ${form.name}`)],
+      options: (context) => context.forms.map((form) => ({ id: form.id, label: form.name })),
+      parse: (input, context) => {
+        if (!context.forms.length) return { ok: false, error: 'No Data Log Forms exist for this site yet.' };
+        const option = pickOption(input, context.forms.map((form) => ({ id: form.id, label: form.name })));
+        if (!option) return { ok: false, error: 'Reply with one of the form numbers listed.' };
+        const selected = context.forms.find((form) => form.id === option.id);
+        return {
+          ok: true,
+          patch: {
+            data_log_form_id: option.id,
+            data_log_form_name: option.label,
+            data_log_form_field_count: (selected as { field_count?: number } | undefined)?.field_count ?? null,
+          },
+        };
+      },
+    });
+  }
+
+  if (choice === 'new_form') {
+    steps.push(textStep('form_name', 'Form name', 'What should the new Data Log Form be called?', { min: 2, max: 120 }));
+    if (typeof data.form_name === 'string') {
+      for (let index = 0; ; index += 1) {
+        steps.push(fieldLabelStep(index));
+        if (typeof data[`f${index}_label`] !== 'string') break;
+        steps.push(fieldTypeStep(index));
+        const type = data[`f${index}_type`];
+        if (typeof type !== 'string') break;
+        if (fieldTypeNeedsOptions(type)) {
+          steps.push(fieldOptionsStep(index));
+          if (!Array.isArray(data[`f${index}_options`])) break;
+        }
+        steps.push(fieldRequiredStep(index));
+        if (typeof data[`f${index}_required`] !== 'string') break;
+        steps.push(fieldMoreStep(index));
+        if (data[`f${index}_more`] !== 'yes') break;
+      }
+    }
+  }
+
+  return steps;
+}
+
 const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
   register_incident: {
     id: 'register_incident',
@@ -376,7 +556,7 @@ export function workflowTitle(id: WorkflowId): string {
 const CANCEL_WORDS = ['cancel', 'stop', 'exit', 'abort'];
 
 function promptFor(def: WorkflowDef, state: WorkflowState, ctx: WorkflowContext, prefix: string[] = []): WorkflowReply {
-  const step = def.steps[state.stepIndex];
+  const step = def.steps(state.data, ctx)[state.stepIndex];
   return {
     kind: 'prompt',
     title: `${def.title} — ${step.title}`,
@@ -422,7 +602,8 @@ export function advanceWorkflow(state: WorkflowState, rawInput: string, ctx: Wor
     return { kind: 'denied', title: def.title, lines: ['Choose an active site before creating records.'] };
   }
 
-  const step = def.steps[state.stepIndex];
+  const step = def.steps(state.data, ctx)[state.stepIndex];
+  if (!step) return confirmFor(def, state, ctx);
   const parsed = step.parse(input, ctx, state.data);
   if (!('patch' in parsed)) {
     return {
@@ -435,6 +616,6 @@ export function advanceWorkflow(state: WorkflowState, rawInput: string, ctx: Wor
   }
 
   const next: WorkflowState = { ...state, stepIndex: state.stepIndex + 1, data: { ...state.data, ...parsed.patch } };
-  if (next.stepIndex >= def.steps.length) return confirmFor(def, next, ctx);
+  if (next.stepIndex >= def.steps(next.data, ctx).length) return confirmFor(def, next, ctx);
   return promptFor(def, next, ctx);
 }

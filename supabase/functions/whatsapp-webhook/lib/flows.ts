@@ -4,8 +4,39 @@ import type { Identity, OutMessage, SessionRow, SiteRow } from "./types.ts";
 import { allowedSites } from "./identity.ts";
 import { clearFlow, patchSession } from "./session.ts";
 import { formatSecureDeviceLabel, getSecureDeviceRows, requestSecureDeviceCommand, type SecureDeviceAction } from "../../_shared/secure-device-management.ts";
+import { ManagementActionError, runManagementAction, type ManagementActor, type ManagementResult } from "../../_shared/management-actions.ts";
+
+/** Maps the WhatsApp identity onto the canonical management actor (same service the Web Management AI uses). */
+function managementActor(identity: Identity): ManagementActor {
+  return {
+    company_id: identity.company_id,
+    user_id: identity.user_id,
+    guard_id: identity.guard_id,
+    role: identity.role,
+    canManage: identity.canManage,
+    allowed_site_ids: identity.allowed_site_ids ?? [],
+  };
+}
+
+/** Runs a canonical management action and normalises failures into a WhatsApp message. */
+async function callManagement(
+  client: SupabaseClient,
+  identity: Identity,
+  action: string,
+  input: Record<string, unknown>,
+): Promise<{ result: ManagementResult | null; message: string }> {
+  try {
+    const result = await runManagementAction(client, managementActor(identity), action, input);
+    return { result, message: result.summary };
+  } catch (error) {
+    const message = error instanceof ManagementActionError || error instanceof Error ? error.message : "Management action failed";
+    console.error(`[WA] management action ${action} failed:`, message);
+    return { result: null, message };
+  }
+}
 
 export type FlowResult = { message: OutMessage; session: SessionRow };
+
 
 const CANCELLED: OutMessage = {
   title: "CANCELLED",
@@ -209,6 +240,7 @@ async function registerDevice(
 
     data.device_id = device.id;
     data.device_identifier = device.device_identifier;
+    data.pairing_code = code;
     const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
     return {
       session: next,
@@ -224,31 +256,25 @@ async function registerDevice(
     if (!/^(1|confirm|yes|y)$/i.test(input.trim())) {
       return { session: await clearFlow(client, session), message: CANCELLED };
     }
-    const { error } = await client
-      .from("devices")
-      .update({
-        device_name: data.device_name,
-        site_id: data.site_id,
-        pairing_status: "paired",
-        pairing_code: null,
-        pairing_expires_at: null,
-      })
-      .eq("id", data.device_id)
-      .eq("company_id", identity.company_id);
 
-    if (error) {
-      console.error("[WA] device register failed:", error.message);
+    const outcome = await callManagement(client, identity, "attach_device_by_code", {
+      site_id: data.site_id,
+      device_name: data.device_name,
+      pairing_code: data.pairing_code,
+    });
+
+    if (!outcome.result) {
       return {
         session: await clearFlow(client, session),
-        message: { title: "COULD NOT REGISTER", lines: [error.message], options: [{ id: "menu", label: "Main Menu" }] },
+        message: { title: "COULD NOT REGISTER", lines: [outcome.message], options: [{ id: "menu", label: "Main Menu" }] },
       };
     }
 
     return {
       session: await clearFlow(client, session),
       message: {
-        title: "✅ DEVICE REGISTERED",
-        lines: [`${data.device_name} is now registered to ${data.site_name}.`],
+        title: outcome.result.duplicate ? "DEVICE ALREADY REGISTERED" : "✅ DEVICE REGISTERED",
+        lines: [outcome.result.summary],
         options: [{ id: "devices", label: "View Devices" }, { id: "menu", label: "Main Menu" }],
       },
     };
@@ -286,49 +312,6 @@ function dataLogOptionSummary(data: Record<string, any>) {
   if (data.data_log_form_name) return String(data.data_log_form_name);
   if (data.pending_form?.name) return String(data.pending_form.name);
   return "Data Log Form";
-}
-
-async function createDataLogForm(client: SupabaseClient, identity: Identity, data: Record<string, any>) {
-  if (!data.pending_form) return data.data_log_form_id ?? null;
-  const pending = data.pending_form as { name: string; form_type: string; fields: Array<Record<string, any>> };
-  const { data: form, error: formError } = await client
-    .from("data_log_forms")
-    .insert({
-      company_id: identity.company_id,
-      site_id: data.site_id,
-      name: pending.name,
-      description: "Created from WhatsApp Management AI during checkpoint registration",
-      form_type: pending.form_type,
-      created_by: identity.user_id,
-      is_active: true,
-    })
-    .select("id, name, form_type")
-    .maybeSingle();
-
-  if (formError) throw formError;
-  const formId = form?.id;
-  if (!formId) throw new Error("Data Log Form was not created");
-
-  const rows = pending.fields.map((field) => ({
-    form_id: formId,
-    company_id: identity.company_id,
-    label: field.label,
-    field_type: field.field_type,
-    required: field.required,
-    sequence_order: field.sequence_order,
-    options_json: field.options_json ?? [],
-    config_json: field.config_json ?? {},
-    is_active: true,
-  }));
-  const { error: fieldsError } = await client.from("data_log_form_fields").insert(rows);
-  if (fieldsError) {
-    await client.from("data_log_forms").delete().eq("id", formId);
-    throw fieldsError;
-  }
-  data.data_log_form_name = form?.name;
-  data.data_log_form_type = form?.form_type;
-  data.data_log_field_count = rows.length;
-  return formId;
 }
 
 async function createCheckpoint(
@@ -479,24 +462,22 @@ async function createCheckpoint(
       return { session: await clearFlow(client, session), message: CANCELLED };
     }
 
-    let formId = data.data_log_form_id ?? null;
-    try {
-      formId = await createDataLogForm(client, identity, data);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Data Log Form could not be created";
-      console.error("[WA] data log form create failed:", message);
-      return { session: await clearFlow(client, session), message: { title: "COULD NOT CREATE FORM", lines: [message], options: [{ id: "menu", label: "Main Menu" }] } };
-    }
+    const outcome = await callManagement(client, identity, "create_checkpoint", {
+      site_id: data.site_id,
+      name: data.checkpoint_name,
+      location_note: data.location_note,
+      nfc_tag_id: data.nfc_tag_id,
+      data_log_form_id: data.data_log_form_id ?? null,
+      new_form: data.pending_form ?? null,
+    });
 
-    const { error } = await client.from("checkpoints").insert({ company_id: identity.company_id, site_id: data.site_id, name: data.checkpoint_name, location_note: data.location_note, nfc_tag_id: data.nfc_tag_id, data_log_form_id: formId });
-    if (error) {
-      console.error("[WA] checkpoint insert failed:", error.message);
-      if (formId && data.pending_form) await client.from("data_log_forms").delete().eq("id", formId);
-      return { session: await clearFlow(client, session), message: { title: "COULD NOT CREATE", lines: [error.message], options: [{ id: "menu", label: "Main Menu" }] } };
+    if (!outcome.result) {
+      return { session: await clearFlow(client, session), message: { title: "COULD NOT CREATE", lines: [outcome.message], options: [{ id: "menu", label: "Main Menu" }] } };
     }
 
     await client.from("whatsapp_nfc_capture_requests").update({ status: "completed" }).eq("id", data.capture_request_id);
-    return { session: await clearFlow(client, session), message: { title: "OK - " + data.checkpoint_name + " created", lines: ["Name: " + data.checkpoint_name, "Zone: " + data.location_note, "Site: " + data.site_name, "NFC Status: Assigned", "Data Log Form: " + dataLogOptionSummary(data), "Status: Active"], options: [{ id: "setup", label: "Setup" }, { id: "menu", label: "Main Menu" }] } };
+    const record = outcome.result.record as Record<string, any>;
+    return { session: await clearFlow(client, session), message: { title: outcome.result.duplicate ? "CHECKPOINT ALREADY EXISTS" : "OK - " + data.checkpoint_name + " created", lines: [outcome.result.summary, "Zone: " + (data.location_note ?? "-"), "Site: " + data.site_name, "Data Log Form: " + (record.data_log_form_name ?? dataLogOptionSummary(data)), "Status: Active"], options: [{ id: "setup", label: "Setup" }, { id: "menu", label: "Main Menu" }] } };
   }
 
   return { session: await clearFlow(client, session), message: CANCELLED };
@@ -647,78 +628,36 @@ async function createPatrol(
       return { session: await clearFlow(client, session), message: CANCELLED };
     }
 
-    const { data: route, error: routeError } = await client
-      .from("patrol_routes")
-      .insert({
-        company_id: identity.company_id,
-        site_id: data.site_id,
-        name: data.patrol_name,
-        description: "Created from WhatsApp",
-        status: "active",
-        created_by: identity.user_id,
-      })
-      .select("id")
-      .maybeSingle();
-
-    if (routeError || !route) {
-      console.error("[WA] route insert failed:", routeError?.message);
-      return {
-        session: await clearFlow(client, session),
-        message: { title: "COULD NOT CREATE", lines: [routeError?.message ?? "Route creation failed."], options: [{ id: "menu", label: "Main Menu" }] },
-      };
-    }
-
-    const checkpointRows = (data.checkpoint_ids as string[]).map((checkpointId, index) => ({
-      company_id: identity.company_id,
-      route_id: route.id,
-      checkpoint_id: checkpointId,
-      sequence_order: index + 1,
-      is_required: true,
-    }));
-
-    const { error: checkpointError } = await client.from("patrol_route_checkpoints").insert(checkpointRows);
-    if (checkpointError) {
-      await client.from("patrol_routes").delete().eq("id", route.id);
-      console.error("[WA] route checkpoints insert failed:", checkpointError.message);
-      return {
-        session: await clearFlow(client, session),
-        message: { title: "COULD NOT CREATE", lines: [checkpointError.message], options: [{ id: "menu", label: "Main Menu" }] },
-      };
-    }
-
-    const [hours, minutes] = String(data.start_time).split(":").map(Number);
-    const nextRun = new Date();
-    nextRun.setHours(hours, minutes, 0, 0);
-    if (nextRun.getTime() < Date.now()) nextRun.setDate(nextRun.getDate() + 1);
-
-    const { error: scheduleError } = await client.from("patrol_schedules").insert({
-      company_id: identity.company_id,
+    const routeOutcome = await callManagement(client, identity, "create_route", {
       site_id: data.site_id,
-      route_id: route.id,
       name: data.patrol_name,
-      frequency: data.frequency,
-      frequency_type: data.frequency,
-      interval_value: 1,
-      start_time: data.start_time,
-      days_of_week: [0, 1, 2, 3, 4, 5, 6],
-      timezone: "Africa/Johannesburg",
-      status: "active",
-      next_run_at: nextRun.toISOString(),
-      active_from: new Date().toISOString(),
-      grace_start_minutes: 10,
-      grace_completion_minutes: 30,
-      expected_duration_minutes: Math.max((data.checkpoint_ids as string[]).length * 8, 20),
-      created_by: identity.user_id,
-      description: "Created from WhatsApp",
+      checkpoint_ids: data.checkpoint_ids,
+      enforce_sequence: Boolean(data.enforce_sequence),
     });
 
-    if (scheduleError) {
-      console.error("[WA] schedule insert failed:", scheduleError.message);
+    if (!routeOutcome.result) {
+      return {
+        session: await clearFlow(client, session),
+        message: { title: "COULD NOT CREATE", lines: [routeOutcome.message], options: [{ id: "menu", label: "Main Menu" }] },
+      };
+    }
+
+    const routeId = String((routeOutcome.result.record as Record<string, any>).id);
+    const scheduleOutcome = await callManagement(client, identity, "create_schedule", {
+      site_id: data.site_id,
+      route_id: routeId,
+      name: data.patrol_name,
+      frequency: data.frequency,
+      start_time: data.start_time,
+      expected_duration_minutes: Math.max((data.checkpoint_ids as string[]).length * 8, 20),
+    });
+
+    if (!scheduleOutcome.result) {
       return {
         session: await clearFlow(client, session),
         message: {
           title: "PATROL SAVED, SCHEDULE FAILED",
-          lines: [`The route was created but the schedule could not be saved: ${scheduleError.message}`],
+          lines: [`The route was created but the schedule could not be saved: ${scheduleOutcome.message}`],
           options: [{ id: "menu", label: "Main Menu" }],
         },
       };
@@ -728,11 +667,7 @@ async function createPatrol(
       session: await clearFlow(client, session),
       message: {
         title: "✅ PATROL CREATED",
-        lines: [
-          `${data.patrol_name} — ${data.site_name}`,
-          `${(data.checkpoint_ids as string[]).length} checkpoints`,
-          `${data.frequency_label} at ${data.start_time}`,
-        ],
+        lines: [routeOutcome.result.summary, scheduleOutcome.result.summary],
         options: [{ id: "live", label: "Live Now" }, { id: "menu", label: "Main Menu" }],
       },
     };
@@ -822,36 +757,28 @@ async function reportIncident(
       return { session: await clearFlow(client, session), message: CANCELLED };
     }
     const media = (data.media as string[]) ?? [];
-    const { data: incident, error } = await client
-      .from("incidents")
-      .insert({
-        company_id: identity.company_id,
-        site_id: data.site_id,
-        guard_id: identity.guard_id,
-        title: String(data.description).slice(0, 80),
-        description: data.description,
-        severity: data.severity,
-        image_url: media[0] ?? null,
-        ai_classification: "whatsapp_report",
-        ai_suggested_action: "Review and dispatch supervisor",
-        event_occurred_at: new Date().toISOString(),
-      })
-      .select("id")
-      .maybeSingle();
+    const outcome = await callManagement(client, identity, "create_incident", {
+      site_id: data.site_id,
+      description: data.description,
+      title: String(data.description).slice(0, 80),
+      severity: data.severity,
+      image_url: media[0] ?? null,
+      source: "whatsapp_report",
+    });
 
-    if (error) {
-      console.error("[WA] incident insert failed:", error.message);
+    if (!outcome.result) {
       return {
         session: await clearFlow(client, session),
-        message: { title: "COULD NOT SUBMIT", lines: [error.message], options: [{ id: "menu", label: "Main Menu" }] },
+        message: { title: "COULD NOT SUBMIT", lines: [outcome.message], options: [{ id: "menu", label: "Main Menu" }] },
       };
     }
 
+    const record = outcome.result.record as Record<string, any>;
     return {
       session: await clearFlow(client, session),
       message: {
-        title: "✅ INCIDENT CREATED",
-        lines: [`Reference: INC-${String(incident?.id ?? "").slice(0, 6).toUpperCase()}`, `${data.site_name} · ${data.severity_label}`],
+        title: outcome.result.duplicate ? "INCIDENT ALREADY LOGGED" : "✅ INCIDENT CREATED",
+        lines: [`Reference: ${record.reference}`, `${data.site_name} · ${data.severity_label}`, `Status: ${record.status}`],
         options: [{ id: "incidents", label: "View Incidents" }, { id: "menu", label: "Main Menu" }],
       },
     };

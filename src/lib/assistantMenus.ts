@@ -95,14 +95,11 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     parent: MANAGEMENT_HOME,
     items: [
       { label: 'Live Patrol', action: 'live' },
-      { label: 'Patrol Status', action: 'patrol_status' },
-      { label: 'Completed Patrols', action: 'completed_patrols' },
-      { label: 'Late / Delayed Patrols', action: 'late_patrols' },
-      { label: 'Incomplete Patrols', action: 'incomplete_patrols' },
-      { label: 'Missed Patrols', action: 'missed_patrols' },
+      { label: 'Patrol Status', action: 'menu:patrol_status' },
       { label: 'Missed Checkpoints', action: 'missed_checkpoints' },
       { label: 'Back', action: 'back' },
     ],
+
   },
   management_devices: {
     key: 'management_devices',

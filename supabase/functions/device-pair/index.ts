@@ -44,9 +44,77 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const body: PairingRequest = await req.json();
+    const body: PairingRequest & { mode?: string } = await req.json();
     const { pairing_code, device_metadata } = body;
     const deviceIdentifier = device_metadata?.device_identifier?.trim();
+
+    // Device-initiated pairing: the unpaired MX Patrol app asks for the code it will display.
+    if (body.mode === "request_code") {
+      if (!deviceIdentifier) {
+        return respond({ success: false, error: "device_metadata.device_identifier is required" }, 400);
+      }
+
+      const { data: alreadyPaired } = await supabase
+        .from("devices")
+        .select("id, pairing_status")
+        .eq("device_identifier", deviceIdentifier)
+        .eq("pairing_status", "paired")
+        .maybeSingle();
+      if (alreadyPaired) {
+        return respond({ success: false, error: "This device is already registered" }, 409);
+      }
+
+      const { data: pending } = await supabase
+        .from("device_pairing_requests")
+        .select("id, pairing_code, expires_at")
+        .eq("device_identifier", deviceIdentifier)
+        .eq("status", "pending")
+        .maybeSingle();
+
+      if (pending && new Date(pending.expires_at) > new Date()) {
+        return respond({
+          success: true,
+          ok: true,
+          pairing_code: pending.pairing_code,
+          display_code: `MX-${pending.pairing_code}`,
+          expires_at: pending.expires_at,
+        });
+      }
+
+      if (pending) {
+        await supabase.from("device_pairing_requests").update({ status: "expired" }).eq("id", pending.id);
+      }
+
+      const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let code = "";
+      for (let i = 0; i < 6; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+      const { data: created, error: createError } = await supabase
+        .from("device_pairing_requests")
+        .insert({
+          pairing_code: code,
+          device_identifier: deviceIdentifier,
+          device_metadata: device_metadata ?? {},
+          status: "pending",
+          expires_at: expiresAt,
+        })
+        .select("pairing_code, expires_at")
+        .single();
+
+      if (createError) {
+        console.error("Pairing request error:", createError);
+        return respond({ success: false, error: "Could not issue a pairing code" }, 500);
+      }
+
+      return respond({
+        success: true,
+        ok: true,
+        pairing_code: created.pairing_code,
+        display_code: `MX-${created.pairing_code}`,
+        expires_at: created.expires_at,
+      });
+    }
 
     const code = typeof pairing_code === "string" ? normalizePairingCode(pairing_code) : "";
 
@@ -57,6 +125,8 @@ Deno.serve(async (req) => {
     if (!deviceIdentifier) {
       return respond({ success: false, error: "device_metadata.device_identifier is required" }, 400);
     }
+
+
 
     const { data: device, error: findError } = await supabase
       .from("devices")

@@ -163,6 +163,14 @@ export async function handleFlowInput(
 
 /* ------------------------------ register device ---------------------------- */
 
+const DEVICE_TYPE_OPTIONS = [
+  { id: "mobile", label: "Mobile patrol device" },
+  { id: "pda", label: "RG360 / PDA" },
+  { id: "nfc_reader", label: "NFC reader" },
+  { id: "tablet", label: "Tablet" },
+];
+
+
 async function registerDevice(
   client: SupabaseClient,
   identity: Identity,
@@ -173,6 +181,35 @@ async function registerDevice(
 
   if (session.current_step === "WAITING_FOR_NAME") {
     data.device_name = input.trim().slice(0, 80);
+    const next = await patchSession(client, session, {
+      current_step: "WAITING_FOR_TYPE",
+      temporary_data: data,
+    });
+    return {
+      session: next,
+      message: {
+        title: "DEVICE TYPE",
+        lines: ["What kind of device is this?"],
+        options: DEVICE_TYPE_OPTIONS.map((o, i) => ({ id: String(i + 1), label: o.label })),
+        footer: "Type *cancel* to stop.",
+      },
+    };
+  }
+
+  if (session.current_step === "WAITING_FOR_TYPE") {
+    const choice = pickChoice(input, DEVICE_TYPE_OPTIONS, (o) => o.label);
+    if (!choice) {
+      return {
+        session,
+        message: {
+          title: "DEVICE TYPE",
+          lines: ["Reply with one of the numbers listed."],
+          options: DEVICE_TYPE_OPTIONS.map((o, i) => ({ id: String(i + 1), label: o.label })),
+        },
+      };
+    }
+    data.device_type = choice.id;
+    data.device_type_label = choice.label;
     const sites = await allowedSites(client, identity);
     data.site_choices = sites;
     const next = await patchSession(client, session, {
@@ -200,53 +237,46 @@ async function registerDevice(
     return {
       session: next,
       message: {
-        title: "ENROLLMENT CODE",
-        lines: ["Open MX Patrol on the device and send me the enrollment code it shows.", "", "Example: MX-7K3P92"],
+        title: "PAIRING CODE",
+        lines: [
+          "Open MX Patrol on the physical patrol device. While it is unpaired it shows a pairing code.",
+          "Send me that code exactly as displayed.",
+          "",
+          "Example: MX-48768",
+        ],
         footer: "Type *cancel* to stop.",
       },
     };
   }
 
   if (session.current_step === "WAITING_FOR_CODE") {
-    const code = input.trim().toUpperCase().replace(/^MXP?-?/, "").replace(/[\s-]/g, "");
-    const { data: devices } = await client
-      .from("devices")
-      .select("id, device_identifier, device_name, pairing_status, pairing_expires_at, company_id")
-      .eq("company_id", identity.company_id)
-      .eq("pairing_code", code)
-      .limit(1);
-    const device = (devices ?? [])[0] as any;
-
-    if (!device) {
+    const code = input.trim().toUpperCase().replace(/^MXP?[-\s]?/, "").replace(/[\s-]/g, "");
+    if (!/^[A-Z0-9]{5,10}$/.test(code)) {
       return {
         session,
         message: {
           title: "CODE NOT RECOGNISED",
-          lines: [`I couldn't find a device with the code ${code}.`, "Check the code on the device and send it again."],
+          lines: ["That does not look like a pairing code.", "Send the code shown on the MX Patrol device, e.g. MX-48768."],
           footer: "Type *cancel* to stop.",
         },
       };
     }
-    if (device.pairing_status === "paired" || device.pairing_status === "active") {
-      return {
-        session: await clearFlow(client, session),
-        message: {
-          title: "ALREADY REGISTERED",
-          lines: [`${device.device_identifier} is already registered.`],
-          options: [{ id: "menu", label: "Main Menu" }],
-        },
-      };
-    }
 
-    data.device_id = device.id;
-    data.device_identifier = device.device_identifier;
     data.pairing_code = code;
     const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
     return {
       session: next,
       message: {
-        title: "CONFIRM DEVICE",
-        lines: [`Name: ${data.device_name}`, `Device: ${device.device_identifier}`, `Site: ${data.site_name}`],
+        title: "REGISTER DEVICE — CONFIRM",
+        lines: [
+          `Device Name: ${data.device_name}`,
+          `Device Type: ${data.device_type_label}`,
+          `Assigned Site: ${data.site_name}`,
+          `Pairing Code: MX-${code}`,
+          "",
+          "This pairing code must match the code currently displayed on the physical MX Patrol device.",
+          "Reply *confirm* to bind this physical device to the new device record, or *cancel* to discard.",
+        ],
         options: [{ id: "confirm", label: "Confirm" }, { id: "cancel", label: "Cancel" }],
       },
     };
@@ -257,10 +287,12 @@ async function registerDevice(
       return { session: await clearFlow(client, session), message: CANCELLED };
     }
 
-    const outcome = await callManagement(client, identity, "attach_device_by_code", {
+    const outcome = await callManagement(client, identity, "register_device", {
       site_id: data.site_id,
       device_name: data.device_name,
+      device_type: data.device_type,
       pairing_code: data.pairing_code,
+      enrolled_via: "whatsapp_management_ai",
     });
 
     if (!outcome.result) {
@@ -279,6 +311,7 @@ async function registerDevice(
       },
     };
   }
+
 
   return { session: await clearFlow(client, session), message: CANCELLED };
 }

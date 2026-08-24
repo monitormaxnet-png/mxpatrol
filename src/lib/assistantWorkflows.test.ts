@@ -64,12 +64,24 @@ describe('confirmation gating', () => {
 });
 
 describe('canonical payloads per workflow', () => {
-  it('device registration targets the canonical enrollment action', () => {
-    const reply = run('register_device', ['Gate Tablet', '2']);
+  it('device registration binds the code already shown on the physical device', () => {
+    const reply = run('register_device', ['Gate Tablet', '2', 'MX-48768']);
     expect(reply.kind).toBe('confirm');
     if (reply.kind !== 'confirm') return;
     expect(reply.payload.action).toBe('register_device');
-    expect(reply.payload.input).toMatchObject({ site_id: 'site-1', device_name: 'Gate Tablet', device_type: 'pda' });
+    expect(reply.payload.input).toMatchObject({ site_id: 'site-1', device_name: 'Gate Tablet', device_type: 'pda', pairing_code: '48768' });
+    const text = reply.lines.join(' ');
+    expect(text).toContain('Pairing Code: MX-48768');
+    expect(text).toContain('must match the code currently displayed on the physical MX Patrol device');
+    expect(text).toContain('Reply confirm to bind this physical device');
+  });
+
+  it('rejects malformed pairing codes and never generates one', () => {
+    const bad = run('register_device', ['Gate Tablet', '2', 'ab']);
+    expect(bad.kind).toBe('error');
+    const ok = run('register_device', ['Gate Tablet', '2', 'MX-48768']);
+    if (ok.kind !== 'confirm') throw new Error('expected confirm');
+    expect(JSON.stringify(ok.payload.input)).not.toMatch(/generated/i);
   });
 
   it('checkpoint registration supports pending NFC assignment and existing data log forms', () => {
@@ -138,6 +150,14 @@ describe('shared canonical backend service', () => {
     expect(whatsapp).not.toMatch(/from\("patrol_routes"\)/);
     expect(whatsapp).not.toMatch(/from\("patrol_schedules"\)/);
     expect(whatsapp).not.toMatch(/from\("data_log_forms"\)\s*\.insert/);
+  });
+
+  it('never generates a pairing code during management device registration', () => {
+    expect(shared).toContain('export async function registerDevice');
+    expect(shared).toMatch(/device_pairing_requests/);
+    expect(shared.split('export async function registerDevice')[1].split('function devicePairedResult')[0]).not.toContain('generatePairingCode(');
+    expect(whatsapp).toContain('"register_device"');
+    expect(whatsapp).toContain('REGISTER DEVICE — CONFIRM');
   });
 
   it('enforces permission, site scope and canonical ordering server-side', () => {

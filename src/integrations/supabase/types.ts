@@ -875,6 +875,63 @@ export type Database = {
           },
         ]
       }
+      device_pairing_requests: {
+        Row: {
+          claimed_at: string | null
+          claimed_company_id: string | null
+          claimed_device_id: string | null
+          created_at: string
+          device_identifier: string
+          device_metadata: Json
+          expires_at: string
+          id: string
+          pairing_code: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_company_id?: string | null
+          claimed_device_id?: string | null
+          created_at?: string
+          device_identifier: string
+          device_metadata?: Json
+          expires_at?: string
+          id?: string
+          pairing_code: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_company_id?: string | null
+          claimed_device_id?: string | null
+          created_at?: string
+          device_identifier?: string
+          device_metadata?: Json
+          expires_at?: string
+          id?: string
+          pairing_code?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_pairing_requests_claimed_company_id_fkey"
+            columns: ["claimed_company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_pairing_requests_claimed_device_id_fkey"
+            columns: ["claimed_device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       device_request_nonces: {
         Row: {
           action: string

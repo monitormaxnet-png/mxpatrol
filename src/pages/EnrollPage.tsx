@@ -59,6 +59,11 @@ export default function EnrollPage() {
     device_type: "mobile",
     serial_number: "",
   });
+  const [deviceCode, setDeviceCode] = useState<string | null>(null);
+
+  const [deviceCodeLoading, setDeviceCodeLoading] = useState(false);
+  const [deviceCodeError, setDeviceCodeError] = useState("");
+
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef(false);
   const { enqueue, syncQueue, syncing, pendingCount } = useOfflineEnrollQueue();
@@ -74,6 +79,40 @@ export default function EnrollPage() {
       device_type: isMobile ? "mobile" : "tablet",
     }));
   }, []);
+
+  const requestDeviceCode = useCallback(async () => {
+    const device = getPatrolDeviceInfo();
+    if (!navigator.onLine) {
+      setDeviceCodeError("A pairing code needs an internet connection.");
+      return;
+    }
+    setDeviceCodeLoading(true);
+    setDeviceCodeError("");
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("device-pair", {
+        body: {
+          mode: "request_code",
+          device_metadata: {
+            device_identifier: device.deviceIdentifier,
+            device_type: /Mobile|Android|iPhone/i.test(navigator.userAgent) ? "mobile" : "tablet",
+            model: navigator.userAgent,
+            os: navigator.platform,
+          },
+        },
+      });
+      if (fnError) throw fnError;
+      if (!data?.success) throw new Error(data?.error || "Could not get a pairing code");
+      setDeviceCode(data.display_code ?? `MX-${data.pairing_code}`);
+    } catch (err: unknown) {
+      setDeviceCodeError(err instanceof Error ? err.message : "Could not get a pairing code");
+    } finally {
+      setDeviceCodeLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { requestDeviceCode(); }, [requestDeviceCode]);
+
+
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
@@ -278,7 +317,31 @@ export default function EnrollPage() {
             {/* STEP 0: Scan or Enter Token */}
             {wizardStep === 0 && (
               <motion.div key="scan" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
+                <Card className="border-primary/40">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Smartphone className="h-5 w-5 text-primary" /> This Device's Pairing Code
+                    </CardTitle>
+                    <CardDescription>
+                      Give this code to management. They register this device from the MX Patrol Management AI (Web or WhatsApp).
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="rounded-lg border border-dashed border-primary/40 bg-muted/40 px-4 py-6 text-center">
+                      <p className="font-mono text-3xl tracking-[0.3em] text-foreground">
+                        {deviceCodeLoading ? "…" : deviceCode ?? "—"}
+                      </p>
+                      {deviceCodeError && <p className="mt-2 text-xs text-destructive">{deviceCodeError}</p>}
+                    </div>
+                    <Button variant="outline" className="w-full" onClick={requestDeviceCode} disabled={deviceCodeLoading}>
+                      {deviceCodeLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                      Refresh code
+                    </Button>
+                  </CardContent>
+                </Card>
+
                 {!manualMode ? (
+
                   <Card>
                     <CardHeader className="text-center">
                       <CardTitle className="flex items-center justify-center gap-2">

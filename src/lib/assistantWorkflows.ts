@@ -150,20 +150,39 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
     steps: [
       textStep('device_name', 'Device name', 'What should this device be called?', { min: 2, max: 100 }),
       choiceStep('device_type', 'Device type', 'What kind of device is this?', DEVICE_TYPES),
+      {
+        key: 'pairing_code',
+        title: 'Pairing code',
+        prompt: () => [
+          'Open MX Patrol on the physical patrol device. While it is unpaired it shows a pairing code.',
+          'Send that code exactly as displayed (e.g. MX-48768).',
+        ],
+        parse: (input) => {
+          const code = input.trim().toUpperCase().replace(/^MXP?[-\s]?/, '').replace(/[\s-]/g, '');
+          if (!/^[A-Z0-9]{5,10}$/.test(code)) {
+            return { ok: false, error: 'That does not look like a pairing code. Send the code shown on the MX Patrol device, e.g. MX-48768.' };
+          }
+          return { ok: true, patch: { pairing_code: code } };
+        },
+      },
     ],
     summary: (data, ctx) => [
-      `Device: ${data.device_name}`,
-      `Type: ${data.device_type_label}`,
-      `Site: ${ctx.siteName}`,
-      'A pairing code is issued for MX Patrol on the device to complete enrollment.',
+      `Device Name: ${data.device_name}`,
+      `Device Type: ${data.device_type_label}`,
+      `Assigned Site: ${ctx.siteName}`,
+      `Pairing Code: MX-${data.pairing_code}`,
+      'This pairing code must match the code currently displayed on the physical MX Patrol device.',
+      'Reply confirm to bind this physical device to the new device record, or cancel to discard.',
     ],
     payload: (data, ctx) => ({
       site_id: ctx.siteId,
       device_name: data.device_name,
       device_type: data.device_type,
+      pairing_code: data.pairing_code,
       enrolled_via: 'web_management_ai',
     }),
   },
+
 
   register_checkpoint: {
     id: 'register_checkpoint',

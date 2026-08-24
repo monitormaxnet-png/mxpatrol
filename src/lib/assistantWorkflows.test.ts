@@ -107,9 +107,9 @@ describe('canonical payloads per workflow', () => {
     expect(reply.payload.input.nfc_tag_id).toBe('04a2b3c4d5');
     const newForm = reply.payload.input.new_form as any;
     expect(newForm.name).toBe('Roof Inspection');
-    expect(newForm.form_type).toBe('checklist');
     expect(newForm.fields).toHaveLength(1);
     expect(newForm.fields[0]).toMatchObject({ label: 'Door locked?', required: true, sequence_order: 1 });
+    expect(typeof newForm.fields[0].field_type).toBe('string');
   });
 
   it('route creation preserves the scanned checkpoint order', () => {

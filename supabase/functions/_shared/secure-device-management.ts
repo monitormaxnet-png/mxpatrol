@@ -100,7 +100,7 @@ export async function getSecureDeviceRows(
 ): Promise<SecureDeviceRow[]> {
   assertCanManageSecureDevices(actor);
   const { data, error } = await scopedDeviceQuery(client, actor, siteId).limit(100);
-  if (error) throw error;
+  if (error) throw new Error("Secure device database query failed" + (error.code ? " (" + error.code + ")" : "") + ": " + (error.message ?? "Unknown Supabase error"));
   return (data ?? []).map(normalizeDevice);
 }
 
@@ -201,7 +201,7 @@ export async function requestSecureDeviceCommand(
       })
       .select("id, command_type, status, issued_at")
       .maybeSingle();
-    if (error) throw error;
+    if (error) throw new Error("Secure device database query failed" + (error.code ? " (" + error.code + ")" : "") + ": " + (error.message ?? "Unknown Supabase error"));
     command = data ?? null;
   }
 
@@ -257,7 +257,7 @@ export async function getSecureDeviceEvents(
   if (siteId) query = query.eq("site_id", siteId);
   if (deviceId) query = query.eq("device_id", deviceId);
   const { data, error } = await query;
-  if (error) throw error;
+  if (error) throw new Error("Secure device database query failed" + (error.code ? " (" + error.code + ")" : "") + ": " + (error.message ?? "Unknown Supabase error"));
   return data ?? [];
 }
 

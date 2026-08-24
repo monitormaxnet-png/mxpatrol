@@ -60,14 +60,19 @@ async function resolveActor(req: Request): Promise<{ service: ReturnType<typeof 
     .maybeSingle();
   if (profileError || !profile?.company_id) throw new Error("Company profile required");
 
-  const { data: role } = await service
+  // public.user_roles has no company_id column: (id, user_id, role)
+  const { data: roles, error: rolesError } = await service
     .from("user_roles")
     .select("role")
-    .eq("user_id", userId)
-    .eq("company_id", profile.company_id)
-    .maybeSingle();
+    .eq("user_id", userId);
+  if (rolesError) throw rolesError;
 
-  const roleName = String(role?.role ?? "guard");
+  const roleNames = (roles ?? []).map((row: { role: string }) => String(row.role));
+  const roleName = roleNames.includes("admin")
+    ? "admin"
+    : roleNames.includes("supervisor")
+      ? "supervisor"
+      : (roleNames[0] ?? "guard");
   const canManage = roleName === "admin" || roleName === "supervisor";
   return { service, actor: { company_id: profile.company_id, user_id: userId, role: roleName, canManage, allowed_site_ids: [] } };
 }
@@ -105,9 +110,16 @@ serve(async (req) => {
 
     return json({ error: "Unsupported secure device action" }, 400);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Secure device request failed";
-    const status = /access|required|auth/i.test(message) ? 403 : 500;
-    console.error("[secure-device-management]", error);
-    return json({ error: message }, status);
+    const raw = (error ?? {}) as Record<string, unknown>;
+    const message = String(raw.message ?? "Secure device request failed");
+    const code = raw.code ? String(raw.code) : null;
+    const details = raw.details ? String(raw.details) : null;
+    const hint = raw.hint ? String(raw.hint) : null;
+    const status = /access|required|auth/i.test(message) && !code ? 403 : 500;
+    console.error("[secure-device-management]", JSON.stringify({ message, code, details, hint }));
+    return json({
+      error: code ? message + " (" + code + ")" : message,
+      db_error: { message, code, details, hint },
+    }, status);
   }
 });

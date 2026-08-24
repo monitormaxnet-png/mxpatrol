@@ -12,8 +12,11 @@ const LINK_CODE_PATTERN = /^[A-Z0-9]{6,10}$/;
 async function buildIdentity(client: SupabaseClient, row: Record<string, any>): Promise<Identity> {
   let role: Role = "guard";
   if (row.user_id) {
-    const { data } = await client.from("user_roles").select("role").eq("user_id", row.user_id).maybeSingle();
-    if (data?.role === "admin" || data?.role === "supervisor" || data?.role === "guard") role = data.role;
+    const { data } = await client.from("user_roles").select("role").eq("user_id", row.user_id);
+    const names = (data ?? []).map((entry: Record<string, any>) => String(entry.role));
+    if (names.includes("admin")) role = "admin";
+    else if (names.includes("supervisor")) role = "supervisor";
+    else if (names.includes("guard")) role = "guard";
   }
   return {
     id: row.id,

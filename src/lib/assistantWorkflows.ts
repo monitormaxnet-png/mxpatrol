@@ -7,6 +7,14 @@
  * service the WhatsApp Management AI uses. No writes happen in this file.
  */
 
+import {
+  DATA_LOG_FIELD_TYPES,
+  fieldTypeById,
+  fieldTypeNeedsOptions,
+  parseFieldOptions,
+  pickFieldType,
+} from './dataLogFieldTypes';
+
 export type WorkflowId =
   | 'register_incident'
   | 'register_device'
@@ -51,7 +59,8 @@ type WorkflowDef = {
   id: WorkflowId;
   title: string;
   action: string;
-  steps: StepDef[];
+  /** Dynamic so flows (like the inline Data Log Form builder) can grow steps. */
+  steps: (data: Record<string, unknown>, ctx: WorkflowContext) => StepDef[];
   summary: (data: Record<string, unknown>, ctx: WorkflowContext) => string[];
   payload: (data: Record<string, unknown>, ctx: WorkflowContext) => Record<string, unknown>;
 };

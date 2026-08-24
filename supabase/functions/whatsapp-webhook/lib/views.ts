@@ -15,6 +15,7 @@ export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
   const context = session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site to continue.";
   return {
     title: "MX PATROL",
+    menuKey: "user_home",
     lines: [
       `${greeting()} ðŸ‘‹`,
       context,
@@ -48,6 +49,7 @@ export function managementMenu(identity: Identity, session: SessionRow): OutMess
   }
   return {
     title: "MX PATROL - MANAGEMENT",
+    menuKey: "management_home",
     lines: [session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site before making changes.", "What would you like to manage?"],
     options: [
       { id: "management_operations", label: "Operations" },
@@ -482,6 +484,7 @@ export async function reportSummary(
 export function reportPeriodMenu(): OutMessage {
   return {
     title: "WHAT HAPPENED?",
+    menuKey: "report_period",
     lines: ["Choose a period."],
     options: [
       { id: "today", label: "Today" },
@@ -526,6 +529,30 @@ const PATROL_STATUS_GROUPS = {
   missed: ["missed"],
 } as const;
 
+const TZ = "Africa/Johannesburg";
+
+function waTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ }).format(date);
+}
+
+function waDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", { year: "numeric", month: "short", day: "2-digit", timeZone: TZ }).format(date);
+}
+
+function lateBy(scheduled: string | null, actual: string | null): string | null {
+  if (!scheduled || !actual) return null;
+  const diff = new Date(actual).getTime() - new Date(scheduled).getTime();
+  if (!Number.isFinite(diff) || diff <= 0) return null;
+  const mins = Math.round(diff / 60000);
+  return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
 export async function patrolStatusView(
   client: SupabaseClient,
   identity: Identity,
@@ -536,7 +563,7 @@ export async function patrolStatusView(
   const { data } = await siteFilter<any>(
     client
       .from("patrol_sessions")
-      .select("id, status, scheduled_start, actual_start, checkpoint_completed, checkpoint_total, site_id, sites(name), patrol_routes(name)")
+      .select("id, status, scheduled_start, scheduled_end, actual_start, checkpoint_completed, checkpoint_total, site_id, sites(name), patrol_routes(name), patrol_templates(name)")
       .in("status", statuses)
       .order("scheduled_start", { ascending: false })
       .limit(8),
@@ -548,28 +575,51 @@ export async function patrolStatusView(
   if (!rows.length) return { title, lines: ["No matching patrols for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
   return {
     title,
-    lines: [rows.map((row, index) => {
-      const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
-      const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
-      const scheduled = row.scheduled_start ? new Date(row.scheduled_start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" }) : "unknown";
-      const started = row.actual_start ? new Date(row.actual_start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" }) : "not started";
-      return `${index + 1}. ${route?.name ?? site?.name ?? "Patrol"}\nStatus: ${String(row.status).replace(/_/g, " ")}\nScheduled: ${scheduled}\nStarted: ${started}\nCheckpoints: ${row.checkpoint_completed ?? 0}/${row.checkpoint_total ?? 0}`;
-    }).join("\n\n")],
+    lines: [rows.map((row, index) => formatPatrolStatusRow(row, index, group)).join("\n\n")],
     options: [{ id: "menu", label: "Main Menu" }],
   };
+}
+
+/** Exported for tests: every patrol line carries the canonical scheduled time. */
+export function formatPatrolStatusRow(row: Record<string, any>, index: number, group: string): string {
+  const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
+  const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
+  const template = Array.isArray(row.patrol_templates) ? row.patrol_templates[0] : row.patrol_templates;
+  const scheduled = waTime(row.scheduled_start) ?? "unknown";
+  const end = waTime(row.scheduled_end);
+  const done = row.checkpoint_completed ?? 0;
+  const total = row.checkpoint_total ?? 0;
+  const lines = [
+    `${index + 1}. ${route?.name ?? template?.name ?? "Patrol"}`,
+    `Site: ${site?.name ?? "Unassigned"}`,
+    `Date: ${waDate(row.scheduled_start) ?? "unknown"}`,
+    `Scheduled: ${scheduled}${end ? ` (window ${scheduled} - ${end})` : ""}`,
+    `Status: ${group === "missed" ? "Missed" : String(row.status).replace(/_/g, " ")}`,
+  ];
+  if (group === "late") {
+    const started = waTime(row.actual_start);
+    lines.push(`Actual start: ${started ?? "not started"}`);
+    const late = lateBy(row.scheduled_start, row.actual_start);
+    if (late) lines.push(`Late by: ${late}`);
+  }
+  if (group !== "missed") {
+    lines.push(`Checkpoints: ${done}/${total}${total > done ? ` (${total - done} missed)` : ""}`);
+  }
+  return lines.join("\n");
 }
 
 export async function missedCheckpointsView(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
   let query = client
     .from("patrol_session_checkpoints")
-    .select("id, status, sequence_order, expected_scan_at, scanned_at, site_id, checkpoint_name, checkpoints(name), patrol_sessions(id, status, scheduled_start, patrol_routes(name), sites(name))")
+    .select("id, status, scheduled_order, scheduled_at, scanned_at, checkpoint_name_snapshot, checkpoints(name), patrol_sessions!inner(id, status, site_id, scheduled_start, patrol_routes(name), sites(name))")
     .eq("company_id", identity.company_id)
     .in("status", ["missed", "overdue"])
-    .order("expected_scan_at", { ascending: false })
+    .order("scheduled_at", { ascending: false })
     .limit(10);
-  if (siteId) query = query.eq("site_id", siteId);
-  else if (identity.allowed_site_ids.length) query = query.in("site_id", identity.allowed_site_ids);
-  const { data } = await query;
+  if (siteId) query = query.eq("patrol_sessions.site_id", siteId);
+  else if (identity.allowed_site_ids.length) query = query.in("patrol_sessions.site_id", identity.allowed_site_ids);
+  const { data, error } = await query;
+  if (error) console.error("[WA] missed checkpoints query failed:", error.message);
   const rows = (data ?? []) as any[];
   if (!rows.length) return { title: "MISSED CHECKPOINTS", lines: ["No missed checkpoints for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
   return {
@@ -578,8 +628,16 @@ export async function missedCheckpointsView(client: SupabaseClient, identity: Id
       const checkpoint = Array.isArray(row.checkpoints) ? row.checkpoints[0] : row.checkpoints;
       const session = Array.isArray(row.patrol_sessions) ? row.patrol_sessions[0] : row.patrol_sessions;
       const route = Array.isArray(session?.patrol_routes) ? session.patrol_routes[0] : session?.patrol_routes;
-      const when = row.expected_scan_at ? new Date(row.expected_scan_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" }) : "unknown time";
-      return `${index + 1}. ${checkpoint?.name ?? row.checkpoint_name ?? "Checkpoint"}\nPatrol: ${route?.name ?? "Session"}\nExpected: ${when}`;
+      const site = Array.isArray(session?.sites) ? session.sites[0] : session?.sites;
+      const expected = row.scheduled_at ?? session?.scheduled_start ?? null;
+      return [
+        `${index + 1}. ${checkpoint?.name ?? row.checkpoint_name_snapshot ?? "Checkpoint"}`,
+        `Patrol: ${route?.name ?? "Session"}`,
+        `Site: ${site?.name ?? "Unassigned"}`,
+        `Date: ${waDate(expected) ?? "unknown"}`,
+        `Expected: ${waTime(expected) ?? "unknown"}`,
+        `Status: ${String(row.status ?? "missed")}`,
+      ].join("\n");
     }).join("\n\n")],
     options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
   };
@@ -703,4 +761,118 @@ export async function secureDeviceInfo(client: SupabaseClient, identity: Identit
       { id: "secure_devices", label: "Main Secure Menu" },
     ],
   };
+}
+
+// ===== Context-aware menu state (kept here so it deploys with the function bundle) =====
+
+export const USER_HOME_KEY = "user_home";
+export const MANAGEMENT_HOME_KEY = "management_home";
+
+/**
+ * Management submenus. Ids are the canonical action names handled by the webhook,
+ * so a number typed inside a submenu can only ever resolve to that submenu's actions.
+ */
+export const WA_SUBMENUS: Record<string, OutMessage> = {
+  management_operations: {
+    title: "OPERATIONS",
+    menuKey: "management_operations",
+    lines: ["Choose an operations view."],
+    options: [
+      { id: "patrols", label: "Live Patrol" },
+      { id: "patrol_status", label: "Patrol Status" },
+      { id: "completed_patrols", label: "Completed Patrols" },
+      { id: "late_patrols", label: "Late / Delayed Patrols" },
+      { id: "incomplete_patrols", label: "Incomplete Patrols" },
+      { id: "missed_patrols", label: "Missed Patrols" },
+      { id: "missed_checkpoints", label: "Missed Checkpoints" },
+      { id: "back", label: "Back" },
+    ],
+  },
+  management_devices: {
+    title: "DEVICES",
+    menuKey: "management_devices",
+    lines: ["Choose a device management action."],
+    options: [
+      { id: "devices", label: "View Devices" },
+      { id: "offline", label: "Offline Devices" },
+      { id: "secure_device_status", label: "Device Security" },
+      { id: "register_device", label: "Register Device" },
+      { id: "back", label: "Back" },
+    ],
+  },
+  management_checkpoints: {
+    title: "CHECKPOINTS",
+    menuKey: "management_checkpoints",
+    lines: ["Choose a checkpoint management action."],
+    options: [
+      { id: "checkpoints", label: "View Checkpoints" },
+      { id: "missed_checkpoints", label: "Missed Checkpoints" },
+      { id: "add_checkpoint", label: "Register Checkpoint" },
+      { id: "back", label: "Back" },
+    ],
+  },
+  management_incidents: {
+    title: "INCIDENTS",
+    menuKey: "management_incidents",
+    lines: ["Choose an incident management action."],
+    options: [
+      { id: "incidents", label: "Open Incidents" },
+      { id: "report_incident", label: "Register Incident" },
+      { id: "back", label: "Back" },
+    ],
+  },
+  management_patrol_config: {
+    title: "PATROL CONFIGURATION",
+    menuKey: "management_patrol_config",
+    lines: ["Choose a patrol configuration action."],
+    options: [
+      { id: "patrol_status", label: "View Patrol Status" },
+      { id: "create_patrol", label: "Create Patrol" },
+      { id: "back", label: "Back" },
+    ],
+  },
+  management_reports: {
+    title: "REPORTS",
+    menuKey: "management_reports",
+    lines: ["Choose a report."],
+    options: [
+      { id: "today", label: "Today Summary" },
+      { id: "yesterday", label: "Yesterday Summary" },
+      { id: "week", label: "This Week Summary" },
+      { id: "problems", label: "Problems Only" },
+      { id: "back", label: "Back" },
+    ],
+  },
+};
+
+export const WA_MENU_PARENTS: Record<string, string> = {
+  management_operations: MANAGEMENT_HOME_KEY,
+  management_devices: MANAGEMENT_HOME_KEY,
+  management_checkpoints: MANAGEMENT_HOME_KEY,
+  management_incidents: MANAGEMENT_HOME_KEY,
+  management_patrol_config: MANAGEMENT_HOME_KEY,
+  management_reports: MANAGEMENT_HOME_KEY,
+  report_period: USER_HOME_KEY,
+  [MANAGEMENT_HOME_KEY]: MANAGEMENT_HOME_KEY,
+  [USER_HOME_KEY]: USER_HOME_KEY,
+};
+
+/** Maps numeric/keyword replies against the options we last showed, never against a different menu. */
+export function resolveMenuChoice(session: SessionRow, input: string): string | null {
+  const options = (session.temporary_data?.["last_options"] ?? []) as Array<{ id: string; label: string }>;
+  if (!Array.isArray(options) || !options.length) return null;
+  const trimmed = input.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const index = Number(trimmed);
+    return index >= 1 && index <= options.length ? options[index - 1].id : null;
+  }
+  const lower = trimmed.toLowerCase().replace(/[^a-z0-9 /]/g, "").trim();
+  const match = options.find((option) => option.label.toLowerCase().replace(/[^a-z0-9 /]/g, "").trim() === lower);
+  return match?.id ?? null;
+}
+
+/** The menu we should return to when the user types `back`. */
+export function backTarget(session: SessionRow): string {
+  const current = String(session.temporary_data?.["last_menu_key"] ?? "");
+  return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }

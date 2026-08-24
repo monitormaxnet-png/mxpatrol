@@ -4,6 +4,7 @@ export type Intent =
   | { action: "live" }
   | { action: "attention"; filter?: "all" | "sos" | "missed" | "offline" }
   | { action: "patrols" }
+  | { action: "patrol_status" }
   | { action: "devices"; filter?: "offline" | "online" | "all" }
   | { action: "device_detail"; device: string }
   | { action: "incidents" }
@@ -68,7 +69,16 @@ export function keywordIntent(text: string): Intent | null {
   if (/^(attention|problems?|alerts?)$/.test(value)) return { action: "attention", filter: "all" };
   if (/^(devices?)$/.test(value)) return { action: "devices", filter: "all" };
   if (/^(incidents?)$/.test(value)) return { action: "incidents" };
+  if (/^(patrol status|patrols? status)$/.test(value)) return { action: "patrol_status" };
+  const reportPeriod = value.match(/(today|yesterday|this week|week)[a-z'\s]*report|report[a-z'\s]*(today|yesterday|this week|week)/);
+  if (reportPeriod) {
+    const token = (reportPeriod[1] ?? reportPeriod[2] ?? "today").toLowerCase();
+    const period = token.includes("yesterday") ? "yesterday" : token.includes("week") ? "week" : "today";
+    return { action: "reports", period };
+  }
   if (/^(reports?|summary)$/.test(value)) return { action: "reports" };
+  if (/(show|view|give me|list).*(reports?|summary)/.test(value)) return { action: "reports" };
+  if (/generate.*(patrol )?report/.test(value)) return { action: "reports" };
   if (/^(setup|settings)$/.test(value)) return { action: "setup" };
   if (/^(change site|switch site|site)$/.test(value)) return { action: "change_site" };
   if (/^(management|manager|admin)$/i.test(value)) return { action: "management" };

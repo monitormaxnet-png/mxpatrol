@@ -58,7 +58,9 @@ export default function EnrollPage() {
     device_name: "",
     device_type: "mobile",
     serial_number: "",
+  });
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
+
   const [deviceCodeLoading, setDeviceCodeLoading] = useState(false);
   const [deviceCodeError, setDeviceCodeError] = useState("");
 

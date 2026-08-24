@@ -301,6 +301,8 @@ export default function EnrollPage() {
                   </CardContent>
                 </Card>
 
+                {!manualMode ? (
+
                   <Card>
                     <CardHeader className="text-center">
                       <CardTitle className="flex items-center justify-center gap-2">

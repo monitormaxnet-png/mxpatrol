@@ -142,6 +142,7 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     title: 'PATROL CONFIGURATION',
     parent: MANAGEMENT_HOME,
     items: [
+      { label: 'View Patrol Status', action: 'menu:patrol_status' },
       { label: 'View Routes', action: 'routes' },
       { label: 'View Schedules', action: 'schedules' },
       { label: 'Create Patrol Template', action: 'create_patrol' },

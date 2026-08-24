@@ -88,3 +88,20 @@ export const PATROL_STATUS_GROUPS = {
   late: ['late', 'late_start', 'delayed', 'completed_late'],
   missed: ['missed'],
 } as const;
+
+export type PatrolStatusGroup = keyof typeof PATROL_STATUS_GROUPS;
+
+export const PATROL_STATUS_LABELS: Record<PatrolStatusGroup, string> = {
+  completed: 'Completed',
+  incomplete: 'Incomplete',
+  late: 'Late / Delayed',
+  missed: 'Missed',
+};
+
+/** Counts each patrol outcome from real session rows already scoped to the active site. */
+export function patrolStatusCounts(rows: Array<{ status: string | null }>): Record<PatrolStatusGroup, number> {
+  const count = (group: PatrolStatusGroup) =>
+    rows.filter((row) => (PATROL_STATUS_GROUPS[group] as readonly string[]).includes(String(row.status))).length;
+  return { completed: count('completed'), incomplete: count('incomplete'), late: count('late'), missed: count('missed') };
+}
+

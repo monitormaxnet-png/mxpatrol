@@ -23,6 +23,7 @@ import { getLocalDeviceIdentifier, resolveDeviceCompany } from "@/lib/deviceComp
 import { batteryMetadata } from "@/lib/deviceBattery";
 import { playFeedbackSound } from "@/lib/feedbackSound";
 import { describeScanResult, formatProgress, type StructuredScanResult } from "@/lib/scanResult";
+import DataLogFormOverlay from "@/components/scanner/DataLogFormOverlay";
 import HardwareSosListener from "@/components/devices/HardwareSosListener";
 import TTechMxPatrolLogo from "@/components/branding/TTechMxPatrolLogo";
 
@@ -68,6 +69,8 @@ const NFCScanner = () => {
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastStructuredResult, setLastStructuredResult] = useState<StructuredScanResult | null>(null);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
+  const [pendingDataLog, setPendingDataLog] = useState<{ result: StructuredScanResult; checkpointName: string } | null>(null);
+  const [submittingDataLog, setSubmittingDataLog] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const { battery } = useDeviceBattery();
   const scanDeviceMetadata = useMemo(() => batteryMetadata(battery), [battery]);
@@ -261,6 +264,9 @@ const NFCScanner = () => {
         queryClient.invalidateQueries({ queryKey: ["patrols"] });
         queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       });
+      if (structured?.data_log_required && structured.data_log_form && structured.scan_id) {
+        setPendingDataLog({ result: structured, checkpointName: getScanDisplayName(result) });
+      }
       signalScannerHaptic(registeredCheckpoint ? "success" : "unregistered");
       console.info("[ScannerState]", {
         state: nextState,
@@ -272,7 +278,9 @@ const NFCScanner = () => {
         progress: formatProgress(structured?.patrol ?? null),
         gpsStatus,
       });
-      setTimeout(() => setScannerStatus("scanning"), feedback.holdMs);
+      if (!(structured?.data_log_required && structured.data_log_form)) {
+        setTimeout(() => setScannerStatus("scanning"), feedback.holdMs);
+      }
     },
     onFailure: (result) => {
       setLastStructuredResult(result.structured ?? null);
@@ -293,6 +301,40 @@ const NFCScanner = () => {
       toast.info("Face verification required for this patrol");
     },
   });
+
+  const submitDataLog = useCallback(
+    async (responses: Record<string, unknown>) => {
+      if (!pendingDataLog?.result.scan_id || !companyId) return;
+      setSubmittingDataLog(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("device-data-log", {
+          body: {
+            company_id: companyId,
+            device_identifier: deviceCompany?.deviceIdentifier ?? localDeviceIdentifier,
+            scan_log_id: pendingDataLog.result.scan_id,
+            responses,
+          },
+        });
+        const payload = data as { ok?: boolean; error?: string } | null;
+        if (error || !payload?.ok) throw new Error(payload?.error ?? error?.message ?? "Data log submission failed");
+
+        playFeedbackSound("scan-success");
+        toast.success("Data log submitted");
+        setPendingDataLog(null);
+        setScannerStatus("success");
+        setLastError(null);
+        queryClient.invalidateQueries({ queryKey: ["patrol_sessions"] });
+        queryClient.invalidateQueries({ queryKey: ["scheduled-patrols"] });
+        setTimeout(() => setScannerStatus("scanning"), 1800);
+      } catch (submitError) {
+        playFeedbackSound("error");
+        toast.error(submitError instanceof Error ? submitError.message : "Data log submission failed");
+      } finally {
+        setSubmittingDataLog(false);
+      }
+    },
+    [companyId, deviceCompany?.deviceIdentifier, localDeviceIdentifier, pendingDataLog, queryClient],
+  );
 
   const addToLog = useCallback((result: ScanValidationResult, valid: boolean) => {
     console.debug(`[NFCScanner] session log entry ${JSON.stringify({
@@ -776,7 +818,31 @@ const NFCScanner = () => {
                 )}
               </AnimatePresence>
 
-              {!pendingFaceScan && (
+              <AnimatePresence>
+                {pendingDataLog?.result.data_log_form && (
+                  <motion.div
+                    key="data-log-form"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 12 }}
+                    className="absolute inset-x-0 bottom-0 z-20 px-4 pb-6"
+                  >
+                    <DataLogFormOverlay
+                      form={pendingDataLog.result.data_log_form}
+                      checkpointName={pendingDataLog.checkpointName}
+                      submitting={submittingDataLog}
+                      onSubmit={submitDataLog}
+                      onCancel={() => {
+                        setPendingDataLog(null);
+                        setScannerStatus(nfcSupported ? "scanning" : "idle");
+                        toast.warning("Checkpoint stays awaiting data until the form is submitted");
+                      }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {!pendingFaceScan && !pendingDataLog && (
                 <div className="scanner-feedback-layer pointer-events-none absolute inset-0 z-10 flex items-end justify-center px-4 pb-16">
                   <ScannerRing
                     status={scannerStatus}

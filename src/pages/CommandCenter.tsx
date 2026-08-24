@@ -98,7 +98,12 @@ export default function CommandCenter() {
     queryFn: async () => {
       const [routes, forms] = await Promise.all([
         supabase.from('patrol_routes').select('id, name').eq('site_id', selectedSiteId!).eq('status', 'active').order('name'),
-        supabase.from('data_log_forms').select('id, name').eq('is_active', true).order('name'),
+        supabase
+          .from('data_log_forms')
+          .select('id, name, site_id, data_log_form_fields(id)')
+          .eq('is_active', true)
+          .or(`site_id.is.null,site_id.eq.${selectedSiteId!}`)
+          .order('name'),
       ]);
       if (routes.error) throw routes.error;
       if (forms.error) throw forms.error;
@@ -154,7 +159,13 @@ export default function CommandCenter() {
     canManage,
     checkpoints: ((checkpoints.data ?? []) as any[]).map((row) => ({ id: String(row.id), name: String(row.name) })),
     routes: (configOptions.data?.routes ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name) })),
-    forms: (configOptions.data?.forms ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name) })),
+    forms: (configOptions.data?.forms ?? [])
+      .map((row: any) => ({
+        id: String(row.id),
+        name: String(row.name),
+        field_count: Array.isArray(row.data_log_form_fields) ? row.data_log_form_fields.length : 0,
+      }))
+      .filter((form: { field_count: number }) => form.field_count > 0),
   }), [selectedSiteId, selectedSite, canManage, checkpoints.data, configOptions.data]);
 
   /** Runs the canonical management service shared with the WhatsApp Management AI. */

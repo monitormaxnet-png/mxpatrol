@@ -5,6 +5,7 @@ import { allowedSites } from "./identity.ts";
 import { clearFlow, patchSession } from "./session.ts";
 import { formatSecureDeviceLabel, getSecureDeviceRows, requestSecureDeviceCommand, type SecureDeviceAction } from "../../_shared/secure-device-management.ts";
 import { ManagementActionError, runManagementAction, type ManagementActor, type ManagementResult } from "../../_shared/management-actions.ts";
+import { DATA_LOG_FIELD_TYPES, parseOptions, pickFieldType } from "../../_shared/data-log-fields.ts";
 
 /** Maps the WhatsApp identity onto the canonical management actor (same service the Web Management AI uses). */
 function managementActor(identity: Identity): ManagementActor {
@@ -319,26 +320,30 @@ async function registerDevice(
 /* ------------------------------ add checkpoint ----------------------------- */
 
 const DATA_LOG_OPTIONS = [
-  { id: "1", label: "No form" },
-  { id: "2", label: "Use existing form" },
-  { id: "3", label: "Create checklist" },
-  { id: "4", label: "Create data-entry form" },
-  { id: "5", label: "Create checklist + data form" },
+  { id: "1", label: "None" },
+  { id: "2", label: "Choose Existing Form" },
+  { id: "3", label: "Create New Form" },
+  { id: "4", label: "Back" },
 ];
 
-const CHECKLIST_FIELDS = [
-  { label: "Door locked?", field_type: "yes_no", required: true, sequence_order: 1 },
-  { label: "Fire extinguisher present?", field_type: "yes_no", required: true, sequence_order: 2 },
-  { label: "Lights working?", field_type: "yes_no", required: true, sequence_order: 3 },
-  { label: "Area clear?", field_type: "pass_fail", required: true, sequence_order: 4 },
-  { label: "Any damage observed?", field_type: "pass_fail", required: true, sequence_order: 5 },
-];
+const FIELD_TYPE_LINES = DATA_LOG_FIELD_TYPES.map((type, index) => `${index + 1}. ${type.label}`).join("\n");
 
-const DATA_ENTRY_FIELDS = [
-  { label: "Notes", field_type: "long_text", required: false, sequence_order: 1 },
-  { label: "Photo", field_type: "photo", required: false, sequence_order: 2 },
-  { label: "Meter Reading", field_type: "meter_reading", required: false, sequence_order: 3 },
-];
+const REQUIRED_OPTIONS = [{ id: "1", label: "Required" }, { id: "2", label: "Optional" }];
+const ADD_ANOTHER_OPTIONS = [{ id: "1", label: "Add another field" }, { id: "2", label: "Done" }];
+
+type PendingField = { label: string; field_type: string; required: boolean; options_json: string[]; sequence_order: number };
+
+function pendingFields(data: Record<string, any>): PendingField[] {
+  return Array.isArray(data.pending_form?.fields) ? (data.pending_form.fields as PendingField[]) : [];
+}
+
+function describeFields(data: Record<string, any>): string[] {
+  return pendingFields(data).map((field, index) => {
+    const typeLabel = DATA_LOG_FIELD_TYPES.find((type) => type.id === field.field_type)?.label ?? field.field_type;
+    const options = field.options_json?.length ? ` [${field.options_json.join(", ")}]` : "";
+    return `  ${index + 1}. ${field.label} - ${typeLabel}${field.required ? " (required)" : " (optional)"}${options}`;
+  });
+}
 
 function dataLogOptionSummary(data: Record<string, any>) {
   if (!data.data_log_choice || data.data_log_choice === "none") return "No form";
@@ -421,39 +426,121 @@ async function createCheckpoint(
 
   if (session.current_step === "WAITING_FOR_DATA_LOG") {
     const choice = input.trim().toLowerCase();
-    if (/^(1|no|none|no form)$/i.test(choice)) {
+
+    if (/^(1|no|none|no form)$/.test(choice)) {
       data.data_log_choice = "none";
       data.data_log_form_id = null;
+      data.pending_form = null;
+      data.data_log_field_count = null;
       const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
       return await createCheckpoint(client, identity, next, "summary");
     }
 
-    if (/^(2|existing|use existing)/i.test(choice)) {
-      const { data: forms, error } = await client.from("data_log_forms").select("id, name, form_type, data_log_form_fields(id)").eq("company_id", identity.company_id).eq("is_active", true).or("site_id.is.null,site_id.eq." + data.site_id).order("name", { ascending: true }).limit(9);
+    if (/^(2|existing|choose existing|use existing)/.test(choice)) {
+      const { data: forms, error } = await client
+        .from("data_log_forms")
+        .select("id, name, form_type, site_id, data_log_form_fields(id)")
+        .eq("company_id", identity.company_id)
+        .eq("is_active", true)
+        .or("site_id.is.null,site_id.eq." + data.site_id)
+        .order("name", { ascending: true })
+        .limit(9);
       if (error) return { session, message: { title: "FORM LOOKUP FAILED", lines: [error.message], options: DATA_LOG_OPTIONS } };
-      if (!forms?.length) return { session, message: { title: "NO FORMS FOUND", lines: ["No reusable Data Log Forms are available for this site yet."], options: DATA_LOG_OPTIONS } };
-      data.form_choices = forms;
+      const usable = (forms ?? []).filter((form: any) => Array.isArray(form.data_log_form_fields) && form.data_log_form_fields.length > 0);
+      if (!usable.length) return { session, message: { title: "NO FORMS FOUND", lines: ["No reusable Data Log Forms are available for this site yet.", "Choose 3 to create one now."], options: DATA_LOG_OPTIONS } };
+      data.form_choices = usable;
       const next = await patchSession(client, session, { current_step: "WAITING_FOR_EXISTING_FORM", temporary_data: data });
-      return { session: next, message: { title: "SELECT DATA LOG FORM", lines: forms.map((form: any, index: number) => String(index + 1) + ". " + form.name), footer: "Reply with the form number, or cancel." } };
+      return { session: next, message: { title: "SELECT DATA LOG FORM", lines: usable.map((form: any, index: number) => String(index + 1) + ". " + form.name + " (" + form.data_log_form_fields.length + " fields)"), footer: "Reply with the form number, or cancel." } };
     }
 
-    const checkpointName = String(data.checkpoint_name ?? "Checkpoint");
-    if (/^(3|checklist|create checklist)/i.test(choice)) {
+    if (/^(3|new|create|create new form)/.test(choice)) {
       data.data_log_choice = "new";
-      data.pending_form = { name: checkpointName + " Inspection", form_type: "checklist", fields: CHECKLIST_FIELDS };
-    } else if (/^(4|data|data-entry|entry)/i.test(choice)) {
-      data.data_log_choice = "new";
-      data.pending_form = { name: checkpointName + " Data Log", form_type: "data_entry", fields: DATA_ENTRY_FIELDS };
-    } else if (/^(5|mixed|both|checklist.*data)/i.test(choice)) {
-      data.data_log_choice = "new";
-      data.pending_form = { name: checkpointName + " Inspection", form_type: "mixed", fields: [...CHECKLIST_FIELDS, ...DATA_ENTRY_FIELDS.map((field, index) => ({ ...field, sequence_order: CHECKLIST_FIELDS.length + index + 1 }))] };
-    } else {
-      return { session, message: { title: "DATA LOG FORM", lines: ["Choose how data should be collected."], options: DATA_LOG_OPTIONS } };
+      data.data_log_form_id = null;
+      data.pending_form = { name: "", fields: [] };
+      const next = await patchSession(client, session, { current_step: "WAITING_FOR_FORM_NAME", temporary_data: data });
+      return { session: next, message: { title: "NEW DATA LOG FORM", lines: ["What should the new Data Log Form be called?"], footer: "Type cancel to stop." } };
     }
 
-    data.data_log_form_name = data.pending_form.name;
-    data.data_log_form_type = data.pending_form.form_type;
-    data.data_log_field_count = data.pending_form.fields.length;
+    if (/^(4|back)/.test(choice)) {
+      const next = await patchSession(client, session, { current_step: "WAITING_FOR_ZONE", temporary_data: data });
+      return { session: next, message: { title: "2/6 - ZONE / LOCATION", lines: ["Reply with the zone or location."] } };
+    }
+
+    return { session, message: { title: "DATA LOG FORM", lines: ["Choose how data should be collected when this checkpoint is scanned."], options: DATA_LOG_OPTIONS } };
+  }
+
+  if (session.current_step === "WAITING_FOR_FORM_NAME") {
+    const name = input.trim().slice(0, 120);
+    if (name.length < 2) return { session, message: { title: "NEW DATA LOG FORM", lines: ["Form names need at least 2 characters."] } };
+    data.pending_form = { name, fields: [] };
+    data.data_log_form_name = name;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_FIELD_LABEL", temporary_data: data });
+    return { session: next, message: { title: "FIELD 1 - LABEL", lines: ["Form: " + name, "", "What should the first field be called? e.g. Door locked?"] } };
+  }
+
+  if (session.current_step === "WAITING_FOR_FIELD_LABEL") {
+    const label = input.trim().slice(0, 120);
+    if (label.length < 2) return { session, message: { title: "FIELD LABEL", lines: ["Field labels need at least 2 characters."] } };
+    data.draft_field = { label, field_type: "", required: false, options_json: [] };
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_FIELD_TYPE", temporary_data: data });
+    return { session: next, message: { title: "FIELD TYPE", lines: ["Field: " + label, "", FIELD_TYPE_LINES], footer: "Reply with the field type number." } };
+  }
+
+  if (session.current_step === "WAITING_FOR_FIELD_TYPE") {
+    const type = pickFieldType(input);
+    if (!type) return { session, message: { title: "FIELD TYPE", lines: ["I didn't catch that field type.", "", FIELD_TYPE_LINES] } };
+    data.draft_field = { ...(data.draft_field ?? {}), field_type: type.id };
+    if (type.needsOptions) {
+      const next = await patchSession(client, session, { current_step: "WAITING_FOR_FIELD_OPTIONS", temporary_data: data });
+      return { session: next, message: { title: "FIELD OPTIONS", lines: ["List the choices for " + data.draft_field.label + ", separated by commas.", "e.g. Clear, Minor issue, Escalate"] } };
+    }
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_FIELD_REQUIRED", temporary_data: data });
+    return { session: next, message: { title: "REQUIRED?", lines: ["Is \"" + data.draft_field.label + "\" required?"], options: REQUIRED_OPTIONS } };
+  }
+
+  if (session.current_step === "WAITING_FOR_FIELD_OPTIONS") {
+    const options = parseOptions(input);
+    if (options.length < 2) return { session, message: { title: "FIELD OPTIONS", lines: ["Provide at least two comma-separated options."] } };
+    data.draft_field = { ...(data.draft_field ?? {}), options_json: options };
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_FIELD_REQUIRED", temporary_data: data });
+    return { session: next, message: { title: "REQUIRED?", lines: ["Options: " + options.join(", "), "", "Is \"" + data.draft_field.label + "\" required?"], options: REQUIRED_OPTIONS } };
+  }
+
+  if (session.current_step === "WAITING_FOR_FIELD_REQUIRED") {
+    const answer = input.trim().toLowerCase();
+    if (!/^(1|2|yes|no|required|optional|y|n)$/.test(answer)) {
+      return { session, message: { title: "REQUIRED?", lines: ["Reply 1 for required or 2 for optional."], options: REQUIRED_OPTIONS } };
+    }
+    const required = /^(1|yes|y|required)$/.test(answer);
+    const draft = data.draft_field ?? {};
+    const fields = pendingFields(data);
+    fields.push({
+      label: String(draft.label ?? ""),
+      field_type: String(draft.field_type ?? "text"),
+      required,
+      options_json: Array.isArray(draft.options_json) ? draft.options_json : [],
+      sequence_order: fields.length + 1,
+    });
+    data.pending_form = { ...(data.pending_form ?? {}), fields };
+    data.draft_field = null;
+    data.data_log_field_count = fields.length;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_FIELD_MORE", temporary_data: data });
+    return { session: next, message: { title: "ADD ANOTHER FIELD?", lines: ["Form: " + data.pending_form.name, ...describeFields(data), "", "Add another field?"], options: ADD_ANOTHER_OPTIONS } };
+  }
+
+  if (session.current_step === "WAITING_FOR_FIELD_MORE") {
+    const answer = input.trim().toLowerCase();
+    if (/^(1|yes|y|add|another)/.test(answer)) {
+      const next = await patchSession(client, session, { current_step: "WAITING_FOR_FIELD_LABEL", temporary_data: data });
+      return { session: next, message: { title: "FIELD " + (pendingFields(data).length + 1) + " - LABEL", lines: ["What should the next field be called?"] } };
+    }
+    if (!/^(2|no|n|done|continue)/.test(answer)) {
+      return { session, message: { title: "ADD ANOTHER FIELD?", lines: ["Reply 1 to add another field or 2 when done."], options: ADD_ANOTHER_OPTIONS } };
+    }
+    if (!pendingFields(data).length) {
+      const next = await patchSession(client, session, { current_step: "WAITING_FOR_FIELD_LABEL", temporary_data: data });
+      return { session: next, message: { title: "FIELD 1 - LABEL", lines: ["A Data Log Form needs at least one field. What should the first field be called?"] } };
+    }
     const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
     return await createCheckpoint(client, identity, next, "summary");
   }
@@ -466,6 +553,7 @@ async function createCheckpoint(
     data.data_log_form_id = form.id;
     data.data_log_form_name = form.name;
     data.data_log_form_type = form.form_type;
+    data.pending_form = null;
     data.data_log_field_count = Array.isArray(form.data_log_form_fields) ? form.data_log_form_fields.length : 0;
     const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
     return await createCheckpoint(client, identity, next, "summary");
@@ -476,14 +564,17 @@ async function createCheckpoint(
       return {
         session,
         message: {
-          title: "6/6 - CONFIRM REGISTRATION",
+          title: "REGISTER CHECKPOINT - CONFIRM",
           lines: [
-            "Name: " + data.checkpoint_name,
-            "Zone: " + data.location_note,
+            "Checkpoint: " + data.checkpoint_name,
+            "Zone / Location: " + data.location_note,
             "Site: " + data.site_name,
-            "NFC: Assigned",
+            "NFC: " + (data.nfc_tag_id ? "assigned" : "pending"),
             "Data Log Form: " + dataLogOptionSummary(data),
             data.data_log_field_count != null ? "Fields: " + data.data_log_field_count : null,
+            ...(data.data_log_choice === "new" ? describeFields(data) : []),
+            "",
+            "Reply confirm to save, or cancel to discard.",
           ].filter(Boolean) as string[],
           options: [{ id: "1", label: "Register Checkpoint" }, { id: "2", label: "Cancel" }],
         },
@@ -500,8 +591,8 @@ async function createCheckpoint(
       name: data.checkpoint_name,
       location_note: data.location_note,
       nfc_tag_id: data.nfc_tag_id,
-      data_log_form_id: data.data_log_form_id ?? null,
-      new_form: data.pending_form ?? null,
+      data_log_form_id: data.data_log_choice === "existing" ? data.data_log_form_id ?? null : null,
+      new_form: data.data_log_choice === "new" && data.pending_form ? data.pending_form : null,
     });
 
     if (!outcome.result) {

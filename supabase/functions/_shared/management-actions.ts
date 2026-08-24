@@ -180,6 +180,17 @@ function incidentResult(row: Record<string, any>, site: { id: string; name: stri
 
 /* --------------------------------- devices -------------------------------- */
 
+export function normalizePairingCode(value: unknown): string {
+  return String(value ?? "").trim().toUpperCase().replace(/^MXP?[-\s]?/, "").replace(/[\s-]/g, "");
+}
+
+/**
+ * CANONICAL device registration.
+ *
+ * Management NEVER generates a pairing code. The unpaired physical MX Patrol device
+ * displays its own code (e.g. MX-48768); management binds that physical device to a
+ * device record using the code shown on its screen.
+ */
 export async function registerDevice(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
   assertCanManage(actor);
   const site = await resolveSite(client, actor, input.site_id);
@@ -187,114 +198,164 @@ export async function registerDevice(client: SupabaseClient, actor: ManagementAc
   const deviceType = String(input.device_type ?? "mobile");
   if (!DEVICE_TYPES.includes(deviceType)) throw new ManagementActionError("Device type must be mobile, pda, nfc_reader or tablet");
 
-  const { data: existing } = await client
-    .from("devices")
-    .select("id, device_name, device_identifier, pairing_code, pairing_status, pairing_expires_at, site_id, created_at")
-    .eq("company_id", actor.company_id)
-    .eq("site_id", site.id)
-    .eq("device_name", deviceName)
-    .eq("pairing_status", "pending")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (existing && recent(existing.created_at)) {
-    return deviceResult(existing, site, true);
+  const code = normalizePairingCode(input.pairing_code);
+  if (code.length < 5 || code.length > 10) {
+    throw new ManagementActionError("Enter the pairing code shown on the MX Patrol device, e.g. MX-48768");
   }
 
-  const pairingCode = generatePairingCode();
-  const { data, error } = await client
-    .from("devices")
-    .insert({
-      company_id: actor.company_id,
-      site_id: site.id,
-      device_name: deviceName,
-      device_type: deviceType,
-      device_identifier: `pending-${crypto.randomUUID()}`,
-      serial_number: typeof input.serial_number === "string" && input.serial_number ? input.serial_number : null,
-      notes: typeof input.notes === "string" && input.notes ? input.notes : null,
-      site_location: site.name,
-      pairing_code: pairingCode,
-      pairing_status: "pending",
-      pairing_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-      enrolled_via: String(input.enrolled_via ?? "assistant"),
-    })
-    .select("id, device_name, device_identifier, pairing_code, pairing_status, pairing_expires_at, site_id")
-    .maybeSingle();
-
-  if (error) throw new ManagementActionError(error.message, 500);
-  if (!data) throw new ManagementActionError("Device could not be registered", 500);
-  return deviceResult(data, site, false);
-}
-
-function deviceResult(row: Record<string, any>, site: { id: string; name: string }, duplicate: boolean): ManagementResult {
-  return {
-    ok: true,
-    action: "register_device",
-    duplicate,
-    record: {
-      id: row.id,
-      device_name: row.device_name,
-      pairing_code: row.pairing_code,
-      pairing_status: row.pairing_status,
-      pairing_expires_at: row.pairing_expires_at,
-      site_id: site.id,
-      site_name: site.name,
-    },
-    summary: `${row.device_name} is pending pairing at ${site.name}. Enter code ${row.pairing_code} in MX Patrol on the device.`,
-  };
-}
-
-/** Completes enrollment when the device already shows a pairing code (canonical device-pair path). */
-export async function attachDeviceByCode(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
-  assertCanManage(actor);
-  const site = await resolveSite(client, actor, input.site_id);
-  const code = String(input.pairing_code ?? "").trim().toUpperCase().replace(/^MXP?-?/, "").replace(/[\s-]/g, "");
-  if (code.length !== 8) throw new ManagementActionError("Pairing codes are 8 characters, e.g. MXP-7K3P92AB");
-  const deviceName = text(input.device_name, "Device name", { max: 100 });
-
-  const { data: device, error } = await client
+  // Path A — a device record in this company already carries this code (admin-issued code).
+  const { data: existingDevice, error: existingError } = await client
     .from("devices")
     .select("id, device_identifier, device_name, pairing_status, pairing_expires_at, site_id")
     .eq("company_id", actor.company_id)
     .eq("pairing_code", code)
     .maybeSingle();
-  if (error) throw new ManagementActionError(error.message, 500);
-  if (!device) throw new ManagementActionError(`No device is waiting with code ${code}`, 404);
-  if (device.pairing_status === "paired") {
-    return {
-      ok: true,
-      action: "attach_device_by_code",
-      duplicate: true,
-      record: { id: device.id, device_name: device.device_name, pairing_status: "paired", site_id: device.site_id },
-      summary: `${device.device_name ?? device.device_identifier} is already registered.`,
-    };
+  if (existingError) throw new ManagementActionError(existingError.message, 500);
+
+  if (existingDevice) {
+    if (existingDevice.pairing_status === "paired" || existingDevice.pairing_status === "active") {
+      return {
+        ok: true,
+        action: "register_device",
+        duplicate: true,
+        record: { id: existingDevice.id, device_name: existingDevice.device_name, pairing_status: "paired", site_id: existingDevice.site_id },
+        summary: `${existingDevice.device_name ?? existingDevice.device_identifier} is already registered. Pairing code ${code} has already been used.`,
+      };
+    }
+    if (existingDevice.pairing_expires_at && new Date(existingDevice.pairing_expires_at) < new Date()) {
+      throw new ManagementActionError(`Pairing code ${code} has expired. Reopen MX Patrol on the device to get a fresh code.`, 410);
+    }
+    const { data: updated, error: updateError } = await client
+      .from("devices")
+      .update({
+        device_name: deviceName,
+        device_type: deviceType,
+        site_id: site.id,
+        site_location: site.name,
+        pairing_status: "paired",
+        pairing_code: null,
+        pairing_expires_at: null,
+        enrolled_via: String(input.enrolled_via ?? "assistant_pairing_code"),
+      })
+      .eq("id", existingDevice.id)
+      .eq("company_id", actor.company_id)
+      .select("id, device_name, device_identifier, device_type, pairing_status, site_id")
+      .maybeSingle();
+    if (updateError) throw new ManagementActionError(updateError.message, 500);
+    return devicePairedResult(updated ?? existingDevice, site, deviceName, code);
   }
 
-  const { data: updated, error: updateError } = await client
-    .from("devices")
-    .update({
-      device_name: deviceName,
-      site_id: site.id,
-      site_location: site.name,
-      pairing_status: "paired",
-      pairing_code: null,
-      pairing_expires_at: null,
-    })
-    .eq("id", device.id)
-    .eq("company_id", actor.company_id)
-    .select("id, device_name, device_identifier, pairing_status, site_id")
+  // Path B — the physical device published the code itself (device-initiated pairing request).
+  const { data: request, error: requestError } = await client
+    .from("device_pairing_requests")
+    .select("id, pairing_code, device_identifier, device_metadata, status, expires_at, claimed_device_id")
+    .eq("pairing_code", code)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
-  if (updateError) throw new ManagementActionError(updateError.message, 500);
+  if (requestError) throw new ManagementActionError(requestError.message, 500);
 
+  if (!request) {
+    throw new ManagementActionError(`No MX Patrol device is currently showing code ${code}. Check the code on the device screen and try again.`, 404);
+  }
+  if (request.status === "claimed") {
+    throw new ManagementActionError(`Pairing code ${code} has already been used to register a device.`, 409);
+  }
+  if (request.status !== "pending" || new Date(request.expires_at) < new Date()) {
+    await client.from("device_pairing_requests").update({ status: "expired" }).eq("id", request.id);
+    throw new ManagementActionError(`Pairing code ${code} has expired. Reopen MX Patrol on the device to get a fresh code.`, 410);
+  }
+
+  const metadata = (request.device_metadata ?? {}) as Record<string, unknown>;
+  const { data: conflicting, error: conflictError } = await client
+    .from("devices")
+    .select("id, company_id, device_name, pairing_status")
+    .eq("device_identifier", request.device_identifier)
+    .maybeSingle();
+  if (conflictError) throw new ManagementActionError(conflictError.message, 500);
+  if (conflicting && conflicting.company_id !== actor.company_id) {
+    throw new ManagementActionError("This physical device is already registered to another organisation.", 409);
+  }
+
+  const deviceFields = {
+    device_name: deviceName,
+    device_type: deviceType,
+    site_id: site.id,
+    site_location: site.name,
+    pairing_status: "paired",
+    pairing_code: null,
+    pairing_expires_at: null,
+    status: "online" as const,
+    enrolled_via: String(input.enrolled_via ?? "assistant_pairing_code"),
+    serial_number: typeof metadata.serial_number === "string" ? metadata.serial_number : null,
+  };
+
+  let deviceRow: Record<string, any> | null = null;
+  if (conflicting) {
+    const { data, error } = await client
+      .from("devices")
+      .update(deviceFields)
+      .eq("id", conflicting.id)
+      .eq("company_id", actor.company_id)
+      .select("id, device_name, device_identifier, device_type, pairing_status, site_id")
+      .maybeSingle();
+    if (error) throw new ManagementActionError(error.message, 500);
+    deviceRow = data;
+  } else {
+    const { data, error } = await client
+      .from("devices")
+      .insert({
+        company_id: actor.company_id,
+        device_identifier: request.device_identifier,
+        ...deviceFields,
+      })
+      .select("id, device_name, device_identifier, device_type, pairing_status, site_id")
+      .maybeSingle();
+    if (error) throw new ManagementActionError(error.message, 500);
+    deviceRow = data;
+  }
+
+  if (!deviceRow) throw new ManagementActionError("Device could not be registered", 500);
+
+  const { error: claimError } = await client
+    .from("device_pairing_requests")
+    .update({
+      status: "claimed",
+      claimed_at: new Date().toISOString(),
+      claimed_device_id: deviceRow.id,
+      claimed_company_id: actor.company_id,
+    })
+    .eq("id", request.id)
+    .eq("status", "pending");
+  if (claimError) throw new ManagementActionError(claimError.message, 500);
+
+  return devicePairedResult(deviceRow, site, deviceName, code);
+}
+
+function devicePairedResult(row: Record<string, any>, site: { id: string; name: string }, deviceName: string, code: string): ManagementResult {
   return {
     ok: true,
-    action: "attach_device_by_code",
+    action: "register_device",
     duplicate: false,
-    record: { ...(updated ?? {}), site_name: site.name },
-    summary: `${deviceName} is now registered to ${site.name}.`,
+    record: {
+      id: row.id,
+      device_name: row.device_name ?? deviceName,
+      device_identifier: row.device_identifier,
+      device_type: row.device_type,
+      pairing_status: "paired",
+      pairing_code_used: code,
+      site_id: site.id,
+      site_name: site.name,
+    },
+    summary: `${deviceName} is now bound to the physical device (code ${code}) and registered to ${site.name}.`,
   };
 }
+
+/** Back-compat alias: both assistants and older callers hit the same canonical binding path. */
+export async function attachDeviceByCode(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
+  return await registerDevice(client, actor, input);
+}
+
 
 /* ------------------------------- checkpoints ------------------------------ */
 

@@ -163,6 +163,14 @@ export async function handleFlowInput(
 
 /* ------------------------------ register device ---------------------------- */
 
+const DEVICE_TYPE_OPTIONS = [
+  { id: "mobile", label: "Mobile patrol device" },
+  { id: "pda", label: "RG360 / PDA" },
+  { id: "nfc_reader", label: "NFC reader" },
+  { id: "tablet", label: "Tablet" },
+];
+
+
 async function registerDevice(
   client: SupabaseClient,
   identity: Identity,

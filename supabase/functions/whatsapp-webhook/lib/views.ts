@@ -916,5 +916,8 @@ export function resolveMenuChoice(session: SessionRow, input: string): string | 
 /** The menu we should return to when the user types `back`. */
 export function backTarget(session: SessionRow): string {
   const current = String(session.temporary_data?.["last_menu_key"] ?? "");
+  if (current === "patrol_status") {
+    return session.last_menu === "management" ? "management_operations" : USER_HOME_KEY;
+  }
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }

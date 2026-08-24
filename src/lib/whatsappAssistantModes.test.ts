@@ -50,23 +50,23 @@ describe("WhatsApp assistant role menus", () => {
       "missed_patrols",
       "missed_checkpoints",
       "change_site",
-      "menu",
+      "management",
     ]);
   });
 
   it("does not render management actions for normal users", () => {
     const menu = managementMenu(baseIdentity, baseSession);
     expect(menu.title).toBe("MANAGEMENT ACCESS UNAVAILABLE");
-    expect(menu.options?.map((option) => option.id)).not.toContain("register_device");
+    expect(menu.options?.map((option) => option.id)).not.toContain("management_devices");
   });
 
   it("renders MANAGEMENT menu only for authorized management identities", () => {
     const identity: Identity = { ...baseIdentity, role: "supervisor", canManage: true, canAcknowledge: true };
     const menu = managementMenu(identity, { ...baseSession, last_menu: "management" });
     expect(menu.title).toContain("MANAGEMENT");
-    expect(menu.options?.map((option) => option.id)).toContain("register_device");
-    expect(menu.options?.map((option) => option.id)).toContain("add_checkpoint");
-    expect(menu.options?.map((option) => option.id)).toContain("report_incident");
+    expect(menu.options?.map((option) => option.id)).toContain("management_devices");
+    expect(menu.options?.map((option) => option.id)).toContain("management_checkpoints");
+    expect(menu.options?.map((option) => option.id)).toContain("management_incidents");
     expect(menu.options?.map((option) => option.id)).toContain("secure_devices");
   });
 });

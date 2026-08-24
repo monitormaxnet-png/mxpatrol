@@ -36,7 +36,7 @@ const corsHeaders = {
 };
 
 const LOCKOUT: OutMessage = {
-  title: "🔐 MX Patrol account required",
+  title: "ðŸ” MX Patrol account required",
   lines: [
     "This WhatsApp number isn't linked to an MX Patrol account.",
     "",
@@ -236,7 +236,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       const message = await deviceList(ctx.client, ctx.identity, siteId);
       if (intent.filter === "offline") {
         message.options = (message.options ?? []).filter((option) => option.label.includes("Offline"));
-        message.lines = message.options.length ? message.lines : ["🟢 All devices are online."];
+        message.lines = message.options.length ? message.lines : ["ðŸŸ¢ All devices are online."];
       }
       return message;
     }
@@ -361,6 +361,73 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
 
 /** Handles the ids that only exist as menu selections (site:, device:, ack, problems, periods). */
 async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
+  if (id === "management_operations") {
+    return optionMenu("OPERATIONS", ["Choose an operations view."], [
+      { id: "patrols", label: "Live Patrol" },
+      { id: "patrols", label: "Patrol Status" },
+      { id: "completed_patrols", label: "Completed Patrols" },
+      { id: "late_patrols", label: "Late / Delayed Patrols" },
+      { id: "incomplete_patrols", label: "Incomplete Patrols" },
+      { id: "missed_patrols", label: "Missed Patrols" },
+      { id: "missed_checkpoints", label: "Missed Checkpoints" },
+      { id: "live", label: "Live Map" },
+      { id: "management", label: "Back" },
+    ]);
+  }
+
+  if (id === "management_devices") {
+    return optionMenu("DEVICES", ["Choose a device management action."], [
+      { id: "register_device", label: "Register Device" },
+      { id: "devices", label: "View Devices" },
+      { id: "offline", label: "Offline Devices" },
+      { id: "secure_device_status", label: "Device Security" },
+      { id: "management", label: "Back" },
+    ]);
+  }
+
+  if (id === "management_checkpoints") {
+    return optionMenu("CHECKPOINTS", ["Choose a checkpoint management action."], [
+      { id: "add_checkpoint", label: "Register Checkpoint" },
+      { id: "checkpoints", label: "View Checkpoints" },
+      { id: "checkpoints", label: "Pending NFC Assignment" },
+      { id: "checkpoints", label: "Unregistered Tags" },
+      { id: "add_checkpoint", label: "Data Log Forms" },
+      { id: "management", label: "Back" },
+    ]);
+  }
+
+  if (id === "management_incidents") {
+    return optionMenu("INCIDENTS", ["Choose an incident management action."], [
+      { id: "report_incident", label: "Register Incident" },
+      { id: "incidents", label: "Open Incidents" },
+      { id: "incidents", label: "High Priority" },
+      { id: "incidents", label: "Resolved Incidents" },
+      { id: "management", label: "Back" },
+    ]);
+  }
+
+  if (id === "management_patrol_config") {
+    return optionMenu("PATROL CONFIGURATION", ["Choose a patrol configuration action."], [
+      { id: "create_patrol", label: "Create Patrol" },
+      { id: "create_patrol", label: "Create Route" },
+      { id: "create_patrol", label: "Create Schedule" },
+      { id: "patrols", label: "View Routes" },
+      { id: "patrols", label: "View Schedules" },
+      { id: "management", label: "Back" },
+    ]);
+  }
+
+  if (id === "management_reports") {
+    return optionMenu("REPORTS", ["Choose a report."], [
+      { id: "today", label: "Today Summary" },
+      { id: "week", label: "Patrol Performance" },
+      { id: "reports", label: "Incident Report" },
+      { id: "reports", label: "Data Log Report" },
+      { id: "reports", label: "Generate Report" },
+      { id: "management", label: "Back" },
+    ]);
+  }
+
   if (id.startsWith("site:")) {
     const value = id.slice(5);
     const sites = await allowedSites(ctx.client, ctx.identity);
@@ -450,7 +517,7 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
     if (error) {
       return optionMenu("COULD NOT ACKNOWLEDGE", [error.message], [{ id: "menu", label: "Main Menu" }]);
     }
-    return optionMenu("✅ SOS ACKNOWLEDGED", ["All open SOS alerts are marked as acknowledged."], [
+    return optionMenu("âœ… SOS ACKNOWLEDGED", ["All open SOS alerts are marked as acknowledged."], [
       { id: "attention", label: "Attention" },
       { id: "menu", label: "Main Menu" },
     ]);
@@ -530,7 +597,7 @@ serve(async (req) => {
 
     if (resolved.kind === "linked") {
       message = {
-        title: "✅ NUMBER LINKED",
+        title: "âœ… NUMBER LINKED",
         lines: [
           `This WhatsApp number is now linked to MX Patrol${identity.display_name ? ` for ${identity.display_name}` : ""}.`,
         ],

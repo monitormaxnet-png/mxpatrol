@@ -110,6 +110,7 @@ const App = () => (
                 </ProtectedRoute>
               }
             >
+              <Route path="/assistant" element={lazyRoute(<CommandCenter />)} />
               <Route path="/dashboard" element={lazyRoute(<CommandCenter />)} />
               <Route path="/live-patrol" element={lazyRoute(<LivePatrol />)} />
               <Route path="/session-logs" element={lazyRoute(<SessionLogsPage />)} />

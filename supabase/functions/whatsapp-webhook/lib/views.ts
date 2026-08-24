@@ -16,7 +16,7 @@ export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
   return {
     title: "MX PATROL",
     lines: [
-      `${greeting()} 👋`,
+      `${greeting()} ðŸ‘‹`,
       context,
       "What would you like to do?",
     ],
@@ -30,9 +30,9 @@ export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
       { id: "incomplete_patrols", label: "Incomplete Patrols" },
       { id: "late_patrols", label: "Late / Delayed Patrols" },
       { id: "missed_patrols", label: "Missed Patrols" },
-      { id: "missed_checkpoints", label: "Missed Checkpoints List" },
+      { id: "missed_checkpoints", label: "Missed Checkpoints" },
       { id: "change_site", label: "Change Site" },
-      { id: "menu", label: "Main Menu" },
+      { id: "management", label: "Management" },
     ],
     footer: "You can also ask me something like:\nWhich devices are offline?",
   };
@@ -47,21 +47,18 @@ export function managementMenu(identity: Identity, session: SessionRow): OutMess
     };
   }
   return {
-    title: "MX PATROL — MANAGEMENT",
-    lines: [session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site before making changes.", "What would you like to do?"],
+    title: "MX PATROL - MANAGEMENT",
+    lines: [session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site before making changes.", "What would you like to manage?"],
     options: [
-      { id: "register_device", label: "Register Device" },
-      { id: "add_checkpoint", label: "Register Checkpoint" },
-      { id: "report_incident", label: "Register Incident" },
-      { id: "devices", label: "View Devices" },
+      { id: "management_operations", label: "Operations" },
+      { id: "management_devices", label: "Devices" },
+      { id: "management_checkpoints", label: "Checkpoints" },
+      { id: "management_incidents", label: "Incidents" },
+      { id: "management_patrol_config", label: "Patrol Configuration" },
+      { id: "management_reports", label: "Reports" },
       { id: "secure_devices", label: "Secure Patrol Devices" },
-      { id: "checkpoints", label: "View Checkpoints" },
-      { id: "incidents", label: "View Incidents" },
-      { id: "patrols", label: "Patrol Management" },
-      { id: "reports", label: "Reports" },
       { id: "change_site", label: "Change Site" },
       { id: "user", label: "User Assistant" },
-      { id: "menu", label: "Main Menu" },
     ],
   };
 }
@@ -100,10 +97,10 @@ export async function liveNow(
   return {
     title: "LIVE NOW",
     lines: [
-      `🟢 ${active} devices active`,
-      `🚶 ${(sessions ?? []).length} patrols in progress`,
-      `⚠️ ${attention} item${attention === 1 ? "" : "s"} need${attention === 1 ? "s" : ""} attention`,
-      `🆘 ${sos} SOS alert${sos === 1 ? "" : "s"}`,
+      `ðŸŸ¢ ${active} devices active`,
+      `ðŸš¶ ${(sessions ?? []).length} patrols in progress`,
+      `âš ï¸ ${attention} item${attention === 1 ? "" : "s"} need${attention === 1 ? "s" : ""} attention`,
+      `ðŸ†˜ ${sos} SOS alert${sos === 1 ? "" : "s"}`,
     ],
     options: [
       { id: "patrols", label: "View Active Patrols" },
@@ -143,10 +140,10 @@ export async function activePatrols(
     lines.push(
       [
         `*${site?.name ?? route?.name ?? "Patrol"}*`,
-        `📱 ${row.device_identifier ?? "No device"}`,
-        `🟢 ${String(row.status).replace(/_/g, " ")}`,
-        `✅ ${row.checkpoint_completed ?? 0} / ${row.checkpoint_total ?? 0} checkpoints`,
-        `⏱ Last activity: ${timeAgo(row.last_scan_at)}`,
+        `ðŸ“± ${row.device_identifier ?? "No device"}`,
+        `ðŸŸ¢ ${String(row.status).replace(/_/g, " ")}`,
+        `âœ… ${row.checkpoint_completed ?? 0} / ${row.checkpoint_total ?? 0} checkpoints`,
+        `â± Last activity: ${timeAgo(row.last_scan_at)}`,
       ].join("\n"),
     );
   }
@@ -188,7 +185,7 @@ export async function attention(
   const rows = (data ?? []) as any[];
 
   if (!rows.length) {
-    return { title: "ATTENTION", lines: ["✅ Nothing needs attention right now."], options: [{ id: "menu", label: "Main Menu" }] };
+    return { title: "ATTENTION", lines: ["âœ… Nothing needs attention right now."], options: [{ id: "menu", label: "Main Menu" }] };
   }
 
   const counts = {
@@ -200,8 +197,8 @@ export async function attention(
   const detail = rows
     .slice(0, 5)
     .map((row) => {
-      const icon = row.type === "panic_button" ? "🔴" : row.type === "device_offline" ? "📴" : "⚠️";
-      return `${icon} ${row.message}\n⏱ ${timeAgo(row.created_at)}`;
+      const icon = row.type === "panic_button" ? "ðŸ”´" : row.type === "device_offline" ? "ðŸ“´" : "âš ï¸";
+      return `${icon} ${row.message}\nâ± ${timeAgo(row.created_at)}`;
     })
     .join("\n\n");
 
@@ -213,11 +210,11 @@ export async function attention(
   if (filter === "sos" && identity.canAcknowledge) options.unshift({ id: "ack", label: "Acknowledge All SOS" });
 
   return {
-    title: `⚠️ ${rows.length} ITEM${rows.length === 1 ? "" : "S"} NEED ATTENTION`,
+    title: `âš ï¸ ${rows.length} ITEM${rows.length === 1 ? "" : "S"} NEED ATTENTION`,
     lines: [
-      `🔴 ${counts.critical} Critical`,
-      `🟠 ${counts.medium} Medium`,
-      `🔵 ${counts.low} Low`,
+      `ðŸ”´ ${counts.critical} Critical`,
+      `ðŸŸ  ${counts.medium} Medium`,
+      `ðŸ”µ ${counts.low} Low`,
       "",
       detail,
     ],
@@ -248,14 +245,14 @@ export async function deviceList(
     title: "DEVICES",
     lines: [
       `Total: ${rows.length}`,
-      `🟢 Online: ${online}`,
-      `🔴 Offline: ${offline}`,
+      `ðŸŸ¢ Online: ${online}`,
+      `ðŸ”´ Offline: ${offline}`,
       "",
       rows.length ? "Choose a device:" : "No devices registered yet.",
     ],
     options: rows.map((row) => ({
       id: `device:${row.device_identifier}`,
-      label: `${row.device_identifier} — ${row.status === "online" ? "Online" : "Offline"}`,
+      label: `${row.device_identifier} â€” ${row.status === "online" ? "Online" : "Offline"}`,
     })),
   };
 }
@@ -279,7 +276,7 @@ export async function deviceDetail(
     return {
       message: {
         title: "DEVICE NOT FOUND",
-        lines: [`I couldn't find a device matching “${needle}”.`],
+        lines: [`I couldn't find a device matching â€œ${needle}â€.`],
         options: [{ id: "devices", label: "View Devices" }, { id: "menu", label: "Main Menu" }],
       },
     };
@@ -316,13 +313,13 @@ export async function deviceDetail(
     message: {
       title: device.device_identifier,
       lines: [
-        device.status === "online" ? "🟢 Online" : "🔴 Offline",
+        device.status === "online" ? "ðŸŸ¢ Online" : "ðŸ”´ Offline",
         "",
         `Site: ${site?.name ?? "Unassigned"}`,
         `Last seen: ${timeAgo(device.last_seen_at)}`,
         `Last checkpoint: ${lastCheckpoint ?? "None yet"}`,
         route?.name ? `Patrol: ${route.name}` : "Patrol: None",
-        session ? `Progress: ${session.checkpoint_completed ?? 0}/${session.checkpoint_total ?? 0}` : "Progress: —",
+        session ? `Progress: ${session.checkpoint_completed ?? 0}/${session.checkpoint_total ?? 0}` : "Progress: â€”",
         `GPS: ${hasGps ? "Available" : "Not available"}`,
       ],
       options: [
@@ -335,7 +332,7 @@ export async function deviceDetail(
       ? {
         lat: Number(device.current_gps_lat),
         lng: Number(device.current_gps_lng),
-        label: `${device.device_identifier} — ${site?.name ?? "Unknown site"}`,
+        label: `${device.device_identifier} â€” ${site?.name ?? "Unknown site"}`,
       }
       : undefined,
   };
@@ -360,7 +357,7 @@ export async function incidentsView(
   return {
     title: "INCIDENTS",
     lines: rows.length
-      ? [rows.map((r) => `${r.resolved ? "✅" : "🟠"} ${r.title}\n${String(r.severity).toUpperCase()} · ${timeAgo(r.created_at)}`).join("\n\n")]
+      ? [rows.map((r) => `${r.resolved ? "âœ…" : "ðŸŸ "} ${r.title}\n${String(r.severity).toUpperCase()} Â· ${timeAgo(r.created_at)}`).join("\n\n")]
       : ["No incidents recorded."],
     options: [
       { id: "report_incident", label: "Report Incident" },
@@ -442,7 +439,7 @@ export async function reportSummary(
   if (problemsOnly) {
     const problems: string[] = [];
     for (const device of (devices ?? []) as any[]) {
-      if (device.status === "offline") problems.push(`• ${device.device_identifier} offline`);
+      if (device.status === "offline") problems.push(`â€¢ ${device.device_identifier} offline`);
     }
     for (const session of sessionRows) {
       const done = session.checkpoint_completed ?? 0;
@@ -450,15 +447,15 @@ export async function reportSummary(
       if (total > 0 && done < total) {
         const site = Array.isArray(session.sites) ? session.sites[0] : session.sites;
         const route = Array.isArray(session.patrol_routes) ? session.patrol_routes[0] : session.patrol_routes;
-        problems.push(`• ${site?.name ?? route?.name ?? "Patrol"} completed ${done}/${total} checkpoints`);
+        problems.push(`â€¢ ${site?.name ?? route?.name ?? "Patrol"} completed ${done}/${total} checkpoints`);
       }
     }
     for (const alert of (alerts ?? []) as any[]) {
-      if (alert.type === "missed_checkpoint") problems.push(`• ${alert.message}`);
+      if (alert.type === "missed_checkpoint") problems.push(`â€¢ ${alert.message}`);
     }
 
     return {
-      title: problems.length ? `⚠️ ${problems.length} things need attention` : "✅ Nothing went wrong",
+      title: problems.length ? `âš ï¸ ${problems.length} things need attention` : "âœ… Nothing went wrong",
       lines: problems.length ? [problems.slice(0, 12).join("\n")] : ["Everything completed normally."],
       options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
     };
@@ -467,12 +464,12 @@ export async function reportSummary(
   return {
     title: `${label}'S SECURITY SUMMARY`,
     lines: [
-      `📱 Devices active: ${((devices ?? []) as any[]).filter((d) => d.status === "online").length}`,
-      `🚶 Patrols completed: ${completed}`,
-      `✅ Checkpoints scanned: ${(scans ?? []).length}`,
-      `⚠️ Missed checkpoints: ${missedCheckpoints}`,
-      `🚨 Incidents: ${(incidents ?? []).length}`,
-      `🆘 SOS alerts: ${sos}`,
+      `ðŸ“± Devices active: ${((devices ?? []) as any[]).filter((d) => d.status === "online").length}`,
+      `ðŸš¶ Patrols completed: ${completed}`,
+      `âœ… Checkpoints scanned: ${(scans ?? []).length}`,
+      `âš ï¸ Missed checkpoints: ${missedCheckpoints}`,
+      `ðŸš¨ Incidents: ${(incidents ?? []).length}`,
+      `ðŸ†˜ SOS alerts: ${sos}`,
     ],
     options: [
       { id: "problems", label: "Problems Only" },

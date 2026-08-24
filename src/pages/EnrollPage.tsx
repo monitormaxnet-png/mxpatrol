@@ -80,6 +80,40 @@ export default function EnrollPage() {
     }));
   }, []);
 
+  const requestDeviceCode = useCallback(async () => {
+    const device = getPatrolDeviceInfo();
+    if (!navigator.onLine) {
+      setDeviceCodeError("A pairing code needs an internet connection.");
+      return;
+    }
+    setDeviceCodeLoading(true);
+    setDeviceCodeError("");
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("device-pair", {
+        body: {
+          mode: "request_code",
+          device_metadata: {
+            device_identifier: device.deviceIdentifier,
+            device_type: /Mobile|Android|iPhone/i.test(navigator.userAgent) ? "mobile" : "tablet",
+            model: navigator.userAgent,
+            os: navigator.platform,
+          },
+        },
+      });
+      if (fnError) throw fnError;
+      if (!data?.success) throw new Error(data?.error || "Could not get a pairing code");
+      setDeviceCode(data.display_code ?? `MX-${data.pairing_code}`);
+    } catch (err: unknown) {
+      setDeviceCodeError(err instanceof Error ? err.message : "Could not get a pairing code");
+    } finally {
+      setDeviceCodeLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { requestDeviceCode(); }, [requestDeviceCode]);
+
+
+
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
     const onOffline = () => setIsOnline(false);

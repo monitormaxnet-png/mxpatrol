@@ -31,7 +31,7 @@ export type WorkflowContext = {
   canManage: boolean;
   checkpoints: Array<{ id: string; name: string }>;
   routes: Array<{ id: string; name: string }>;
-  forms: Array<{ id: string; name: string }>;
+  forms: Array<{ id: string; name: string; field_count?: number }>;
 };
 
 export type WorkflowState = { id: WorkflowId; stepIndex: number; data: Record<string, unknown> };

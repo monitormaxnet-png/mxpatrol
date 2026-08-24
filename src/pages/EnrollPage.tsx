@@ -58,7 +58,10 @@ export default function EnrollPage() {
     device_name: "",
     device_type: "mobile",
     serial_number: "",
-  });
+  const [deviceCode, setDeviceCode] = useState<string | null>(null);
+  const [deviceCodeLoading, setDeviceCodeLoading] = useState(false);
+  const [deviceCodeError, setDeviceCodeError] = useState("");
+
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef(false);
   const { enqueue, syncQueue, syncing, pendingCount } = useOfflineEnrollQueue();

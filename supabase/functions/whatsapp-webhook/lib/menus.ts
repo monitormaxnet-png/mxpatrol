@@ -15,13 +15,10 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     options: [
       { id: "patrols", label: "Live Patrol" },
       { id: "patrol_status", label: "Patrol Status" },
-      { id: "completed_patrols", label: "Completed Patrols" },
-      { id: "late_patrols", label: "Late / Delayed Patrols" },
-      { id: "incomplete_patrols", label: "Incomplete Patrols" },
-      { id: "missed_patrols", label: "Missed Patrols" },
       { id: "missed_checkpoints", label: "Missed Checkpoints" },
       { id: "back", label: "Back" },
     ],
+
   },
   management_devices: {
     title: "DEVICES",
@@ -109,5 +106,8 @@ export function resolveMenuChoice(session: SessionRow, input: string): string | 
 /** The menu we should return to when the user types `back`. */
 export function backTarget(session: SessionRow): string {
   const current = String(session.temporary_data?.["last_menu_key"] ?? "");
+  if (current === "patrol_status") {
+    return session.last_menu === "management" ? "management_operations" : USER_HOME_KEY;
+  }
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }

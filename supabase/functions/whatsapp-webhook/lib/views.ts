@@ -825,13 +825,10 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     options: [
       { id: "patrols", label: "Live Patrol" },
       { id: "patrol_status", label: "Patrol Status" },
-      { id: "completed_patrols", label: "Completed Patrols" },
-      { id: "late_patrols", label: "Late / Delayed Patrols" },
-      { id: "incomplete_patrols", label: "Incomplete Patrols" },
-      { id: "missed_patrols", label: "Missed Patrols" },
       { id: "missed_checkpoints", label: "Missed Checkpoints" },
       { id: "back", label: "Back" },
     ],
+
   },
   management_devices: {
     title: "DEVICES",

@@ -2153,6 +2153,7 @@ export type Database = {
           expected_duration_minutes: number
           id: string
           name: string
+          operational_rules: Json
           site_id: string | null
           status: string
           updated_at: string
@@ -2165,6 +2166,7 @@ export type Database = {
           expected_duration_minutes?: number
           id?: string
           name: string
+          operational_rules?: Json
           site_id?: string | null
           status?: string
           updated_at?: string
@@ -2177,6 +2179,7 @@ export type Database = {
           expected_duration_minutes?: number
           id?: string
           name?: string
+          operational_rules?: Json
           site_id?: string | null
           status?: string
           updated_at?: string

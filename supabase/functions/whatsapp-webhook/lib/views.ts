@@ -543,9 +543,54 @@ function waDate(iso: string | null | undefined): string | null {
   return new Intl.DateTimeFormat("en-GB", { year: "numeric", month: "short", day: "2-digit", timeZone: TZ }).format(date);
 }
 
+const PATROL_STATUS_LABELS: Record<keyof typeof PATROL_STATUS_GROUPS, string> = {
+  completed: "Completed",
+  incomplete: "Incomplete",
+  late: "Late / Delayed",
+  missed: "Missed",
+};
+
+/** Patrol Status overview: real, site-scoped counts with numbered drill-down options. */
+export async function patrolStatusOverview(
+  client: SupabaseClient,
+  identity: Identity,
+  siteId: string | null,
+  siteName?: string | null,
+): Promise<OutMessage> {
+  const { data } = await siteFilter<any>(
+    client.from("patrol_sessions").select("id, status, site_id").limit(500),
+    identity,
+    siteId,
+  );
+  const rows = (data ?? []) as any[];
+  const count = (group: keyof typeof PATROL_STATUS_GROUPS) =>
+    rows.filter((row) => (PATROL_STATUS_GROUPS[group] as readonly string[]).includes(String(row.status))).length;
+
+  return {
+    title: siteName ? `PATROL STATUS — ${siteName}` : "PATROL STATUS",
+    menuKey: "patrol_status",
+    lines: [
+      `Completed: ${count("completed")}`,
+      `Incomplete: ${count("incomplete")}`,
+      `Late / Delayed: ${count("late")}`,
+      `Missed: ${count("missed")}`,
+      "",
+      "Choose a status for the detailed list.",
+    ],
+    options: [
+      { id: "completed_patrols", label: PATROL_STATUS_LABELS.completed },
+      { id: "incomplete_patrols", label: PATROL_STATUS_LABELS.incomplete },
+      { id: "late_patrols", label: PATROL_STATUS_LABELS.late },
+      { id: "missed_patrols", label: PATROL_STATUS_LABELS.missed },
+      { id: "back", label: "Back" },
+    ],
+  };
+}
+
 function lateBy(scheduled: string | null, actual: string | null): string | null {
   if (!scheduled || !actual) return null;
   const diff = new Date(actual).getTime() - new Date(scheduled).getTime();
+
   if (!Number.isFinite(diff) || diff <= 0) return null;
   const mins = Math.round(diff / 60000);
   return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;

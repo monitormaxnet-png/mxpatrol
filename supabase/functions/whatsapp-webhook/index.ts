@@ -18,6 +18,7 @@ import {
   managementMenu,
   checkpointsView,
   patrolStatusView,
+  patrolStatusOverview,
   missedCheckpointsView,
   reportPeriodMenu,
   reportSummary,
@@ -272,8 +273,9 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
     case "patrol_status": {
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
-      return await activePatrols(ctx.client, ctx.identity, siteId);
+      return await patrolStatusOverview(ctx.client, ctx.identity, siteId, ctx.session.current_site_name);
     }
+
 
     case "checkpoints": {
       const { siteId, ask } = await ensureSiteContext(ctx);

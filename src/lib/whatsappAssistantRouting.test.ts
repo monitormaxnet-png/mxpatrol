@@ -4,9 +4,11 @@ import {
   USER_HOME_KEY,
   WA_SUBMENUS,
   backTarget,
+  formatPatrolStatusRow,
+  mainMenu,
+  managementMenu,
   resolveMenuChoice,
-} from "../../supabase/functions/whatsapp-webhook/lib/menus";
-import { formatPatrolStatusRow, mainMenu, managementMenu } from "../../supabase/functions/whatsapp-webhook/lib/views";
+} from "../../supabase/functions/whatsapp-webhook/lib/views";
 import { keywordIntent } from "../../supabase/functions/whatsapp-webhook/lib/askmx";
 import type { Identity, SessionRow } from "../../supabase/functions/whatsapp-webhook/lib/types";
 

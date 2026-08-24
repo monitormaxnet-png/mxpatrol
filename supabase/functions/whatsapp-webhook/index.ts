@@ -6,7 +6,6 @@ import { allowedSites, resolveIdentity } from "./lib/identity.ts";
 import { clearFlow, loadSession, patchSession } from "./lib/session.ts";
 import { renderText, sendLocation, twiml } from "./lib/render.ts";
 import { classifyIntent, keywordIntent, type Intent } from "./lib/askmx.ts";
-import { MANAGEMENT_HOME_KEY, WA_SUBMENUS, backTarget, resolveMenuChoice } from "./lib/menus.ts";
 import { handleFlowInput, startFlow, startSecureDeviceAction } from "./lib/flows.ts";
 import {
   activePatrols,
@@ -27,7 +26,11 @@ import {
   secureDeviceList,
   secureDeviceMenu,
   secureDeviceProblems,
-  secureDeviceStatus,
+  secureDeviceStatus,,
+  MANAGEMENT_HOME_KEY,
+  WA_SUBMENUS,
+  backTarget,
+  resolveMenuChoice,
 } from "./lib/views.ts";
 
 const corsHeaders = {

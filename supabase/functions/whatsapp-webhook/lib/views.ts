@@ -15,6 +15,7 @@ export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
   const context = session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site to continue.";
   return {
     title: "MX PATROL",
+    menuKey: "user_home",
     lines: [
       `${greeting()} ðŸ‘‹`,
       context,
@@ -48,6 +49,7 @@ export function managementMenu(identity: Identity, session: SessionRow): OutMess
   }
   return {
     title: "MX PATROL - MANAGEMENT",
+    menuKey: "management_home",
     lines: [session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site before making changes.", "What would you like to manage?"],
     options: [
       { id: "management_operations", label: "Operations" },
@@ -482,6 +484,7 @@ export async function reportSummary(
 export function reportPeriodMenu(): OutMessage {
   return {
     title: "WHAT HAPPENED?",
+    menuKey: "report_period",
     lines: ["Choose a period."],
     options: [
       { id: "today", label: "Today" },
@@ -526,6 +529,30 @@ const PATROL_STATUS_GROUPS = {
   missed: ["missed"],
 } as const;
 
+const TZ = "Africa/Johannesburg";
+
+function waTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ }).format(date);
+}
+
+function waDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", { year: "numeric", month: "short", day: "2-digit", timeZone: TZ }).format(date);
+}
+
+function lateBy(scheduled: string | null, actual: string | null): string | null {
+  if (!scheduled || !actual) return null;
+  const diff = new Date(actual).getTime() - new Date(scheduled).getTime();
+  if (!Number.isFinite(diff) || diff <= 0) return null;
+  const mins = Math.round(diff / 60000);
+  return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
 export async function patrolStatusView(
   client: SupabaseClient,
   identity: Identity,
@@ -536,7 +563,7 @@ export async function patrolStatusView(
   const { data } = await siteFilter<any>(
     client
       .from("patrol_sessions")
-      .select("id, status, scheduled_start, actual_start, checkpoint_completed, checkpoint_total, site_id, sites(name), patrol_routes(name)")
+      .select("id, status, scheduled_start, scheduled_end, actual_start, checkpoint_completed, checkpoint_total, site_id, sites(name), patrol_routes(name), patrol_templates(name)")
       .in("status", statuses)
       .order("scheduled_start", { ascending: false })
       .limit(8),
@@ -548,28 +575,51 @@ export async function patrolStatusView(
   if (!rows.length) return { title, lines: ["No matching patrols for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
   return {
     title,
-    lines: [rows.map((row, index) => {
-      const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
-      const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
-      const scheduled = row.scheduled_start ? new Date(row.scheduled_start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" }) : "unknown";
-      const started = row.actual_start ? new Date(row.actual_start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" }) : "not started";
-      return `${index + 1}. ${route?.name ?? site?.name ?? "Patrol"}\nStatus: ${String(row.status).replace(/_/g, " ")}\nScheduled: ${scheduled}\nStarted: ${started}\nCheckpoints: ${row.checkpoint_completed ?? 0}/${row.checkpoint_total ?? 0}`;
-    }).join("\n\n")],
+    lines: [rows.map((row, index) => formatPatrolStatusRow(row, index, group)).join("\n\n")],
     options: [{ id: "menu", label: "Main Menu" }],
   };
+}
+
+/** Exported for tests: every patrol line carries the canonical scheduled time. */
+export function formatPatrolStatusRow(row: Record<string, any>, index: number, group: string): string {
+  const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
+  const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
+  const template = Array.isArray(row.patrol_templates) ? row.patrol_templates[0] : row.patrol_templates;
+  const scheduled = waTime(row.scheduled_start) ?? "unknown";
+  const end = waTime(row.scheduled_end);
+  const done = row.checkpoint_completed ?? 0;
+  const total = row.checkpoint_total ?? 0;
+  const lines = [
+    `${index + 1}. ${route?.name ?? template?.name ?? "Patrol"}`,
+    `Site: ${site?.name ?? "Unassigned"}`,
+    `Date: ${waDate(row.scheduled_start) ?? "unknown"}`,
+    `Scheduled: ${scheduled}${end ? ` (window ${scheduled} - ${end})` : ""}`,
+    `Status: ${group === "missed" ? "Missed" : String(row.status).replace(/_/g, " ")}`,
+  ];
+  if (group === "late") {
+    const started = waTime(row.actual_start);
+    lines.push(`Actual start: ${started ?? "not started"}`);
+    const late = lateBy(row.scheduled_start, row.actual_start);
+    if (late) lines.push(`Late by: ${late}`);
+  }
+  if (group !== "missed") {
+    lines.push(`Checkpoints: ${done}/${total}${total > done ? ` (${total - done} missed)` : ""}`);
+  }
+  return lines.join("\n");
 }
 
 export async function missedCheckpointsView(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
   let query = client
     .from("patrol_session_checkpoints")
-    .select("id, status, sequence_order, expected_scan_at, scanned_at, site_id, checkpoint_name, checkpoints(name), patrol_sessions(id, status, scheduled_start, patrol_routes(name), sites(name))")
+    .select("id, status, scheduled_order, scheduled_at, scanned_at, checkpoint_name_snapshot, checkpoints(name), patrol_sessions!inner(id, status, site_id, scheduled_start, patrol_routes(name), sites(name))")
     .eq("company_id", identity.company_id)
     .in("status", ["missed", "overdue"])
-    .order("expected_scan_at", { ascending: false })
+    .order("scheduled_at", { ascending: false })
     .limit(10);
-  if (siteId) query = query.eq("site_id", siteId);
-  else if (identity.allowed_site_ids.length) query = query.in("site_id", identity.allowed_site_ids);
-  const { data } = await query;
+  if (siteId) query = query.eq("patrol_sessions.site_id", siteId);
+  else if (identity.allowed_site_ids.length) query = query.in("patrol_sessions.site_id", identity.allowed_site_ids);
+  const { data, error } = await query;
+  if (error) console.error("[WA] missed checkpoints query failed:", error.message);
   const rows = (data ?? []) as any[];
   if (!rows.length) return { title: "MISSED CHECKPOINTS", lines: ["No missed checkpoints for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
   return {
@@ -578,8 +628,16 @@ export async function missedCheckpointsView(client: SupabaseClient, identity: Id
       const checkpoint = Array.isArray(row.checkpoints) ? row.checkpoints[0] : row.checkpoints;
       const session = Array.isArray(row.patrol_sessions) ? row.patrol_sessions[0] : row.patrol_sessions;
       const route = Array.isArray(session?.patrol_routes) ? session.patrol_routes[0] : session?.patrol_routes;
-      const when = row.expected_scan_at ? new Date(row.expected_scan_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" }) : "unknown time";
-      return `${index + 1}. ${checkpoint?.name ?? row.checkpoint_name ?? "Checkpoint"}\nPatrol: ${route?.name ?? "Session"}\nExpected: ${when}`;
+      const site = Array.isArray(session?.sites) ? session.sites[0] : session?.sites;
+      const expected = row.scheduled_at ?? session?.scheduled_start ?? null;
+      return [
+        `${index + 1}. ${checkpoint?.name ?? row.checkpoint_name_snapshot ?? "Checkpoint"}`,
+        `Patrol: ${route?.name ?? "Session"}`,
+        `Site: ${site?.name ?? "Unassigned"}`,
+        `Date: ${waDate(expected) ?? "unknown"}`,
+        `Expected: ${waTime(expected) ?? "unknown"}`,
+        `Status: ${String(row.status ?? "missed")}`,
+      ].join("\n");
     }).join("\n\n")],
     options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
   };

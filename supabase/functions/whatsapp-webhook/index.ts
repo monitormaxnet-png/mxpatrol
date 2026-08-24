@@ -6,6 +6,7 @@ import { allowedSites, resolveIdentity } from "./lib/identity.ts";
 import { clearFlow, loadSession, patchSession } from "./lib/session.ts";
 import { renderText, sendLocation, twiml } from "./lib/render.ts";
 import { classifyIntent, keywordIntent, type Intent } from "./lib/askmx.ts";
+import { MANAGEMENT_HOME_KEY, WA_SUBMENUS, backTarget, resolveMenuChoice } from "./lib/menus.ts";
 import { handleFlowInput, startFlow, startSecureDeviceAction } from "./lib/flows.ts";
 import {
   activePatrols,
@@ -60,23 +61,12 @@ function siteChooser(sites: SiteRow[]): OutMessage {
   return optionMenu("WHICH SITE?", ["Choose the site you want to work with."], options);
 }
 
-/** Maps a numeric/keyword reply against the options we last showed. */
-function resolveLastMenuChoice(session: SessionRow, input: string): string | null {
-  const options = (session.temporary_data?.["last_options"] ?? []) as Array<{ id: string; label: string }>;
-  if (!Array.isArray(options) || !options.length) return null;
-  const trimmed = input.trim();
-  const index = Number(trimmed);
-  if (Number.isInteger(index) && index >= 1 && index <= options.length) return options[index - 1].id;
-  const lower = trimmed.toLowerCase();
-  const match = options.find((option) => option.label.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim() === lower);
-  return match?.id ?? null;
-}
-
 async function respondWith(ctx: Ctx, message: OutMessage): Promise<string> {
   await patchSession(ctx.client, ctx.session, {
     temporary_data: {
       ...(ctx.session.temporary_data ?? {}),
       last_options: message.options ?? [],
+      last_menu_key: message.menuKey ?? (ctx.session.temporary_data?.["last_menu_key"] ?? null),
     },
   });
 
@@ -276,6 +266,12 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       return await missedCheckpointsView(ctx.client, ctx.identity, siteId);
     }
 
+    case "patrol_status": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return await activePatrols(ctx.client, ctx.identity, siteId);
+    }
+
     case "checkpoints": {
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
@@ -361,71 +357,20 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
 
 /** Handles the ids that only exist as menu selections (site:, device:, ack, problems, periods). */
 async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
-  if (id === "management_operations") {
-    return optionMenu("OPERATIONS", ["Choose an operations view."], [
-      { id: "patrols", label: "Live Patrol" },
-      { id: "patrols", label: "Patrol Status" },
-      { id: "completed_patrols", label: "Completed Patrols" },
-      { id: "late_patrols", label: "Late / Delayed Patrols" },
-      { id: "incomplete_patrols", label: "Incomplete Patrols" },
-      { id: "missed_patrols", label: "Missed Patrols" },
-      { id: "missed_checkpoints", label: "Missed Checkpoints" },
-      { id: "live", label: "Live Map" },
-      { id: "management", label: "Back" },
-    ]);
+  if (WA_SUBMENUS[id]) {
+    if (!ctx.identity.canManage) {
+      return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "User Assistant" }]);
+    }
+    ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "management" });
+    return WA_SUBMENUS[id];
   }
 
-  if (id === "management_devices") {
-    return optionMenu("DEVICES", ["Choose a device management action."], [
-      { id: "register_device", label: "Register Device" },
-      { id: "devices", label: "View Devices" },
-      { id: "offline", label: "Offline Devices" },
-      { id: "secure_device_status", label: "Device Security" },
-      { id: "management", label: "Back" },
-    ]);
-  }
-
-  if (id === "management_checkpoints") {
-    return optionMenu("CHECKPOINTS", ["Choose a checkpoint management action."], [
-      { id: "add_checkpoint", label: "Register Checkpoint" },
-      { id: "checkpoints", label: "View Checkpoints" },
-      { id: "checkpoints", label: "Pending NFC Assignment" },
-      { id: "checkpoints", label: "Unregistered Tags" },
-      { id: "add_checkpoint", label: "Data Log Forms" },
-      { id: "management", label: "Back" },
-    ]);
-  }
-
-  if (id === "management_incidents") {
-    return optionMenu("INCIDENTS", ["Choose an incident management action."], [
-      { id: "report_incident", label: "Register Incident" },
-      { id: "incidents", label: "Open Incidents" },
-      { id: "incidents", label: "High Priority" },
-      { id: "incidents", label: "Resolved Incidents" },
-      { id: "management", label: "Back" },
-    ]);
-  }
-
-  if (id === "management_patrol_config") {
-    return optionMenu("PATROL CONFIGURATION", ["Choose a patrol configuration action."], [
-      { id: "create_patrol", label: "Create Patrol" },
-      { id: "create_patrol", label: "Create Route" },
-      { id: "create_patrol", label: "Create Schedule" },
-      { id: "patrols", label: "View Routes" },
-      { id: "patrols", label: "View Schedules" },
-      { id: "management", label: "Back" },
-    ]);
-  }
-
-  if (id === "management_reports") {
-    return optionMenu("REPORTS", ["Choose a report."], [
-      { id: "today", label: "Today Summary" },
-      { id: "week", label: "Patrol Performance" },
-      { id: "reports", label: "Incident Report" },
-      { id: "reports", label: "Data Log Report" },
-      { id: "reports", label: "Generate Report" },
-      { id: "management", label: "Back" },
-    ]);
+  if (id === "back") {
+    const target = backTarget(ctx.session);
+    if (WA_SUBMENUS[target]) return WA_SUBMENUS[target];
+    if (target === MANAGEMENT_HOME_KEY && ctx.identity.canManage) return managementMenu(ctx.identity, ctx.session);
+    ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "user" });
+    return mainMenu(ctx.identity, ctx.session);
   }
 
   if (id.startsWith("site:")) {
@@ -610,8 +555,10 @@ serve(async (req) => {
       const result = await handleFlowInput(client, identity, ctx.session, body, mediaUrls);
       ctx.session = result.session;
       message = result.message;
+    } else if (/^back$/i.test(body.trim())) {
+      message = (await runSelection(ctx, "back")) ?? mainMenu(identity, ctx.session);
     } else {
-      const selectionId = resolveLastMenuChoice(ctx.session, body);
+      const selectionId = resolveMenuChoice(ctx.session, body);
       const selectionMessage = selectionId ? await runSelection(ctx, selectionId) : null;
 
       if (selectionMessage) {

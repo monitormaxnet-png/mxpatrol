@@ -5,6 +5,8 @@ export type OutMessage = {
   lines: string[];
   options?: Option[];
   footer?: string;
+  /** Identifies which menu produced these options, so `back` and numeric replies stay in context. */
+  menuKey?: string;
 };
 
 export type Role = "admin" | "supervisor" | "guard";

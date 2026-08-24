@@ -60,14 +60,19 @@ async function resolveActor(req: Request): Promise<{ service: ReturnType<typeof 
     .maybeSingle();
   if (profileError || !profile?.company_id) throw new Error("Company profile required");
 
-  const { data: role } = await service
+  // public.user_roles has no company_id column: (id, user_id, role)
+  const { data: roles, error: rolesError } = await service
     .from("user_roles")
     .select("role")
-    .eq("user_id", userId)
-    .eq("company_id", profile.company_id)
-    .maybeSingle();
+    .eq("user_id", userId);
+  if (rolesError) throw rolesError;
 
-  const roleName = String(role?.role ?? "guard");
+  const roleNames = (roles ?? []).map((row: { role: string }) => String(row.role));
+  const roleName = roleNames.includes("admin")
+    ? "admin"
+    : roleNames.includes("supervisor")
+      ? "supervisor"
+      : (roleNames[0] ?? "guard");
   const canManage = roleName === "admin" || roleName === "supervisor";
   return { service, actor: { company_id: profile.company_id, user_id: userId, role: roleName, canManage, allowed_site_ids: [] } };
 }

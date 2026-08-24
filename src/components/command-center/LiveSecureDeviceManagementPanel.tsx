@@ -101,8 +101,9 @@ function useSecureDeviceCommand(siteId: string | null) {
   });
 }
 
-function MetricBox({ label, value, icon: Icon, tone, loading }: { label: string; value: number; icon: IconComponent; tone: Tone; loading: boolean }) {
-  return <div className='rounded-xl border border-white/10 bg-[#07101d]/85 p-3'><div className='mb-2 flex items-center justify-between'><span className='text-[11px] uppercase tracking-[0.1em] text-slate-400'>{label}</span><Icon className={'h-4 w-4 ' + toneClasses(tone)} /></div><p className={'text-2xl font-black ' + toneClasses(tone)}>{loading ? '...' : value}</p></div>;
+function MetricBox({ label, value, icon: Icon, tone, loading, failed }: { label: string; value: number | null | undefined; icon: IconComponent; tone: Tone; loading: boolean; failed?: boolean }) {
+  const display = loading ? '...' : failed || value === null || value === undefined ? '--' : value;
+  return <div className='rounded-xl border border-white/10 bg-[#07101d]/85 p-3'><div className='mb-2 flex items-center justify-between'><span className='text-[11px] uppercase tracking-[0.1em] text-slate-400'>{label}</span><Icon className={'h-4 w-4 ' + toneClasses(failed ? 'red' : tone)} /></div><p className={'text-2xl font-black ' + toneClasses(failed ? 'red' : tone)}>{display}</p></div>;
 }
 
 export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { selectedSite: string; siteId: string | null }) {

@@ -122,6 +122,11 @@ Deno.serve(async (req) => {
       return respond({ success: false, error: "Invalid pairing code" }, 400);
     }
 
+    if (!deviceIdentifier) {
+      return respond({ success: false, error: "device_metadata.device_identifier is required" }, 400);
+    }
+
+
 
     const { data: device, error: findError } = await supabase
       .from("devices")

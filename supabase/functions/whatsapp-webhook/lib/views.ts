@@ -27,14 +27,12 @@ export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
       { id: "devices", label: "Devices" },
       { id: "incidents", label: "Incidents" },
       { id: "reports", label: "Reports" },
-      { id: "completed_patrols", label: "Completed Patrols" },
-      { id: "incomplete_patrols", label: "Incomplete Patrols" },
-      { id: "late_patrols", label: "Late / Delayed Patrols" },
-      { id: "missed_patrols", label: "Missed Patrols" },
+      { id: "patrol_status", label: "Patrol Status" },
       { id: "missed_checkpoints", label: "Missed Checkpoints" },
       { id: "change_site", label: "Change Site" },
       { id: "management", label: "Management" },
     ],
+
     footer: "You can also ask me something like:\nWhich devices are offline?",
   };
 }

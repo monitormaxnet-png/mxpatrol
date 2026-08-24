@@ -85,7 +85,7 @@ describe('canonical payloads per workflow', () => {
   });
 
   it('checkpoint registration supports pending NFC assignment and existing data log forms', () => {
-    const reply = run('register_checkpoint', ['Server Room', 'Basement', 'later', '2']);
+    const reply = run('register_checkpoint', ['Server Room', 'Basement', 'later', '2', '1']);
     expect(reply.kind).toBe('confirm');
     if (reply.kind !== 'confirm') return;
     expect(reply.payload.action).toBe('create_checkpoint');
@@ -93,11 +93,23 @@ describe('canonical payloads per workflow', () => {
   });
 
   it('checkpoint registration can attach a new checklist form', () => {
-    const reply = run('register_checkpoint', ['Roof Hatch', 'Roof', '04a2b3c4d5', '3']);
+    const reply = run('register_checkpoint', [
+      'Roof Hatch', 'Roof', '04a2b3c4d5',
+      '3',                 // create a new Data Log Form
+      'Roof Inspection',   // form name
+      'Door locked?',      // field 1 label
+      '3',                 // field type: Yes / No
+      '1',                 // required
+      '2',                 // done adding fields
+    ]);
     expect(reply.kind).toBe('confirm');
     if (reply.kind !== 'confirm') return;
     expect(reply.payload.input.nfc_tag_id).toBe('04a2b3c4d5');
-    expect((reply.payload.input.new_form as any).form_type).toBe('checklist');
+    const newForm = reply.payload.input.new_form as any;
+    expect(newForm.name).toBe('Roof Inspection');
+    expect(newForm.form_type).toBe('checklist');
+    expect(newForm.fields).toHaveLength(1);
+    expect(newForm.fields[0]).toMatchObject({ label: 'Door locked?', required: true, sequence_order: 1 });
   });
 
   it('route creation preserves the scanned checkpoint order', () => {

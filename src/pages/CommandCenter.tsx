@@ -206,8 +206,12 @@ export default function CommandCenter() {
 
   const showMenu = (key: string) => {
     const node = menuNode(key);
+    if (key === 'user_patrol_status' || key === 'management_patrol_status') {
+      return addAssistant(`PATROL STATUS - ${selectedSite}`, <PatrolStatusOverview site={selectedSite} rows={sitePatrols} node={node} loading={patrols.isLoading} />);
+    }
     addAssistant(node.title, <MenuView site={selectedSite} node={node} />);
   };
+
 
   const periodRows = (period: keyof typeof PERIODS) => {
     const from = PERIODS[period].from().getTime();

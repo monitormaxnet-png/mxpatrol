@@ -19,6 +19,7 @@ export type ScannerUiState =
   | "patrol_completed"
   | "no_active_patrol"
   | "out_of_order"
+  | "awaiting_data"
   | "sos";
 
 type GpsStatus = "idle" | "capturing" | "available" | "pending" | "unavailable";
@@ -51,6 +52,7 @@ const statusConfig: Record<ScannerUiState, {
   patrol_completed: { label: "PATROL COMPLETED", sublabel: "All required checkpoints scanned", tone: "success", icon: CheckCircle2 },
   no_active_patrol: { label: "CHECKPOINT RECORDED", sublabel: "No active patrol matched", tone: "progress", icon: CheckCircle2 },
   out_of_order: { label: "OUT OF ORDER", sublabel: "Follow the route order", tone: "offline", icon: AlertTriangle },
+  awaiting_data: { label: "DATA LOG REQUIRED", sublabel: "Complete the form to finish this checkpoint", tone: "progress", icon: Loader2 },
   sos: { label: "SOS ACTIVATED", sublabel: "Alert sent to control room", tone: "sos", icon: ShieldAlert },
 };
 

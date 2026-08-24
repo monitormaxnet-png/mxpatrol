@@ -13,6 +13,7 @@ export type ScanResultCode =
   | "UNREGISTERED_CHECKPOINT"
   | "CHECKPOINT_OUT_OF_ORDER"
   | "CHECKPOINT_NOT_IN_ROUTE"
+  | "CHECKPOINT_REQUIRES_DATA"
   | "OFFLINE_SAVED"
   | "SYNCED"
   | "DEVICE_NOT_ENROLLED"
@@ -29,6 +30,22 @@ export type ScanPatrolInfo = {
   selection_reason?: string | null;
 };
 
+export type ScanDataLogField = {
+  id: string;
+  label: string;
+  field_type: string;
+  required: boolean;
+  options: string[];
+  sequence_order: number;
+};
+
+export type ScanDataLogForm = {
+  id: string;
+  name: string;
+  form_type: string;
+  fields: ScanDataLogField[];
+};
+
 export type StructuredScanResult = {
   success: boolean;
   code: ScanResultCode;
@@ -39,6 +56,8 @@ export type StructuredScanResult = {
   duplicate: boolean;
   offline_replay: boolean;
   message: string;
+  data_log_required?: boolean;
+  data_log_form?: ScanDataLogForm | null;
 };
 
 export type ScanFeedbackTone = "good" | "info" | "warning" | "danger";
@@ -125,6 +144,17 @@ export const describeScanResult = (result: StructuredScanResult): ScanFeedback =
           .join(" · "),
         holdMs: 3000,
         sound: "error",
+      };
+    case "CHECKPOINT_REQUIRES_DATA":
+      return {
+        uiState: "awaiting_data",
+        tone: "info",
+        title: "Data log required",
+        detail: [checkpointName, result.data_log_form?.name ?? "Complete the form to finish this checkpoint", progress]
+          .filter(Boolean)
+          .join(" · "),
+        holdMs: 600000,
+        sound: "scan-success",
       };
     case "CHECKPOINT_NOT_IN_ROUTE":
       return {

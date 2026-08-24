@@ -164,13 +164,16 @@ export async function requestSecureDeviceCommand(
   deviceIdentifier: string,
   payload: Record<string, unknown> = {},
   channel = "web",
-): Promise<{ device: SecureDeviceRow; command_id: string | null; command_type: string; queued: boolean; command: Record<string, any> | null }> {
+): Promise<{ device: SecureDeviceRow; command_id: string | null; command_type: string; command_status: string; queued: boolean; command: Record<string, any> | null }> {
   assertCanManageSecureDevices(actor);
   const commandType = COMMAND_TYPES[action];
   if (!commandType) throw new Error("Unsupported secure device action");
 
   const device = await getSecureDeviceByIdentifier(client, actor, siteId, deviceIdentifier);
   if (!device) throw new Error("Device not found for active site");
+  if ((device.pairing_status === "revoked" || device.secure_mode_status === "revoked") && action !== "revoke_device") {
+    throw new Error("Device is revoked and cannot receive new secure commands");
+  }
 
   const now = new Date().toISOString();
   const { data: existing } = await client
@@ -235,7 +238,7 @@ export async function requestSecureDeviceCommand(
     metadata: { command_id: command?.id ?? null, channel, duplicate_queued: duplicateQueued, payload },
   });
 
-  return { device, command_id: command?.id ?? null, command_type: commandType, queued: device.status !== "online" || duplicateQueued, command };
+  return { device, command_id: command?.id ?? null, command_type: commandType, command_status: String(command?.status ?? "pending"), queued: device.status !== "online" || duplicateQueued, command };
 }
 
 export async function getSecureDeviceEvents(

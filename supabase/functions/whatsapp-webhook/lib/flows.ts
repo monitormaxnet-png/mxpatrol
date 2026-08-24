@@ -973,7 +973,7 @@ async function secureDeviceAction(client: SupabaseClient, identity: Identity, se
           lines: [
             "Device: " + String(result.device.device_identifier ?? data.device_identifier),
             "Action: " + (SECURE_ACTION_LABELS[action] ?? action),
-            result.queued ? "Status: queued for device pickup" : "Status: sent to online device",
+            "Command status: " + String(result.command_status ?? result.command?.status ?? "pending"),
           ],
           options: [{ id: "secure_devices", label: "Secure Device Menu" }, { id: "menu", label: "Main Menu" }],
         },

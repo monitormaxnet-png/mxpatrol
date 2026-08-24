@@ -708,8 +708,11 @@ export function secureDeviceMenu(identity: Identity, session: SessionRow): OutMe
       { id: "secure_device_problems", label: "Security Problems" },
       { id: "secure_action:request_device_lock", label: "Lock Device" },
       { id: "secure_action:request_device_disable", label: "Disable Device" },
+      { id: "secure_action:request_device_enable", label: "Enable Device" },
       { id: "secure_action:request_maintenance_mode", label: "Maintenance Mode" },
+      { id: "secure_action:request_exit_maintenance", label: "Exit Maintenance" },
       { id: "secure_action:request_app_update", label: "Require App Update" },
+      { id: "secure_action:request_integrity_check", label: "Security Check" },
       { id: "secure_device_list", label: "Device Info" },
       { id: "secure_action:revoke_device", label: "Revoke Device" },
       { id: "management", label: "Management Menu" },
@@ -803,6 +806,7 @@ export async function secureDeviceInfo(client: SupabaseClient, identity: Identit
     options: [
       { id: "secure_action_device:request_device_lock:" + device.device_identifier, label: "Lock Device" },
       { id: "secure_action_device:request_maintenance_mode:" + device.device_identifier, label: "Maintenance Mode" },
+      { id: "secure_action_device:request_integrity_check:" + device.device_identifier, label: "Security Check" },
       { id: "secure_devices", label: "Main Secure Menu" },
     ],
   };

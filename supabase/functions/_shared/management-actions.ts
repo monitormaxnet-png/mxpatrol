@@ -4,6 +4,8 @@
 //  - WhatsApp Management AI -> supabase/functions/whatsapp-webhook/lib/flows.ts
 // Never duplicate this business logic anywhere else.
 
+import { normalizeFormFields, normalizeFormType, type NormalizedFormField } from "./data-log-fields.ts";
+
 // deno-lint-ignore no-explicit-any
 type SupabaseClient = any;
 
@@ -513,7 +515,7 @@ export async function createCheckpoint(client: SupabaseClient, actor: Management
 function checkpointResult(
   row: Record<string, any>,
   site: { id: string; name: string },
-  form: { id: string; name: string } | null,
+  form: { id: string; name: string; field_count?: number } | null,
   duplicate: boolean,
 ): ManagementResult {
   const nfcStatus = row.nfc_tag_id ? "assigned" : "pending_assignment";
@@ -528,6 +530,7 @@ function checkpointResult(
       nfc_status: nfcStatus,
       data_log_form_id: row.data_log_form_id ?? null,
       data_log_form_name: form?.name ?? null,
+      data_log_field_count: form?.field_count ?? null,
       site_id: site.id,
       site_name: site.name,
     },

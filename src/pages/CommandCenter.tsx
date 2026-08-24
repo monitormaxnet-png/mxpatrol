@@ -257,7 +257,7 @@ export default function CommandCenter() {
     if (action === 'incidents_resolved') return addAssistant('RESOLVED INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => row.resolved)} />);
     if (action === 'checkpoints') return addAssistant('CHECKPOINTS - ' + selectedSite, <CheckpointList rows={checkpoints.data ?? []} />);
     if (action === 'pending_nfc') return addAssistant('PENDING NFC ASSIGNMENT - ' + selectedSite, <CheckpointList rows={(checkpoints.data ?? []).filter((row: any) => !row.nfc_tag_id)} />);
-    if (action === 'patrol_status') return addAssistant('PATROL STATUS - ' + selectedSite, <PatrolList rows={sitePatrols.slice(0, 8)} />);
+    if (action === 'patrol_status') return showMenu(state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status');
     if (action === 'completed_patrols') return addAssistant('COMPLETED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'completed')} />);
     if (action === 'incomplete_patrols') return addAssistant('INCOMPLETE PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'incomplete')} variant='incomplete' />);
     if (action === 'late_patrols') return addAssistant('LATE / DELAYED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'late')} variant='late' />);

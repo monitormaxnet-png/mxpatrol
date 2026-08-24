@@ -129,14 +129,31 @@ describe('canonical payloads per workflow', () => {
     expect(reply.payload.input).toMatchObject({ route_id: 'route-1', frequency: 'daily', start_time: '22:00', site_id: 'site-1' });
   });
 
-  it('patrol template creation validates duration', () => {
+  it('patrol template creation validates duration and confirms the full blueprint', () => {
     const bad = run('create_patrol', ['Night Patrol', '2']);
     expect(bad.kind).toBe('error');
-    const reply = run('create_patrol', ['Night Patrol', '45']);
+    const reply = run('create_patrol', ['Night Patrol', '45', 'Night perimeter inspection', '1', '1']);
     expect(reply.kind).toBe('confirm');
     if (reply.kind !== 'confirm') return;
     expect(reply.payload.action).toBe('create_patrol_template');
-    expect(reply.payload.input.expected_duration_minutes).toBe(45);
+    expect(reply.payload.input).toMatchObject({
+      site_id: 'site-1',
+      name: 'Night Patrol',
+      expected_duration_minutes: 45,
+      description: 'Night perimeter inspection',
+      operational_rules: {
+        checkpoints_required: true,
+        sequential_scanning: true,
+        expected_duration_enforced: true,
+        missed_checkpoints_recorded: true,
+        late_start_tracking: true,
+        incomplete_patrol_tracking: true,
+        offline_scans_allowed: true,
+      },
+    });
+    const confirmation = reply.lines.join(' ');
+    expect(confirmation).toContain('Operational Rules:');
+    expect(confirmation).toContain('Route: Not assigned yet');
   });
 
   it('rejects routes when the active site has no checkpoints', () => {
@@ -161,6 +178,9 @@ describe('shared canonical backend service', () => {
     expect(whatsapp).not.toMatch(/from\("checkpoints"\)\s*\.insert/);
     expect(whatsapp).not.toMatch(/from\("patrol_routes"\)/);
     expect(whatsapp).not.toMatch(/from\("patrol_schedules"\)/);
+    expect(whatsapp).toContain('"create_patrol_template"');
+    expect(whatsapp).not.toContain('"create_route"');
+    expect(whatsapp).not.toContain('"create_schedule"');
     expect(whatsapp).not.toMatch(/from\("data_log_forms"\)\s*\.insert/);
   });
 
@@ -175,6 +195,7 @@ describe('shared canonical backend service', () => {
   it('enforces permission, site scope and canonical ordering server-side', () => {
     expect(shared).toContain('assertCanManage');
     expect(shared).toContain('resolveSite');
+    expect(shared).toContain('operational_rules');
     expect(shared).toContain('sequence_order');
     expect(shared).toMatch(/duplicate: true/);
   });

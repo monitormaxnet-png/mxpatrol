@@ -540,6 +540,29 @@ function checkpointResult(
 
 /* ---------------------------- patrol configuration ------------------------ */
 
+export type PatrolTemplateOperationalRules = {
+  checkpoints_required: boolean;
+  sequential_scanning: boolean;
+  expected_duration_enforced: boolean;
+  missed_checkpoints_recorded: boolean;
+  late_start_tracking: boolean;
+  incomplete_patrol_tracking: boolean;
+  offline_scans_allowed: boolean;
+};
+
+export function normalizePatrolTemplateRules(input: unknown): PatrolTemplateOperationalRules {
+  const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  return {
+    checkpoints_required: true,
+    sequential_scanning: Boolean(source.sequential_scanning),
+    expected_duration_enforced: true,
+    missed_checkpoints_recorded: true,
+    late_start_tracking: true,
+    incomplete_patrol_tracking: true,
+    offline_scans_allowed: source.offline_scans_allowed === undefined ? true : Boolean(source.offline_scans_allowed),
+  };
+}
+
 export async function createPatrolTemplate(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
   assertCanManage(actor);
   const site = await resolveSite(client, actor, input.site_id);
@@ -547,7 +570,7 @@ export async function createPatrolTemplate(client: SupabaseClient, actor: Manage
 
   const { data: existing } = await client
     .from("patrol_templates")
-    .select("id, name, site_id, expected_duration_minutes")
+    .select("id, name, site_id, description, expected_duration_minutes, operational_rules")
     .eq("company_id", actor.company_id)
     .eq("site_id", site.id)
     .eq("name", name)
@@ -557,12 +580,13 @@ export async function createPatrolTemplate(client: SupabaseClient, actor: Manage
       ok: true,
       action: "create_patrol_template",
       duplicate: true,
-      record: { ...existing, site_name: site.name },
-      summary: `${name} already exists at ${site.name}.`,
+      record: { ...existing, site_name: site.name, route_status: "not_assigned" },
+      summary: `${name} already exists at ${site.name}. Route not assigned yet.`,
     };
   }
 
   const duration = Number(input.expected_duration_minutes ?? 60);
+  const rules = normalizePatrolTemplateRules(input.operational_rules);
   const { data, error } = await client
     .from("patrol_templates")
     .insert({
@@ -572,9 +596,10 @@ export async function createPatrolTemplate(client: SupabaseClient, actor: Manage
       description: text(input.description, "Description", { required: false, max: 500 }) || null,
       status: "active",
       expected_duration_minutes: Number.isFinite(duration) && duration > 0 ? Math.min(Math.round(duration), 24 * 60) : 60,
+      operational_rules: rules,
       created_by: actor.user_id ?? null,
     })
-    .select("id, name, site_id, expected_duration_minutes")
+    .select("id, name, site_id, description, expected_duration_minutes, operational_rules")
     .maybeSingle();
   if (error) throw new ManagementActionError(error.message, 500);
   if (!data) throw new ManagementActionError("Patrol template could not be created", 500);
@@ -582,8 +607,8 @@ export async function createPatrolTemplate(client: SupabaseClient, actor: Manage
     ok: true,
     action: "create_patrol_template",
     duplicate: false,
-    record: { ...data, site_name: site.name },
-    summary: `Patrol template ${name} created at ${site.name}.`,
+    record: { ...data, site_name: site.name, route_status: "not_assigned" },
+    summary: `Patrol template ${name} created at ${site.name}. Route not assigned yet.`,
   };
 }
 

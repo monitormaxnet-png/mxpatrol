@@ -27,6 +27,7 @@ const TemplateSchema = z.object({
   site_id: optionalUuid,
   status: z.enum(["active", "paused", "archived"]).optional(),
   expected_duration_minutes: z.number().int().positive().max(1440).optional(),
+  operational_rules: z.record(z.unknown()).optional().nullable(),
 });
 
 const RouteSchema = z.object({
@@ -69,6 +70,19 @@ const ScheduleSchema = z.object({
   expected_duration_minutes: z.number().int().min(1).max(1440).optional(),
   device_identifier: optionalText,
 });
+
+function normalizePatrolTemplateRules(input: unknown) {
+  const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  return {
+    checkpoints_required: true,
+    sequential_scanning: Boolean(source.sequential_scanning),
+    expected_duration_enforced: true,
+    missed_checkpoints_recorded: true,
+    late_start_tracking: true,
+    incomplete_patrol_tracking: true,
+    offline_scans_allowed: source.offline_scans_allowed === undefined ? true : Boolean(source.offline_scans_allowed),
+  };
+}
 
 const TemplateUpdateSchema = TemplateSchema.partial();
 const RouteUpdateSchema = RouteSchema.partial();
@@ -274,6 +288,7 @@ Deno.serve(async (req) => {
           description: input.description || null,
           status: input.status ?? "active",
           expected_duration_minutes: input.expected_duration_minutes ?? 60,
+          operational_rules: normalizePatrolTemplateRules(input.operational_rules),
           created_by: access.userId,
         }))
         .select("*")
@@ -405,6 +420,7 @@ Deno.serve(async (req) => {
           site_id: input.site_id === undefined ? undefined : (input.site_id ?? null),
           status: input.status,
           expected_duration_minutes: input.expected_duration_minutes,
+          operational_rules: input.operational_rules === undefined ? undefined : normalizePatrolTemplateRules(input.operational_rules),
         }))
         .eq("id", body.id)
         .eq("company_id", access.companyId)

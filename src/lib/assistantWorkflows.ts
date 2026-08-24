@@ -87,6 +87,11 @@ const FREQUENCIES: WorkflowOption[] = [
   { id: 'once', label: 'Once' },
 ];
 
+const YES_NO_OPTIONS: WorkflowOption[] = [
+  { id: 'yes', label: 'Yes' },
+  { id: 'no', label: 'No' },
+];
+
 const CHECKLIST_FIELDS = [
   { label: 'Door locked?', field_type: 'yes_no', required: true, sequence_order: 1 },
   { label: 'Lights working?', field_type: 'yes_no', required: true, sequence_order: 2 },
@@ -424,7 +429,7 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
     title: 'CREATE PATROL TEMPLATE',
     action: 'create_patrol_template',
     steps: () => [
-      textStep('name', 'Patrol name', 'What should this patrol be called?', { min: 2, max: 80 }),
+      textStep('name', 'Patrol name', 'What should this patrol template be called?', { min: 2, max: 80 }),
       {
         key: 'expected_duration_minutes',
         title: 'Expected duration',
@@ -435,16 +440,42 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
           return { ok: true, patch: { expected_duration_minutes: Math.round(value) } };
         },
       },
+      textStep('description', 'Description / purpose', 'What is the purpose of this patrol? e.g. Night perimeter inspection', { min: 3, max: 500 }),
+      choiceStep('sequential_scanning', 'Sequential scanning', 'Should routes created from this template require checkpoint scans in order?', YES_NO_OPTIONS),
+      choiceStep('offline_scans_allowed', 'Offline scans', 'Should offline scans be allowed and synced later when supported by the patrol device?', YES_NO_OPTIONS),
     ],
-    summary: (data, ctx) => [`Patrol: ${data.name}`, `Expected duration: ${data.expected_duration_minutes} min`, `Site: ${ctx.siteName}`],
+    summary: (data, ctx) => [
+      `Patrol Name: ${data.name}`,
+      `Site: ${ctx.siteName}`,
+      `Expected Duration: ${data.expected_duration_minutes} min`,
+      `Description: ${data.description}`,
+      '',
+      'Operational Rules:',
+      '- Checkpoints required',
+      `- Sequential scanning: ${data.sequential_scanning_label}`,
+      `- Expected completion: ${data.expected_duration_minutes} min`,
+      '- Missed checkpoints recorded',
+      '- Late / incomplete tracking enabled',
+      `- Offline scans allowed: ${data.offline_scans_allowed_label}`,
+      '',
+      'Route: Not assigned yet',
+    ],
     payload: (data, ctx) => ({
       site_id: ctx.siteId,
       name: data.name,
       expected_duration_minutes: data.expected_duration_minutes,
-      description: 'Created by the Web Management AI',
+      description: data.description,
+      operational_rules: {
+        checkpoints_required: true,
+        sequential_scanning: data.sequential_scanning === 'yes',
+        expected_duration_enforced: true,
+        missed_checkpoints_recorded: true,
+        late_start_tracking: true,
+        incomplete_patrol_tracking: true,
+        offline_scans_allowed: data.offline_scans_allowed === 'yes',
+      },
     }),
   },
-
   create_route: {
     id: 'create_route',
     title: 'CREATE ROUTE',

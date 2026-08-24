@@ -609,12 +609,14 @@ async function createCheckpoint(
 
 /* ------------------------------ create patrol ------------------------------ */
 
-const FREQUENCIES = [
-  { id: "daily", label: "Every day" },
-  { id: "weekdays", label: "Weekdays only" },
-  { id: "hourly", label: "Every hour" },
-  { id: "once", label: "Once" },
+const YES_NO = [
+  { id: "yes", label: "Yes" },
+  { id: "no", label: "No" },
 ];
+
+function yesNoChoice(input: string): { id: string; label: string } | null {
+  return pickChoice(input, YES_NO, (option) => option.label);
+}
 
 async function createPatrol(
   client: SupabaseClient,
@@ -629,7 +631,7 @@ async function createPatrol(
     const sites = await allowedSites(client, identity);
     data.site_choices = sites;
     const next = await patchSession(client, session, { current_step: "WAITING_FOR_SITE", temporary_data: data });
-    return { session: next, message: { title: "CREATE PATROL", lines: ["Which site?"], options: siteOptions(sites) } };
+    return { session: next, message: { title: "CREATE PATROL TEMPLATE", lines: ["Which site is this patrol template for?"], options: siteOptions(sites) } };
   }
 
   if (session.current_step === "WAITING_FOR_SITE") {
@@ -640,159 +642,121 @@ async function createPatrol(
     }
     data.site_id = site.id;
     data.site_name = site.name;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_DURATION", temporary_data: data });
+    return { session: next, message: { title: "EXPECTED DURATION", lines: ["How many minutes should one patrol take? e.g. 45"], footer: "Type *cancel* to stop." } };
+  }
 
-    const { data: checkpoints } = await client
-      .from("checkpoints")
-      .select("id, name")
-      .eq("company_id", identity.company_id)
-      .eq("site_id", site.id)
-      .order("name")
-      .limit(20);
-
-    if (!checkpoints?.length) {
-      return {
-        session: await clearFlow(client, session),
-        message: {
-          title: "NO CHECKPOINTS",
-          lines: [`${site.name} has no checkpoints yet. Add a checkpoint first.`],
-          options: [{ id: "add_checkpoint", label: "Add Checkpoint" }, { id: "menu", label: "Main Menu" }],
-        },
-      };
+  if (session.current_step === "WAITING_FOR_DURATION") {
+    const duration = Number(input.trim());
+    if (!Number.isFinite(duration) || duration < 5 || duration > 1440) {
+      return { session, message: { title: "EXPECTED DURATION", lines: ["Send a duration in minutes between 5 and 1440."], footer: "Type *cancel* to stop." } };
     }
+    data.expected_duration_minutes = Math.round(duration);
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_DESCRIPTION", temporary_data: data });
+    return { session: next, message: { title: "DESCRIPTION / PURPOSE", lines: ["What is the purpose of this patrol? e.g. Night perimeter inspection"], footer: "Type *cancel* to stop." } };
+  }
 
-    data.checkpoint_choices = checkpoints;
-    const next = await patchSession(client, session, { current_step: "WAITING_FOR_CHECKPOINTS", temporary_data: data });
+  if (session.current_step === "WAITING_FOR_DESCRIPTION") {
+    const description = input.trim().slice(0, 500);
+    if (description.length < 3) {
+      return { session, message: { title: "DESCRIPTION / PURPOSE", lines: ["Please provide at least 3 characters."], footer: "Type *cancel* to stop." } };
+    }
+    data.description = description;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_SEQUENCE", temporary_data: data });
     return {
       session: next,
       message: {
-        title: "CHECKPOINTS",
-        lines: [
-          "Which checkpoints should be included?",
-          "",
-          checkpoints.map((c: any, i: number) => `${i + 1}. ${c.name}`).join("\n"),
-        ],
-        footer: "Reply with numbers, e.g. 1,2,4 — or *all*.",
+        title: "SEQUENTIAL SCANNING",
+        lines: ["Should routes created from this template require checkpoint scans in order?"],
+        options: YES_NO.map((option, index) => ({ id: String(index + 1), label: option.label })),
       },
     };
   }
 
-  if (session.current_step === "WAITING_FOR_CHECKPOINTS") {
-    const checkpoints = (data.checkpoint_choices ?? []) as Array<{ id: string; name: string }>;
-    const trimmed = input.trim().toLowerCase();
-    let selected: Array<{ id: string; name: string }> = [];
-
-    if (trimmed === "all") {
-      selected = checkpoints;
-    } else {
-      const indexes = trimmed.split(/[,\s]+/).map((part) => Number(part)).filter((n) => Number.isInteger(n));
-      selected = indexes
-        .filter((n) => n >= 1 && n <= checkpoints.length)
-        .map((n) => checkpoints[n - 1]);
+  if (session.current_step === "WAITING_FOR_SEQUENCE") {
+    const choice = yesNoChoice(input);
+    if (!choice) {
+      return { session, message: { title: "SEQUENTIAL SCANNING", lines: ["Reply with one of the numbers listed."], options: YES_NO.map((option, index) => ({ id: String(index + 1), label: option.label })) } };
     }
-
-    if (!selected.length) {
-      return {
-        session,
-        message: {
-          title: "CHECKPOINTS",
-          lines: ["I didn't catch that. Reply with numbers, e.g. 1,2,4 — or *all*."],
-          footer: checkpoints.map((c, i) => `${i + 1}. ${c.name}`).join("\n"),
-        },
-      };
-    }
-
-    data.checkpoint_ids = selected.map((c) => c.id);
-    data.checkpoint_names = selected.map((c) => c.name);
-    const next = await patchSession(client, session, { current_step: "WAITING_FOR_FREQUENCY", temporary_data: data });
+    data.sequential_scanning = choice.id;
+    data.sequential_scanning_label = choice.label;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_OFFLINE", temporary_data: data });
     return {
       session: next,
-      message: { title: "SCHEDULE", lines: ["How often should this patrol run?"], options: FREQUENCIES.map((f) => ({ id: f.id, label: f.label })) },
+      message: {
+        title: "OFFLINE SCANS",
+        lines: ["Should offline scans be allowed and synced later when supported by the patrol device?"],
+        options: YES_NO.map((option, index) => ({ id: String(index + 1), label: option.label })),
+      },
     };
   }
 
-  if (session.current_step === "WAITING_FOR_FREQUENCY") {
-    const frequency = pickChoice(input, FREQUENCIES, (f) => f.label);
-    if (!frequency) {
-      return { session, message: { title: "SCHEDULE", lines: ["Choose how often it runs."], options: FREQUENCIES.map((f) => ({ id: f.id, label: f.label })) } };
+  if (session.current_step === "WAITING_FOR_OFFLINE") {
+    const choice = yesNoChoice(input);
+    if (!choice) {
+      return { session, message: { title: "OFFLINE SCANS", lines: ["Reply with one of the numbers listed."], options: YES_NO.map((option, index) => ({ id: String(index + 1), label: option.label })) } };
     }
-    data.frequency = frequency.id;
-    data.frequency_label = frequency.label;
-    const next = await patchSession(client, session, { current_step: "WAITING_FOR_TIME", temporary_data: data });
-    return {
-      session: next,
-      message: { title: "START TIME", lines: ["What time should it start? Use 24-hour format, e.g. 22:00"], footer: "Type *cancel* to stop." },
-    };
-  }
-
-  if (session.current_step === "WAITING_FOR_TIME") {
-    const match = input.trim().match(/^(\d{1,2})[:h.]?(\d{2})?$/);
-    if (!match) {
-      return { session, message: { title: "START TIME", lines: ["Please send a time like 22:00."], footer: "Type *cancel* to stop." } };
-    }
-    const hours = Math.min(Number(match[1]), 23).toString().padStart(2, "0");
-    const minutes = Math.min(Number(match[2] ?? "0"), 59).toString().padStart(2, "0");
-    data.start_time = `${hours}:${minutes}`;
+    data.offline_scans_allowed = choice.id;
+    data.offline_scans_allowed_label = choice.label;
     const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
     return {
       session: next,
       message: {
-        title: data.patrol_name,
+        title: "CREATE PATROL TEMPLATE - CONFIRM",
         lines: [
-          data.site_name,
-          `${(data.checkpoint_ids as string[]).length} checkpoints`,
-          `${data.frequency_label} at ${data.start_time}`,
+          "Patrol Name: " + data.patrol_name,
+          "Site: " + data.site_name,
+          "Expected Duration: " + data.expected_duration_minutes + " min",
+          "Description: " + data.description,
+          "",
+          "Operational Rules:",
+          "- Checkpoints required",
+          "- Sequential scanning: " + data.sequential_scanning_label,
+          "- Expected completion: " + data.expected_duration_minutes + " min",
+          "- Missed checkpoints recorded",
+          "- Late / incomplete tracking enabled",
+          "- Offline scans allowed: " + data.offline_scans_allowed_label,
+          "",
+          "Route: Not assigned yet",
+          "",
+          "Reply confirm to save, or cancel to discard.",
         ],
-        options: [{ id: "confirm", label: "Create Patrol" }, { id: "cancel", label: "Cancel" }],
+        options: [{ id: "confirm", label: "Save Template" }, { id: "cancel", label: "Cancel" }],
       },
     };
   }
 
   if (session.current_step === "WAITING_FOR_CONFIRM") {
-    if (!/^(1|confirm|yes|y|create)/i.test(input.trim())) {
+    if (!/^(1|confirm|yes|y|save|create)/i.test(input.trim())) {
       return { session: await clearFlow(client, session), message: CANCELLED };
     }
 
-    const routeOutcome = await callManagement(client, identity, "create_route", {
+    const outcome = await callManagement(client, identity, "create_patrol_template", {
       site_id: data.site_id,
       name: data.patrol_name,
-      checkpoint_ids: data.checkpoint_ids,
-      enforce_sequence: Boolean(data.enforce_sequence),
+      expected_duration_minutes: data.expected_duration_minutes,
+      description: data.description,
+      operational_rules: {
+        checkpoints_required: true,
+        sequential_scanning: data.sequential_scanning === "yes",
+        expected_duration_enforced: true,
+        missed_checkpoints_recorded: true,
+        late_start_tracking: true,
+        incomplete_patrol_tracking: true,
+        offline_scans_allowed: data.offline_scans_allowed === "yes",
+      },
     });
 
-    if (!routeOutcome.result) {
-      return {
-        session: await clearFlow(client, session),
-        message: { title: "COULD NOT CREATE", lines: [routeOutcome.message], options: [{ id: "menu", label: "Main Menu" }] },
-      };
-    }
-
-    const routeId = String((routeOutcome.result.record as Record<string, any>).id);
-    const scheduleOutcome = await callManagement(client, identity, "create_schedule", {
-      site_id: data.site_id,
-      route_id: routeId,
-      name: data.patrol_name,
-      frequency: data.frequency,
-      start_time: data.start_time,
-      expected_duration_minutes: Math.max((data.checkpoint_ids as string[]).length * 8, 20),
-    });
-
-    if (!scheduleOutcome.result) {
-      return {
-        session: await clearFlow(client, session),
-        message: {
-          title: "PATROL SAVED, SCHEDULE FAILED",
-          lines: [`The route was created but the schedule could not be saved: ${scheduleOutcome.message}`],
-          options: [{ id: "menu", label: "Main Menu" }],
-        },
-      };
+    if (!outcome.result) {
+      return { session: await clearFlow(client, session), message: { title: "COULD NOT CREATE", lines: [outcome.message], options: [{ id: "menu", label: "Main Menu" }] } };
     }
 
     return {
       session: await clearFlow(client, session),
       message: {
-        title: "✅ PATROL CREATED",
-        lines: [routeOutcome.result.summary, scheduleOutcome.result.summary],
-        options: [{ id: "live", label: "Live Now" }, { id: "menu", label: "Main Menu" }],
+        title: outcome.result.duplicate ? "PATROL TEMPLATE ALREADY EXISTS" : "PATROL TEMPLATE CREATED",
+        lines: [outcome.result.summary, "Route: Not assigned yet", "Next: create a route, then create a schedule."],
+        options: [{ id: "routes", label: "Create Route" }, { id: "schedules", label: "Create Schedule" }, { id: "menu", label: "Main Menu" }],
       },
     };
   }

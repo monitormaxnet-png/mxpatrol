@@ -134,7 +134,7 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
     id: 'register_incident',
     title: 'REGISTER INCIDENT',
     action: 'create_incident',
-    steps: [
+    steps: () => [
       textStep('description', 'Incident detail', 'What happened? Describe the incident.', { min: 3, max: 1000 }),
       choiceStep('severity', 'Severity', 'How serious is it?', SEVERITIES),
     ],
@@ -156,7 +156,7 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
     id: 'register_device',
     title: 'REGISTER DEVICE',
     action: 'register_device',
-    steps: [
+    steps: () => [
       textStep('device_name', 'Device name', 'What should this device be called?', { min: 2, max: 100 }),
       choiceStep('device_type', 'Device type', 'What kind of device is this?', DEVICE_TYPES),
       {
@@ -197,60 +197,43 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
     id: 'register_checkpoint',
     title: 'REGISTER CHECKPOINT',
     action: 'create_checkpoint',
-    steps: [
-      textStep('name', 'Checkpoint name', 'What should this checkpoint be called?', { min: 2, max: 80 }),
-      textStep('location_note', 'Zone / location', 'Which zone or location is it in?', { min: 2, max: 120 }),
-      {
-        key: 'nfc_tag_id',
-        title: 'NFC assignment',
-        prompt: () => ['Send the NFC tag UID for this checkpoint, or reply *later* to register it with pending NFC assignment.'],
-        parse: (input) => {
-          const value = input.trim().toLowerCase();
-          if (['later', 'skip', 'pending', 'none'].includes(value)) return { ok: true, patch: { nfc_tag_id: '' } };
-          const uid = value.replace(/[^a-f0-9]/g, '');
-          if (uid.length < 6) return { ok: false, error: 'That does not look like an NFC UID. Send the UID, or reply *later*.' };
-          return { ok: true, patch: { nfc_tag_id: uid } };
-        },
-      },
-      {
-        key: 'data_log_choice',
-        title: 'Data Log Form',
-        prompt: () => ['Should this checkpoint collect data when scanned?'],
-        options: (ctx) => [
-          { id: 'none', label: 'No form' },
-          ...ctx.forms.slice(0, 8).map((form) => ({ id: `form:${form.id}`, label: `Use ${form.name}` })),
-          { id: 'new_checklist', label: 'Create a new checklist form' },
-        ],
-        parse: (input, ctx) => {
-          const options = [
-            { id: 'none', label: 'No form' },
-            ...ctx.forms.slice(0, 8).map((form) => ({ id: `form:${form.id}`, label: `Use ${form.name}` })),
-            { id: 'new_checklist', label: 'Create a new checklist form' },
-          ];
-          const option = pickOption(input, options);
-          if (!option) return { ok: false, error: 'Reply with one of the numbers listed.' };
-          return { ok: true, patch: { data_log_choice: option.id, data_log_label: option.label } };
-        },
-      },
-    ],
-    summary: (data, ctx) => [
-      `Checkpoint: ${data.name}`,
-      `Zone: ${data.location_note}`,
-      `Site: ${ctx.siteName}`,
-      `NFC: ${data.nfc_tag_id ? `assigned (${data.nfc_tag_id})` : 'pending assignment'}`,
-      `Data Log Form: ${data.data_log_label}`,
-    ],
+    steps: (data, ctx) => checkpointSteps(data, ctx),
+    summary: (data, ctx) => {
+      const fields = collectDraftFields(data);
+      const formLabel = data.data_log_choice === 'new_form'
+        ? `${data.form_name} (new)`
+        : String(data.data_log_form_name ?? 'None');
+      return [
+        `Checkpoint: ${data.name}`,
+        `Zone / Location: ${data.location_note}`,
+        `Site: ${ctx.siteName}`,
+        `NFC: ${data.nfc_tag_id ? `assigned (${data.nfc_tag_id})` : 'pending'}`,
+        `Data Log Form: ${formLabel}`,
+        ...(data.data_log_choice === 'new_form'
+          ? [
+            `Fields: ${fields.length}`,
+            ...fields.map((field, index) =>
+              `  ${index + 1}. ${field.label} — ${fieldTypeById(field.field_type)?.label ?? field.field_type}` +
+              `${field.required ? ' (required)' : ' (optional)'}` +
+              `${field.options_json.length ? ` [${field.options_json.join(', ')}]` : ''}`),
+          ]
+          : data.data_log_form_id
+            ? [`Fields: ${data.data_log_form_field_count ?? '—'}`]
+            : []),
+      ];
+    },
     payload: (data, ctx) => {
-      const choice = String(data.data_log_choice ?? 'none');
       const input: Record<string, unknown> = {
         site_id: ctx.siteId,
         name: data.name,
         location_note: data.location_note,
         nfc_tag_id: data.nfc_tag_id ?? '',
       };
-      if (choice.startsWith('form:')) input.data_log_form_id = choice.slice(5);
-      if (choice === 'new_checklist') {
-        input.new_form = { name: `${data.name} Inspection`, form_type: 'checklist', fields: CHECKLIST_FIELDS };
+      if (data.data_log_choice === 'existing' && data.data_log_form_id) {
+        input.data_log_form_id = data.data_log_form_id;
+      }
+      if (data.data_log_choice === 'new_form') {
+        input.new_form = { name: data.form_name, fields: collectDraftFields(data) };
       }
       return input;
     },
@@ -260,7 +243,7 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
     id: 'create_patrol',
     title: 'CREATE PATROL TEMPLATE',
     action: 'create_patrol_template',
-    steps: [
+    steps: () => [
       textStep('name', 'Patrol name', 'What should this patrol be called?', { min: 2, max: 80 }),
       {
         key: 'expected_duration_minutes',
@@ -286,7 +269,7 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
     id: 'create_route',
     title: 'CREATE ROUTE',
     action: 'create_route',
-    steps: [
+    steps: () => [
       textStep('name', 'Route name', 'What should this route be called?', { min: 2, max: 80 }),
       {
         key: 'checkpoint_ids',
@@ -336,7 +319,7 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
     id: 'create_schedule',
     title: 'CREATE SCHEDULE',
     action: 'create_schedule',
-    steps: [
+    steps: () => [
       {
         key: 'route_id',
         title: 'Route',

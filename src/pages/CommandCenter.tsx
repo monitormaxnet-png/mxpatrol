@@ -21,10 +21,13 @@ import {
 } from '@/lib/assistantMenus';
 import {
   PATROL_STATUS_GROUPS,
+  PATROL_STATUS_LABELS,
   assistantDate,
   assistantTime,
   describePatrol,
+  patrolStatusCounts,
   type AssistantPatrolRow,
+  type PatrolStatusGroup,
 } from '@/lib/assistantPatrolFormat';
 import {
   advanceWorkflow,
@@ -351,6 +354,30 @@ function filterPatrols(rows: AssistantPatrolRow[], group: keyof typeof PATROL_ST
   const statuses = PATROL_STATUS_GROUPS[group] as readonly string[];
   return rows.filter((row) => statuses.includes(String(row.status)));
 }
+
+/** Patrol Status overview: real, site-scoped counts plus numbered drill-down. */
+function PatrolStatusOverview({ site, rows, node, loading }: { site: string; rows: AssistantPatrolRow[]; node: { items: { label: string }[] }; loading: boolean }) {
+  const counts = patrolStatusCounts(rows);
+  const groups: PatrolStatusGroup[] = ['completed', 'incomplete', 'late', 'missed'];
+  return (
+    <div>
+      <p>Viewing: <b>{site}</b></p>
+      {loading ? <p className='mt-2'>Loading patrol status…</p> : (
+        <div className='mt-3 flex flex-wrap gap-2'>
+          {groups.map((group) => (
+            <div key={group} className='min-w-[7.5rem] rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2'>
+              <p className='text-xl font-black text-emerald-300'>{counts[group]}</p>
+              <p className='text-xs text-slate-400'>{PATROL_STATUS_LABELS[group]}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <NumberList items={node.items.map((item) => item.label)} />
+      <p className='mt-3 text-slate-300'>Reply with a number to open the detailed list.</p>
+    </div>
+  );
+}
+
 
 function MenuView({ site, node }: { site: string; node: { title: string; items: { label: string }[] } }) {
   return <div><p>Viewing: <b>{site}</b></p><p className='mt-2'>What would you like to do?</p><NumberList items={node.items.map((item) => item.label)} /><p className='mt-3 text-slate-300'>Reply with a number, or type your request.</p></div>;

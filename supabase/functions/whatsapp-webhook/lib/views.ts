@@ -27,14 +27,12 @@ export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
       { id: "devices", label: "Devices" },
       { id: "incidents", label: "Incidents" },
       { id: "reports", label: "Reports" },
-      { id: "completed_patrols", label: "Completed Patrols" },
-      { id: "incomplete_patrols", label: "Incomplete Patrols" },
-      { id: "late_patrols", label: "Late / Delayed Patrols" },
-      { id: "missed_patrols", label: "Missed Patrols" },
+      { id: "patrol_status", label: "Patrol Status" },
       { id: "missed_checkpoints", label: "Missed Checkpoints" },
       { id: "change_site", label: "Change Site" },
       { id: "management", label: "Management" },
     ],
+
     footer: "You can also ask me something like:\nWhich devices are offline?",
   };
 }
@@ -545,9 +543,54 @@ function waDate(iso: string | null | undefined): string | null {
   return new Intl.DateTimeFormat("en-GB", { year: "numeric", month: "short", day: "2-digit", timeZone: TZ }).format(date);
 }
 
+const PATROL_STATUS_LABELS: Record<keyof typeof PATROL_STATUS_GROUPS, string> = {
+  completed: "Completed",
+  incomplete: "Incomplete",
+  late: "Late / Delayed",
+  missed: "Missed",
+};
+
+/** Patrol Status overview: real, site-scoped counts with numbered drill-down options. */
+export async function patrolStatusOverview(
+  client: SupabaseClient,
+  identity: Identity,
+  siteId: string | null,
+  siteName?: string | null,
+): Promise<OutMessage> {
+  const { data } = await siteFilter<any>(
+    client.from("patrol_sessions").select("id, status, site_id").limit(500),
+    identity,
+    siteId,
+  );
+  const rows = (data ?? []) as any[];
+  const count = (group: keyof typeof PATROL_STATUS_GROUPS) =>
+    rows.filter((row) => (PATROL_STATUS_GROUPS[group] as readonly string[]).includes(String(row.status))).length;
+
+  return {
+    title: siteName ? `PATROL STATUS — ${siteName}` : "PATROL STATUS",
+    menuKey: "patrol_status",
+    lines: [
+      `Completed: ${count("completed")}`,
+      `Incomplete: ${count("incomplete")}`,
+      `Late / Delayed: ${count("late")}`,
+      `Missed: ${count("missed")}`,
+      "",
+      "Choose a status for the detailed list.",
+    ],
+    options: [
+      { id: "completed_patrols", label: PATROL_STATUS_LABELS.completed },
+      { id: "incomplete_patrols", label: PATROL_STATUS_LABELS.incomplete },
+      { id: "late_patrols", label: PATROL_STATUS_LABELS.late },
+      { id: "missed_patrols", label: PATROL_STATUS_LABELS.missed },
+      { id: "back", label: "Back" },
+    ],
+  };
+}
+
 function lateBy(scheduled: string | null, actual: string | null): string | null {
   if (!scheduled || !actual) return null;
   const diff = new Date(actual).getTime() - new Date(scheduled).getTime();
+
   if (!Number.isFinite(diff) || diff <= 0) return null;
   const mins = Math.round(diff / 60000);
   return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
@@ -572,12 +615,14 @@ export async function patrolStatusView(
   );
   const rows = (data ?? []) as any[];
   const title = group === "completed" ? "COMPLETED PATROLS" : group === "incomplete" ? "INCOMPLETE PATROLS" : group === "late" ? "LATE / DELAYED PATROLS" : "MISSED PATROLS";
-  if (!rows.length) return { title, lines: ["No matching patrols for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
+  const backOptions = [{ id: "patrol_status", label: "Patrol Status" }, { id: "menu", label: "Main Menu" }];
+  if (!rows.length) return { title, lines: ["No matching patrols for the active site."], options: backOptions };
   return {
     title,
     lines: [rows.map((row, index) => formatPatrolStatusRow(row, index, group)).join("\n\n")],
-    options: [{ id: "menu", label: "Main Menu" }],
+    options: backOptions,
   };
+
 }
 
 /** Exported for tests: every patrol line carries the canonical scheduled time. */
@@ -780,13 +825,10 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     options: [
       { id: "patrols", label: "Live Patrol" },
       { id: "patrol_status", label: "Patrol Status" },
-      { id: "completed_patrols", label: "Completed Patrols" },
-      { id: "late_patrols", label: "Late / Delayed Patrols" },
-      { id: "incomplete_patrols", label: "Incomplete Patrols" },
-      { id: "missed_patrols", label: "Missed Patrols" },
       { id: "missed_checkpoints", label: "Missed Checkpoints" },
       { id: "back", label: "Back" },
     ],
+
   },
   management_devices: {
     title: "DEVICES",
@@ -874,5 +916,8 @@ export function resolveMenuChoice(session: SessionRow, input: string): string | 
 /** The menu we should return to when the user types `back`. */
 export function backTarget(session: SessionRow): string {
   const current = String(session.temporary_data?.["last_menu_key"] ?? "");
+  if (current === "patrol_status") {
+    return session.last_menu === "management" ? "management_operations" : USER_HOME_KEY;
+  }
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }

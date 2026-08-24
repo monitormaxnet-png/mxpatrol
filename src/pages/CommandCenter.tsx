@@ -21,10 +21,13 @@ import {
 } from '@/lib/assistantMenus';
 import {
   PATROL_STATUS_GROUPS,
+  PATROL_STATUS_LABELS,
   assistantDate,
   assistantTime,
   describePatrol,
+  patrolStatusCounts,
   type AssistantPatrolRow,
+  type PatrolStatusGroup,
 } from '@/lib/assistantPatrolFormat';
 import {
   advanceWorkflow,
@@ -206,8 +209,12 @@ export default function CommandCenter() {
 
   const showMenu = (key: string) => {
     const node = menuNode(key);
+    if (key === 'user_patrol_status' || key === 'management_patrol_status') {
+      return addAssistant(`PATROL STATUS - ${selectedSite}`, <PatrolStatusOverview site={selectedSite} rows={sitePatrols} node={node} loading={patrols.isLoading} />);
+    }
     addAssistant(node.title, <MenuView site={selectedSite} node={node} />);
   };
+
 
   const periodRows = (period: keyof typeof PERIODS) => {
     const from = PERIODS[period].from().getTime();
@@ -250,7 +257,7 @@ export default function CommandCenter() {
     if (action === 'incidents_resolved') return addAssistant('RESOLVED INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => row.resolved)} />);
     if (action === 'checkpoints') return addAssistant('CHECKPOINTS - ' + selectedSite, <CheckpointList rows={checkpoints.data ?? []} />);
     if (action === 'pending_nfc') return addAssistant('PENDING NFC ASSIGNMENT - ' + selectedSite, <CheckpointList rows={(checkpoints.data ?? []).filter((row: any) => !row.nfc_tag_id)} />);
-    if (action === 'patrol_status') return addAssistant('PATROL STATUS - ' + selectedSite, <PatrolList rows={sitePatrols.slice(0, 8)} />);
+    if (action === 'patrol_status') return showMenu(state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status');
     if (action === 'completed_patrols') return addAssistant('COMPLETED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'completed')} />);
     if (action === 'incomplete_patrols') return addAssistant('INCOMPLETE PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'incomplete')} variant='incomplete' />);
     if (action === 'late_patrols') return addAssistant('LATE / DELAYED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'late')} variant='late' />);
@@ -347,6 +354,30 @@ function filterPatrols(rows: AssistantPatrolRow[], group: keyof typeof PATROL_ST
   const statuses = PATROL_STATUS_GROUPS[group] as readonly string[];
   return rows.filter((row) => statuses.includes(String(row.status)));
 }
+
+/** Patrol Status overview: real, site-scoped counts plus numbered drill-down. */
+function PatrolStatusOverview({ site, rows, node, loading }: { site: string; rows: AssistantPatrolRow[]; node: { items: { label: string }[] }; loading: boolean }) {
+  const counts = patrolStatusCounts(rows);
+  const groups: PatrolStatusGroup[] = ['completed', 'incomplete', 'late', 'missed'];
+  return (
+    <div>
+      <p>Viewing: <b>{site}</b></p>
+      {loading ? <p className='mt-2'>Loading patrol status…</p> : (
+        <div className='mt-3 flex flex-wrap gap-2'>
+          {groups.map((group) => (
+            <div key={group} className='min-w-[7.5rem] rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2'>
+              <p className='text-xl font-black text-emerald-300'>{counts[group]}</p>
+              <p className='text-xs text-slate-400'>{PATROL_STATUS_LABELS[group]}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <NumberList items={node.items.map((item) => item.label)} />
+      <p className='mt-3 text-slate-300'>Reply with a number to open the detailed list.</p>
+    </div>
+  );
+}
+
 
 function MenuView({ site, node }: { site: string; node: { title: string; items: { label: string }[] } }) {
   return <div><p>Viewing: <b>{site}</b></p><p className='mt-2'>What would you like to do?</p><NumberList items={node.items.map((item) => item.label)} /><p className='mt-3 text-slate-300'>Reply with a number, or type your request.</p></div>;

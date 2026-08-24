@@ -29,15 +29,37 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
       { label: 'Devices', action: 'devices' },
       { label: 'Incidents', action: 'incidents' },
       { label: 'Reports', action: 'menu:user_reports' },
-      { label: 'Completed Patrols', action: 'completed_patrols' },
-      { label: 'Incomplete Patrols', action: 'incomplete_patrols' },
-      { label: 'Late / Delayed Patrols', action: 'late_patrols' },
-      { label: 'Missed Patrols', action: 'missed_patrols' },
+      { label: 'Patrol Status', action: 'menu:patrol_status' },
       { label: 'Missed Checkpoints List', action: 'missed_checkpoints' },
       { label: 'Change Site', action: 'change_site' },
       { label: 'Management', action: 'switch_management' },
     ],
   },
+  user_patrol_status: {
+    key: 'user_patrol_status',
+    title: 'PATROL STATUS',
+    parent: USER_HOME,
+    items: [
+      { label: 'Completed', action: 'completed_patrols' },
+      { label: 'Incomplete', action: 'incomplete_patrols' },
+      { label: 'Late / Delayed', action: 'late_patrols' },
+      { label: 'Missed', action: 'missed_patrols' },
+      { label: 'Back', action: 'back' },
+    ],
+  },
+  management_patrol_status: {
+    key: 'management_patrol_status',
+    title: 'PATROL STATUS',
+    parent: 'management_operations',
+    items: [
+      { label: 'Completed', action: 'completed_patrols' },
+      { label: 'Incomplete', action: 'incomplete_patrols' },
+      { label: 'Late / Delayed', action: 'late_patrols' },
+      { label: 'Missed', action: 'missed_patrols' },
+      { label: 'Back', action: 'back' },
+    ],
+  },
+
   user_reports: {
     key: 'user_reports',
     title: 'REPORTS',
@@ -73,14 +95,11 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     parent: MANAGEMENT_HOME,
     items: [
       { label: 'Live Patrol', action: 'live' },
-      { label: 'Patrol Status', action: 'patrol_status' },
-      { label: 'Completed Patrols', action: 'completed_patrols' },
-      { label: 'Late / Delayed Patrols', action: 'late_patrols' },
-      { label: 'Incomplete Patrols', action: 'incomplete_patrols' },
-      { label: 'Missed Patrols', action: 'missed_patrols' },
+      { label: 'Patrol Status', action: 'menu:patrol_status' },
       { label: 'Missed Checkpoints', action: 'missed_checkpoints' },
       { label: 'Back', action: 'back' },
     ],
+
   },
   management_devices: {
     key: 'management_devices',
@@ -123,6 +142,7 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     title: 'PATROL CONFIGURATION',
     parent: MANAGEMENT_HOME,
     items: [
+      { label: 'View Patrol Status', action: 'menu:patrol_status' },
       { label: 'View Routes', action: 'routes' },
       { label: 'View Schedules', action: 'schedules' },
       { label: 'Create Patrol Template', action: 'create_patrol' },
@@ -164,13 +184,14 @@ const MANAGEMENT_ONLY_ACTIONS = new Set([
   'create_schedule',
   'pending_nfc',
   'generate_report',
-  'patrol_status',
+  
   'routes',
   'schedules',
 ]);
 
 /** Natural-language intents. Evaluated only for non-numeric input, so menu numbers never fall through. */
 const NL_INTENTS: Array<[RegExp, string]> = [
+  [/patrol\s+status/, 'menu:patrol_status'],
   [/(missed\s+checkpoint|checkpoint.*miss)/, 'missed_checkpoints'],
   [/missed\s+patrol/, 'missed_patrols'],
   [/(late|delayed)\s+patrol/, 'late_patrols'],
@@ -217,6 +238,7 @@ function applyAction(state: RouterState, action: string, canManage: boolean): Re
   if (action.startsWith('menu:')) {
     let key = action.slice(5);
     if (key === 'reports') key = state.mode === 'management' ? 'management_reports' : 'user_reports';
+    if (key === 'patrol_status') key = state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status';
     if (!ASSISTANT_MENUS[key]) return { kind: 'unknown', state };
     if (key.startsWith('management_') && !canManage) return { kind: 'denied', state, action: key };
     const next = { ...state, activeMenu: key };

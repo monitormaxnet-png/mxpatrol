@@ -7,6 +7,7 @@ import {
   formatPatrolStatusRow,
   mainMenu,
   managementMenu,
+  patrolStatusOverview,
   resolveMenuChoice,
 } from "../../supabase/functions/whatsapp-webhook/lib/views";
 import { keywordIntent } from "../../supabase/functions/whatsapp-webhook/lib/askmx";
@@ -55,19 +56,16 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
     expect(resolveMenuChoice(withMenu(MANAGEMENT_HOME_KEY), "1")).toBe("management_operations");
   });
 
-  it("operations 6 selects missed patrols, not the root reports option", () => {
-    expect(resolveMenuChoice(withMenu("management_operations"), "6")).toBe("missed_patrols");
-    expect(resolveMenuChoice(withMenu(MANAGEMENT_HOME_KEY), "6")).toBe("management_reports");
-  });
-
-  it("operations 7 selects missed checkpoints", () => {
-    expect(resolveMenuChoice(withMenu("management_operations"), "7")).toBe("missed_checkpoints");
+  it("operations 2 selects Patrol Status and 3 missed checkpoints", () => {
+    expect(resolveMenuChoice(withMenu("management_operations"), "2")).toBe("patrol_status");
+    expect(resolveMenuChoice(withMenu("management_operations"), "3")).toBe("missed_checkpoints");
   });
 
   it("user home numbering stays on the user menu", () => {
     const userSession = session({ temporary_data: { last_options: mainMenu(identity, session()).options ?? [], last_menu_key: USER_HOME_KEY } });
     expect(resolveMenuChoice(userSession, "5")).toBe("reports");
-    expect(resolveMenuChoice(userSession, "10")).toBe("missed_checkpoints");
+    expect(resolveMenuChoice(userSession, "6")).toBe("patrol_status");
+    expect(resolveMenuChoice(userSession, "7")).toBe("missed_checkpoints");
   });
 
   it("back resolves to the parent of the displayed menu", () => {
@@ -76,11 +74,67 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
     expect(backTarget(session({ last_menu: "user" }))).toBe(USER_HOME_KEY);
   });
 
+  it("back from Patrol Status returns to the right parent per mode", () => {
+    expect(backTarget(session({ last_menu: "management", temporary_data: { last_menu_key: "patrol_status" } }))).toBe("management_operations");
+    expect(backTarget(session({ last_menu: "user", temporary_data: { last_menu_key: "patrol_status" } }))).toBe(USER_HOME_KEY);
+  });
+
   it("ignores numbers with no menu context instead of guessing", () => {
     expect(resolveMenuChoice(session(), "6")).toBeNull();
     expect(resolveMenuChoice(withMenu("management_operations"), "99")).toBeNull();
   });
 });
+
+describe("WhatsApp Patrol Status consolidates the four outcomes", () => {
+  const removed = ["completed_patrols", "incomplete_patrols", "late_patrols", "missed_patrols"];
+
+  it("removes the individual outcome options from the parent menus", () => {
+    const operations = (WA_SUBMENUS["management_operations"].options ?? []).map((option) => option.id);
+    const userHome = (mainMenu(identity, session()).options ?? []).map((option) => option.id);
+    for (const id of removed) {
+      expect(operations).not.toContain(id);
+      expect(userHome).not.toContain(id);
+    }
+    expect(operations).toContain("patrol_status");
+    expect(userHome).toContain("patrol_status");
+  });
+
+  it("shows all four active-site counts and drills into each detailed list", async () => {
+    const rows = [
+      { status: "completed", site_id: "site-1" },
+      { status: "completed_late", site_id: "site-1" },
+      { status: "incomplete", site_id: "site-1" },
+      { status: "missed", site_id: "site-1" },
+    ];
+    const captured: Array<[string, unknown]> = [];
+    const query: any = {
+      select: () => query,
+      limit: () => query,
+      in: (col: string, value: unknown) => { captured.push([col, value]); return query; },
+      eq: (col: string, value: unknown) => { captured.push([col, value]); return query; },
+      then: (resolve: (value: { data: unknown[] }) => unknown) => resolve({ data: rows }),
+    };
+    const client: any = { from: () => query };
+
+    const view = await patrolStatusOverview(client, identity, "site-1", "Airport Junction");
+    expect(captured).toContainEqual(["site_id", "site-1"]);
+    expect(view.title).toContain("Airport Junction");
+    expect(view.lines).toContain("Completed: 2");
+    expect(view.lines).toContain("Incomplete: 1");
+    expect(view.lines).toContain("Late / Delayed: 1");
+    expect(view.lines).toContain("Missed: 1");
+
+    const options = (view.options ?? []).map((option) => option.id);
+    expect(options.slice(0, 4)).toEqual(removed);
+    const statusSession = session({ temporary_data: { last_options: view.options ?? [], last_menu_key: "patrol_status" } });
+    expect(resolveMenuChoice(statusSession, "1")).toBe("completed_patrols");
+    expect(resolveMenuChoice(statusSession, "2")).toBe("incomplete_patrols");
+    expect(resolveMenuChoice(statusSession, "3")).toBe("late_patrols");
+    expect(resolveMenuChoice(statusSession, "4")).toBe("missed_patrols");
+    expect(resolveMenuChoice(statusSession, "5")).toBe("back");
+  });
+});
+
 
 describe("WhatsApp patrol output includes canonical scheduled times", () => {
   const row = {

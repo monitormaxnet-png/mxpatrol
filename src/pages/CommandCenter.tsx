@@ -4,6 +4,7 @@ import { ArrowRight, Bot, Lock, MapPin, Send, ShieldCheck, Smartphone, UserCog, 
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
+import { usePlatformAdmin } from '@/hooks/usePlatformAdmin';
 import { useSites } from '@/hooks/useSites';
 import { useAlerts, useDevices, useIncidents, useScanLogs, useCheckpoints } from '@/hooks/useDashboardData';
 import { useReportJobs } from '@/hooks/useReports';
@@ -71,6 +72,7 @@ function named(row: SessionRow): AssistantPatrolRow {
 export default function CommandCenter() {
   const { user } = useAuth();
   const { canManage, role } = useUserRole();
+  const { isPlatformOwner } = usePlatformAdmin();
   const { data: sites = [] } = useSites();
   const queryClient = useQueryClient();
   const [state, setState] = useState<RouterState>({ mode: 'user', activeMenu: USER_HOME, activeSiteId: null });

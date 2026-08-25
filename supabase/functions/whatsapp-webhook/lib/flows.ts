@@ -883,10 +883,16 @@ const SECURE_ACTION_LABELS: Record<string, string> = {
   request_device_enable: "Enable Device",
   request_maintenance_mode: "Maintenance Mode",
   request_exit_maintenance: "Exit Maintenance",
+  request_enable_kiosk_mode: "Enable Kiosk Mode",
+  request_disable_kiosk_mode: "Disable Kiosk Mode",
   request_app_update: "Require App Update",
   request_integrity_check: "Run Security Check",
   revoke_device: "Revoke Device",
 };
+
+function isKioskSecureAction(action: SecureDeviceAction): boolean {
+  return action === "request_enable_kiosk_mode" || action === "request_disable_kiosk_mode";
+}
 
 export async function startSecureDeviceAction(
   client: SupabaseClient,
@@ -897,6 +903,9 @@ export async function startSecureDeviceAction(
 ): Promise<FlowResult> {
   if (!identity.canManage) {
     return { session, message: { title: "MANAGEMENT ACCESS UNAVAILABLE", lines: ["Your account does not have permission to manage secure patrol devices."], options: [{ id: "menu", label: "Main Menu" }] } };
+  }
+  if (isKioskSecureAction(action) && !identity.canManageKiosk) {
+    return { session, message: { title: "KIOSK ACCESS UNAVAILABLE", lines: ["Only MX Patrol platform owners or system operators can manage Kiosk Mode."], options: [{ id: "secure_devices", label: "Secure Device Menu" }] } };
   }
 
   const data: Record<string, any> = { secure_action: action };
@@ -924,6 +933,9 @@ export async function startSecureDeviceAction(
 async function secureDeviceAction(client: SupabaseClient, identity: Identity, session: SessionRow, input: string): Promise<FlowResult> {
   const data = { ...(session.temporary_data ?? {}) } as Record<string, any>;
   const action = data.secure_action as SecureDeviceAction;
+  if (isKioskSecureAction(action) && !identity.canManageKiosk) {
+    return { session: await clearFlow(client, session), message: { title: "KIOSK ACCESS UNAVAILABLE", lines: ["Only MX Patrol platform owners or system operators can manage Kiosk Mode."], options: [{ id: "secure_devices", label: "Secure Device Menu" }] } };
+  }
 
   if (session.current_step === "WAITING_FOR_DEVICE") {
     const choices = (data.device_choices ?? []) as Array<Record<string, any>>;
@@ -956,6 +968,7 @@ async function secureDeviceAction(client: SupabaseClient, identity: Identity, se
         "Device: " + data.device_identifier,
         "Action: " + (SECURE_ACTION_LABELS[action] ?? action),
         action === "request_maintenance_mode" ? "Duration: " + (data.duration_minutes ?? 10) + " minutes" : null,
+        isKioskSecureAction(action) ? "Kiosk Status changes only after the physical patrol device acknowledges the policy." : null,
         "This will queue a secure remote command and record an audit event.",
       ].filter(Boolean) as string[];
       return { session, message: { title: "CONFIRM SECURE COMMAND", lines, options: [{ id: "1", label: "Confirm" }, { id: "2", label: "Cancel" }] } };

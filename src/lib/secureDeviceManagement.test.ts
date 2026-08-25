@@ -6,6 +6,8 @@ const edge = readFileSync('supabase/functions/secure-device-management/index.ts'
 const shared = readFileSync('supabase/functions/_shared/secure-device-management.ts', 'utf8');
 const whatsappViews = readFileSync('supabase/functions/whatsapp-webhook/lib/views.ts', 'utf8');
 const whatsappFlows = readFileSync('supabase/functions/whatsapp-webhook/lib/flows.ts', 'utf8');
+const whatsappIdentity = readFileSync('supabase/functions/whatsapp-webhook/lib/identity.ts', 'utf8');
+const whatsappAsk = readFileSync('supabase/functions/whatsapp-webhook/lib/askmx.ts', 'utf8');
 
 describe('secure patrol device management', () => {
   it('loads through the canonical secure-device-management edge function without the invalid user_roles company filter', () => {
@@ -36,7 +38,7 @@ describe('secure patrol device management', () => {
     expect(panel).toContain('rows.find((row) => deviceKey(row) === selectedDevice)');
     expect(panel).toContain('setSelectedDevice(identifier)');
     expect(panel).toContain('aria-pressed={selected}');
-    expect(panel).toContain('disabled={commandMutation.isPending || !canRunAction(action, activeDevice)}');
+    expect(panel).toContain('disabled={commandMutation.isPending || !canRunAction(action, activeDevice, isPlatformAdmin)}');
     expect(panel).toContain('Device ID');
     expect(panel).toContain('compactId(device.id ?? device.device_identifier)');
     expect(panel).toContain('setPendingAction(action)');
@@ -49,6 +51,20 @@ describe('secure patrol device management', () => {
     expect(shared).toContain('.from("device_security_events")');
     expect(shared).toContain('command_status');
     expect(shared).toContain('Device is revoked and cannot receive new secure commands');
+  });
+
+  it('adds owner-only kiosk controls without faking device state', () => {
+    expect(shared).toContain('request_enable_kiosk_mode: "set_kiosk_mode"');
+    expect(shared).toContain('request_disable_kiosk_mode: "set_kiosk_mode"');
+    expect(shared).toContain('Platform owner access required for kiosk mode controls');
+    expect(shared).toContain('Device Owner provisioning is not active');
+    expect(shared).toContain('requested_kiosk_active');
+    expect(shared).not.toContain('statusPatch.kiosk_active');
+    expect(edge).toContain('.from("platform_admins")');
+    expect(edge).toContain('canManageKiosk');
+    expect(panel).toContain('usePlatformAdmin');
+    expect(panel).toContain('filter(([action]) => !isKioskAction(action) || isPlatformAdmin)');
+    expect(panel).toContain('Current Kiosk Status');
   });
 
   it('keeps WhatsApp on the same secure-device backend and reports real command status', () => {

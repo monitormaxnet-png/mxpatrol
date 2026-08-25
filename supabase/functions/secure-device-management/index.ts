@@ -28,6 +28,8 @@ const commandActions = new Set<string>([
   "request_device_enable",
   "request_maintenance_mode",
   "request_exit_maintenance",
+  "request_enable_kiosk_mode",
+  "request_disable_kiosk_mode",
   "request_app_update",
   "request_integrity_check",
   "revoke_device",
@@ -73,8 +75,16 @@ async function resolveActor(req: Request): Promise<{ service: ReturnType<typeof 
     : roleNames.includes("supervisor")
       ? "supervisor"
       : (roleNames[0] ?? "guard");
+  const { data: platformRows, error: platformError } = await service
+    .from("platform_admins")
+    .select("role")
+    .eq("user_id", userId)
+    .limit(1);
+  if (platformError) throw platformError;
+  const platformRole = platformRows?.[0]?.role ? String(platformRows[0].role) : null;
+  const canManageKiosk = platformRole === "owner" || platformRole === "operator";
   const canManage = roleName === "admin" || roleName === "supervisor";
-  return { service, actor: { company_id: profile.company_id, user_id: userId, role: roleName, canManage, allowed_site_ids: [] } };
+  return { service, actor: { company_id: profile.company_id, user_id: userId, role: roleName, canManage, canManageKiosk, platformRole, allowed_site_ids: [] } };
 }
 
 serve(async (req) => {

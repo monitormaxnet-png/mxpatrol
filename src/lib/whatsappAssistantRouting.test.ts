@@ -24,6 +24,8 @@ const identity: Identity = {
   allowed_site_ids: ["site-1"],
   canSetup: false,
   canManage: true,
+  canManageKiosk: false,
+  platformRole: null,
   canAcknowledge: true,
 };
 

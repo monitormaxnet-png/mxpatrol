@@ -21,6 +21,8 @@ export type Identity = {
   role: Role;
   allowed_site_ids: string[];
   canManage: boolean;
+  canManageKiosk: boolean;
+  platformRole: string | null;
   canSetup: boolean;
   canAcknowledge: boolean;
 

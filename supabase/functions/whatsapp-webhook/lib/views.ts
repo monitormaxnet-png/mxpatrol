@@ -700,12 +700,17 @@ function managementOnly(identity: Identity): OutMessage | null {
 export function secureDeviceMenu(identity: Identity, session: SessionRow): OutMessage {
   const denied = managementOnly(identity);
   if (denied) return denied;
+  const kioskOptions = identity.canManageKiosk ? [
+    { id: "secure_action:request_enable_kiosk_mode", label: "Enable Kiosk Mode" },
+    { id: "secure_action:request_disable_kiosk_mode", label: "Disable Kiosk Mode" },
+  ] : [];
   return {
     title: "SECURE PATROL DEVICES",
     lines: [session.current_site_name ? "Viewing: " + session.current_site_name : "Choose a site before managing devices.", "What would you like to do?"],
     options: [
       { id: "secure_device_status", label: "Device Status" },
       { id: "secure_device_problems", label: "Security Problems" },
+      ...kioskOptions,
       { id: "secure_action:request_device_lock", label: "Lock Device" },
       { id: "secure_action:request_device_disable", label: "Disable Device" },
       { id: "secure_action:request_device_enable", label: "Enable Device" },
@@ -759,6 +764,7 @@ export async function secureDeviceProblems(client: SupabaseClient, identity: Ide
       problemRows.slice(0, 6).map((row: Record<string, any>, index: number) => formatDeviceSecurityLine(row, index)).join("\n\n"),
     ],
     options: [
+      ...(identity.canManageKiosk ? [{ id: "secure_action:request_enable_kiosk_mode", label: "Enable Kiosk Mode" }] : []),
       { id: "secure_action:request_device_lock", label: "Lock Device" },
       { id: "secure_action:request_maintenance_mode", label: "Maintenance Mode" },
       { id: "secure_action:request_app_update", label: "Require App Update" },
@@ -795,7 +801,8 @@ export async function secureDeviceInfo(client: SupabaseClient, identity: Identit
       "Device ID: " + (device.device_identifier ?? "Unknown"),
       "Name: " + (device.device_name ?? "Unnamed device"),
       "Status: " + (device.status ?? "unknown"),
-      "Kiosk: " + (device.kiosk_active ? "Locked" : "Inactive"),
+      "Device Owner: " + (device.device_owner_active ? "Active" : "Not Provisioned"),
+      "Kiosk: " + (device.kiosk_active ? "Locked" : device.device_owner_active ? "Inactive" : "Not Provisioned"),
       "Security: " + deviceSecurityState(device),
       "App Version: " + (device.app_version ?? "unknown"),
       "Last Seen: " + timeAgo(device.last_seen_at),
@@ -804,6 +811,7 @@ export async function secureDeviceInfo(client: SupabaseClient, identity: Identit
       eventLines.join("\n"),
     ],
     options: [
+      ...(identity.canManageKiosk ? [{ id: "secure_action_device:" + (device.kiosk_active ? "request_disable_kiosk_mode" : "request_enable_kiosk_mode") + ":" + device.device_identifier, label: device.kiosk_active ? "Disable Kiosk Mode" : "Enable Kiosk Mode" }] : []),
       { id: "secure_action_device:request_device_lock:" + device.device_identifier, label: "Lock Device" },
       { id: "secure_action_device:request_maintenance_mode:" + device.device_identifier, label: "Maintenance Mode" },
       { id: "secure_action_device:request_integrity_check:" + device.device_identifier, label: "Security Check" },

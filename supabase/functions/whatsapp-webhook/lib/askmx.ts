@@ -27,7 +27,7 @@ export type Intent =
   | { action: "secure_device_status" }
   | { action: "secure_device_problems" }
   | { action: "secure_device_detail"; device?: string }
-  | { action: "secure_device_action"; secureAction: "request_device_lock" | "request_device_disable" | "request_device_enable" | "request_maintenance_mode" | "request_exit_maintenance" | "request_app_update" | "request_integrity_check" | "revoke_device"; device?: string }
+  | { action: "secure_device_action"; secureAction: "request_device_lock" | "request_device_disable" | "request_device_enable" | "request_maintenance_mode" | "request_exit_maintenance" | "request_app_update" | "request_integrity_check" | "request_enable_kiosk_mode" | "request_disable_kiosk_mode" | "revoke_device"; device?: string }
   | { action: "unknown"; reply?: string };
 
 const SCHEMA = `Return ONLY JSON matching one of these shapes:
@@ -57,7 +57,7 @@ const SCHEMA = `Return ONLY JSON matching one of these shapes:
 {"action":"secure_device_status"}
 {"action":"secure_device_problems"}
 {"action":"secure_device_detail","device":"MX-021"}
-{"action":"secure_device_action","secureAction":"request_device_lock|request_device_disable|request_maintenance_mode|request_app_update|request_integrity_check|revoke_device","device":"MX-021"}
+{"action":"secure_device_action","secureAction":"request_device_lock|request_device_disable|request_device_enable|request_enable_kiosk_mode|request_disable_kiosk_mode|request_maintenance_mode|request_app_update|request_integrity_check|revoke_device","device":"MX-021"}
 {"action":"unknown","reply":"one short helpful sentence"}`;
 
 /** Fast keyword routing so common phrasing never needs the model. */
@@ -87,6 +87,10 @@ export function keywordIntent(text: string): Intent | null {
   if (/(security problems|secure.*problems|devices?.*(outdated|developer mode|kiosk|insecure|security issue)|which devices need app update)/i.test(value)) return { action: "secure_device_problems" };
   const secureInfo = value.match(/(?:secure info|device info|security info)\s+([a-z0-9\-_.]+)/i);
   if (secureInfo) return { action: "secure_device_detail", device: secureInfo[1] };
+  const kioskAction = value.match(/^(enable|disable)\s+kiosk(?:\s+mode)?\s+(?:on\s+|for\s+)?(?:device\s+)?([a-z0-9\-_.]+)?/i);
+  if (kioskAction) {
+    return { action: "secure_device_action", secureAction: kioskAction[1].toLowerCase() === "enable" ? "request_enable_kiosk_mode" : "request_disable_kiosk_mode", device: kioskAction[2] };
+  }
   const secureAction = value.match(/^(lock|disable|enable|revoke|update|maintenance|maintain|security check|integrity check)\s+(?:device\s+)?([a-z0-9\-_.]+)?/i);
   if (secureAction) {
     const verb = secureAction[1].toLowerCase();

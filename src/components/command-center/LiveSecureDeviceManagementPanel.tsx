@@ -1,8 +1,9 @@
-import { useMemo, useState, type ComponentType } from 'react';
+import { useState, type ComponentType } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Lock, RefreshCw, ShieldCheck, Smartphone, Wifi, X, Zap, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { usePlatformAdmin } from '@/hooks/usePlatformAdmin';
 
 type Tone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';
 type IconComponent = ComponentType<{ className?: string }>;
@@ -12,6 +13,8 @@ type SecureDeviceAction =
   | 'request_device_enable'
   | 'request_maintenance_mode'
   | 'request_exit_maintenance'
+  | 'request_enable_kiosk_mode'
+  | 'request_disable_kiosk_mode'
   | 'request_app_update'
   | 'request_integrity_check'
   | 'revoke_device';
@@ -55,6 +58,8 @@ const actionLabels: Record<SecureDeviceAction, string> = {
   request_device_enable: 'Enable Device',
   request_maintenance_mode: 'Maintenance Mode',
   request_exit_maintenance: 'Exit Maintenance',
+  request_enable_kiosk_mode: 'Enable Kiosk Mode',
+  request_disable_kiosk_mode: 'Disable Kiosk Mode',
   request_app_update: 'Require App Update',
   request_integrity_check: 'Security Check',
   revoke_device: 'Revoke Device',
@@ -66,6 +71,8 @@ const actionIcons: Record<SecureDeviceAction, IconComponent> = {
   request_device_enable: Check,
   request_maintenance_mode: RefreshCw,
   request_exit_maintenance: ShieldCheck,
+  request_enable_kiosk_mode: Lock,
+  request_disable_kiosk_mode: ShieldCheck,
   request_app_update: Zap,
   request_integrity_check: ShieldCheck,
   revoke_device: Trash2,
@@ -176,6 +183,16 @@ function DetailLine({ label, value }: { label: string; value?: string | number |
   return <div className='flex items-center justify-between gap-3 border-b border-white/10 py-2 text-xs last:border-b-0'><span className='text-slate-500'>{label}</span><span className='text-right font-semibold text-slate-200'>{String(value)}</span></div>;
 }
 
+function isKioskAction(action: SecureDeviceAction) {
+  return action === 'request_enable_kiosk_mode' || action === 'request_disable_kiosk_mode';
+}
+
+function kioskStatus(device: SecureDeviceRow | null) {
+  if (!device) return 'Unknown';
+  if (!device.device_owner_active && !device.kiosk_active) return 'Not Provisioned';
+  return device.kiosk_active ? 'Active' : 'Inactive';
+}
+
 function deviceKey(device: SecureDeviceRow) {
   return String(device.device_identifier ?? device.id ?? '');
 }
@@ -190,13 +207,16 @@ function compactId(value?: string | null) {
   return value.length > 18 ? value.slice(0, 8) + '...' + value.slice(-6) : value;
 }
 
-function canRunAction(action: SecureDeviceAction, device: SecureDeviceRow | null) {
+function canRunAction(action: SecureDeviceAction, device: SecureDeviceRow | null, canManageKiosk = false) {
   if (!device) return false;
+  if (isKioskAction(action) && !canManageKiosk) return false;
   const status = String(device.secure_mode_status ?? '').toLowerCase();
   const revoked = status === 'revoked';
   const disabled = status === 'disabled';
   const maintenance = status === 'maintenance' || Boolean(device.maintenance_expires_at);
   if (revoked) return action === 'revoke_device';
+  if (action === 'request_enable_kiosk_mode') return !device.kiosk_active && Boolean(device.device_owner_active) && !disabled;
+  if (action === 'request_disable_kiosk_mode') return Boolean(device.kiosk_active);
   if (action === 'request_device_enable') return disabled;
   if (action === 'request_device_disable') return !disabled;
   if (action === 'request_maintenance_mode') return !maintenance && !disabled;
@@ -210,6 +230,7 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
   const [lastCommand, setLastCommand] = useState<CommandResult | null>(null);
   const summaryQuery = useSecureDeviceSummary(siteId);
   const commandMutation = useSecureDeviceCommand(siteId);
+  const { isPlatformAdmin } = usePlatformAdmin();
   const summary = summaryQuery.data;
   const rows = summary?.rows ?? [];
   const activeDevice = rows.find((row) => deviceKey(row) === selectedDevice) ?? null;
@@ -275,7 +296,7 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
                 <button type='button' key={device.id ?? identifier} aria-pressed={selected} onClick={() => { setSelectedDevice(identifier); setPendingAction(null); setLastCommand(null); }} className={(selected ? 'border-emerald-400/45 bg-emerald-400/[0.09] ring-1 ring-emerald-400/30' : 'border-white/5 hover:border-emerald-400/25 hover:bg-emerald-400/[0.04]') + ' grid w-full grid-cols-[1.2fr_1fr_0.8fr_1fr_0.8fr] items-center gap-2 border-b px-3 py-3 text-left text-xs transition last:border-b-0 focus:outline-none focus:ring-2 focus:ring-emerald-400/40'}>
                   <span><b className='block text-white'>{displayName}</b><span className='text-slate-500'>{selected ? 'Selected - ' : ''}{compactId(device.id ?? device.device_identifier)}</span></span>
                   <span className='truncate text-slate-400'>{device.site ?? 'Unassigned'}</span>
-                  <span className='text-slate-300'>{device.kiosk_active ? 'Active' : 'Inactive'}</span>
+                  <span className='text-slate-300'>{kioskStatus(device)}</span>
                   <span className={toneClasses(state.tone)}>{state.label}</span>
                   <span className={device.status === 'online' ? 'text-emerald-300' : device.status === 'offline' ? 'text-blue-300' : 'text-slate-300'}>{device.status ?? 'unknown'}{selected ? ' - Selected' : ''}</span>
                 </button>
@@ -284,10 +305,10 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
           </div>
 
           <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-4'>
-            {(Object.entries(actionLabels) as [SecureDeviceAction, string][]).map(([action, label]) => {
+            {(Object.entries(actionLabels) as [SecureDeviceAction, string][]).filter(([action]) => !isKioskAction(action) || isPlatformAdmin).map(([action, label]) => {
               const Icon = actionIcons[action];
               const destructive = action === 'revoke_device' || action === 'request_device_disable';
-              return <button type='button' key={action} disabled={commandMutation.isPending || !canRunAction(action, activeDevice)} onClick={() => askCommand(action)} className={(destructive ? 'border-red-400/25 text-red-200' : 'border-emerald-400/20 text-emerald-200') + ' inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-slate-950/70 px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50'}><Icon className='h-3.5 w-3.5' />{label}</button>;
+              return <button type='button' key={action} disabled={commandMutation.isPending || !canRunAction(action, activeDevice, isPlatformAdmin)} onClick={() => askCommand(action)} className={(destructive ? 'border-red-400/25 text-red-200' : 'border-emerald-400/20 text-emerald-200') + ' inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-slate-950/70 px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50'}><Icon className='h-3.5 w-3.5' />{label}</button>;
             })}
           </div>
         </div>
@@ -308,7 +329,8 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
             <DetailLine label='Device ID' value={compactId(activeDevice.id)} />
             <DetailLine label='Device Identifier' value={compactId(activeDevice.device_identifier)} />
             <DetailLine label='Site' value={activeDevice.site ?? selectedSite} />
-            <DetailLine label='Kiosk' value={activeDevice.kiosk_active ? 'Active' : 'Inactive'} />
+            <DetailLine label='Device Owner' value={activeDevice.device_owner_active ? 'Active' : 'Not Provisioned'} />
+            <DetailLine label='Kiosk Status' value={kioskStatus(activeDevice)} />
             <DetailLine label='App Version' value={activeDevice.app_version ?? 'Unknown'} />
             <DetailLine label='Minimum Version' value={activeDevice.minimum_app_version} />
             <DetailLine label='Integrity' value={activeDevice.secure_mode_status === 'integrity_failed' ? 'Failed' : activeDevice.last_integrity_check_at ? 'Passed' : 'Unknown'} />
@@ -321,7 +343,8 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
             <p className='font-black uppercase tracking-[0.08em]'>{actionLabels[pendingAction]} - Confirm</p>
             <p className='mt-2'>Device: {activeDeviceName}</p>
             <p>Site: {selectedSite}</p>
-            <p className='mt-2 text-amber-100/80'>This will queue a canonical secure-device-management command and write a security event.</p>
+            {isKioskAction(pendingAction) ? <p>Current Kiosk Status: {kioskStatus(activeDevice)}</p> : null}
+            <p className='mt-2 text-amber-100/80'>{isKioskAction(pendingAction) ? 'This queues a real Android kiosk command. Kiosk Status updates only after the patrol device acknowledges the policy.' : 'This will queue a canonical secure-device-management command and write a security event.'}</p>
             <div className='mt-3 flex gap-2'>
               <button type='button' onClick={confirmCommand} disabled={commandMutation.isPending} className='rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-100'>Confirm</button>
               <button type='button' onClick={() => setPendingAction(null)} disabled={commandMutation.isPending} className='rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-slate-200'>Cancel</button>

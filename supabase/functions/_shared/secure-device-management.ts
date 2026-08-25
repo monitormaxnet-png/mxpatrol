@@ -12,6 +12,8 @@ export type SecureDeviceAction =
   | "request_device_enable"
   | "request_maintenance_mode"
   | "request_exit_maintenance"
+  | "request_enable_kiosk_mode"
+  | "request_disable_kiosk_mode"
   | "request_app_update"
   | "request_integrity_check"
   | "revoke_device";
@@ -21,6 +23,8 @@ export type SecureDeviceActor = {
   user_id?: string | null;
   role?: string | null;
   canManage?: boolean;
+  canManageKiosk?: boolean;
+  platformRole?: string | null;
   allowed_site_ids?: string[];
 };
 
@@ -32,10 +36,16 @@ const COMMAND_TYPES: Partial<Record<SecureDeviceAction, string>> = {
   request_device_enable: "enable_device",
   request_maintenance_mode: "enter_maintenance",
   request_exit_maintenance: "exit_maintenance",
+  request_enable_kiosk_mode: "set_kiosk_mode",
+  request_disable_kiosk_mode: "set_kiosk_mode",
   request_app_update: "require_app_update",
   request_integrity_check: "force_security_check",
   revoke_device: "revoke_device",
 };
+
+function isKioskModeAction(action: SecureDeviceAction): boolean {
+  return action === "request_enable_kiosk_mode" || action === "request_disable_kiosk_mode";
+}
 
 function timeAgo(iso: string | null | undefined): string {
   if (!iso) return "unknown";
@@ -168,12 +178,24 @@ export async function requestSecureDeviceCommand(
   assertCanManageSecureDevices(actor);
   const commandType = COMMAND_TYPES[action];
   if (!commandType) throw new Error("Unsupported secure device action");
+  if (isKioskModeAction(action) && !actor.canManageKiosk) {
+    throw new Error("Platform owner access required for kiosk mode controls");
+  }
 
   const device = await getSecureDeviceByIdentifier(client, actor, siteId, deviceIdentifier);
   if (!device) throw new Error("Device not found for active site");
   if ((device.pairing_status === "revoked" || device.secure_mode_status === "revoked") && action !== "revoke_device") {
     throw new Error("Device is revoked and cannot receive new secure commands");
   }
+  const requestedKioskActive = action === "request_enable_kiosk_mode" ? true : action === "request_disable_kiosk_mode" ? false : null;
+  if (action === "request_enable_kiosk_mode" && !device.device_owner_active) {
+    throw new Error("Kiosk Mode cannot be enabled: Device Owner provisioning is not active for this patrol device");
+  }
+
+  const commandPayload = {
+    ...payload,
+    ...(requestedKioskActive === null ? {} : { enabled: requestedKioskActive, kiosk_active: requestedKioskActive }),
+  };
 
   const now = new Date().toISOString();
   const { data: existing } = await client
@@ -196,7 +218,7 @@ export async function requestSecureDeviceCommand(
         device_id: device.id,
         command_type: commandType,
         status: "pending",
-        payload: { ...payload, channel, source: channel, requested_action: action, secure_action: action },
+        payload: { ...commandPayload, channel, source: channel, requested_action: action, secure_action: action },
         issued_by: actor.user_id ?? null,
       })
       .select("id, command_type, status, issued_at")
@@ -233,9 +255,17 @@ export async function requestSecureDeviceCommand(
     device_id: device.id,
     device_identifier: device.device_identifier,
     event_type: action,
-    severity: action === "revoke_device" || action === "request_device_disable" ? "critical" : "info",
+    severity: action === "revoke_device" || action === "request_device_disable" || isKioskModeAction(action) ? "critical" : "info",
     initiated_by: actor.user_id ?? null,
-    metadata: { command_id: command?.id ?? null, channel, duplicate_queued: duplicateQueued, payload },
+    metadata: {
+      command_id: command?.id ?? null,
+      channel,
+      duplicate_queued: duplicateQueued,
+      payload: commandPayload,
+      old_kiosk_active: Boolean(device.kiosk_active),
+      requested_kiosk_active: requestedKioskActive,
+      platform_role: actor.platformRole ?? null,
+    },
   });
 
   return { device, command_id: command?.id ?? null, command_type: commandType, command_status: String(command?.status ?? "pending"), queued: device.status !== "online" || duplicateQueued, command };

@@ -11,12 +11,21 @@ const LINK_CODE_PATTERN = /^[A-Z0-9]{6,10}$/;
 
 async function buildIdentity(client: SupabaseClient, row: Record<string, any>): Promise<Identity> {
   let role: Role = "guard";
+  let platformRole: string | null = null;
   if (row.user_id) {
     const { data } = await client.from("user_roles").select("role").eq("user_id", row.user_id);
     const names = (data ?? []).map((entry: Record<string, any>) => String(entry.role));
     if (names.includes("admin")) role = "admin";
     else if (names.includes("supervisor")) role = "supervisor";
     else if (names.includes("guard")) role = "guard";
+
+    const { data: platformRows, error: platformError } = await client
+      .from("platform_admins")
+      .select("role")
+      .eq("user_id", row.user_id)
+      .limit(1);
+    if (platformError) throw platformError;
+    platformRole = platformRows?.[0]?.role ? String(platformRows[0].role) : null;
   }
   return {
     id: row.id,
@@ -29,6 +38,8 @@ async function buildIdentity(client: SupabaseClient, row: Record<string, any>): 
     allowed_site_ids: Array.isArray(row.allowed_site_ids) ? row.allowed_site_ids : [],
     canSetup: role === "admin",
     canManage: role === "admin" || role === "supervisor",
+    canManageKiosk: platformRole === "owner" || platformRole === "operator",
+    platformRole,
     canAcknowledge: role === "admin" || role === "supervisor",
 
   };

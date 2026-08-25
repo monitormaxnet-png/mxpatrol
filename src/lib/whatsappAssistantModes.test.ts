@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { keywordIntent } from "../../supabase/functions/whatsapp-webhook/lib/askmx";
 import { mainMenu, managementMenu, secureDeviceMenu } from "../../supabase/functions/whatsapp-webhook/lib/views";
-import { startFlow } from "../../supabase/functions/whatsapp-webhook/lib/flows";
+import { startFlow, startSecureDeviceAction } from "../../supabase/functions/whatsapp-webhook/lib/flows";
 import type { Identity, SessionRow } from "../../supabase/functions/whatsapp-webhook/lib/types";
 
 const baseIdentity: Identity = {
@@ -15,6 +15,8 @@ const baseIdentity: Identity = {
   allowed_site_ids: ["site-1"],
   canSetup: false,
   canManage: false,
+  canManageKiosk: false,
+  platformRole: null,
   canAcknowledge: false,
 };
 
@@ -86,12 +88,30 @@ describe("WhatsApp assistant allowlisted intents", () => {
     expect(keywordIntent("show devices with security problems")).toEqual({ action: "secure_device_problems" });
     expect(keywordIntent("lock device MX-021")).toEqual({ action: "secure_device_action", secureAction: "request_device_lock", device: "mx-021" });
     expect(keywordIntent("maintenance MX-043")).toEqual({ action: "secure_device_action", secureAction: "request_maintenance_mode", device: "mx-043" });
+    expect(keywordIntent("enable kiosk mode MX-021")).toEqual({ action: "secure_device_action", secureAction: "request_enable_kiosk_mode", device: "mx-021" });
+    expect(keywordIntent("disable kiosk MX-021")).toEqual({ action: "secure_device_action", secureAction: "request_disable_kiosk_mode", device: "mx-021" });
   });
   it("maps role switching words without trusting message-provided role data", () => {
     expect(keywordIntent("management")).toEqual({ action: "management" });
     expect(keywordIntent("user")).toEqual({ action: "user" });
   });
 });
+describe("WhatsApp assistant secure device kiosk protection", () => {
+  it("hides kiosk actions from company management identities unless they are platform operators", () => {
+    const manager: Identity = { ...baseIdentity, role: "admin", canManage: true, canAcknowledge: true };
+    const owner: Identity = { ...manager, canManageKiosk: true, platformRole: "owner" };
+    expect(secureDeviceMenu(manager, baseSession).options?.map((option) => option.id)).not.toContain("secure_action:request_enable_kiosk_mode");
+    expect(secureDeviceMenu(owner, baseSession).options?.map((option) => option.id)).toContain("secure_action:request_enable_kiosk_mode");
+    expect(secureDeviceMenu(owner, baseSession).options?.map((option) => option.id)).toContain("secure_action:request_disable_kiosk_mode");
+  });
+
+  it("rejects direct WhatsApp kiosk commands from company admins", async () => {
+    const manager: Identity = { ...baseIdentity, role: "admin", canManage: true, canAcknowledge: true };
+    const result = await startSecureDeviceAction({} as never, manager, baseSession, "request_enable_kiosk_mode", "MX-021");
+    expect(result.message.title).toBe("KIOSK ACCESS UNAVAILABLE");
+  });
+});
+
 describe("WhatsApp assistant management write protection", () => {
   it("normal users cannot start management registration flows directly", async () => {
     const result = await startFlow({} as never, baseIdentity, baseSession, "REGISTER_DEVICE");

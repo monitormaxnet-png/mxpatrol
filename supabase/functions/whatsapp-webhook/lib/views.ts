@@ -57,7 +57,7 @@ export function managementMenu(identity: Identity, session: SessionRow): OutMess
       { id: "management_patrol_config", label: "Patrol Configuration" },
       { id: "management_reports", label: "Reports" },
       { id: "management_whatsapp", label: "WhatsApp Management" },
-      { id: "secure_devices", label: "Secure Patrol Devices" },
+      ...(identity.canManageKiosk ? [{ id: "secure_devices", label: "Secure Patrol Devices" }] : []),
       { id: "change_site", label: "Change Site" },
       { id: "user", label: "User Assistant" },
     ],
@@ -100,13 +100,13 @@ export async function liveNow(
     lines: [
       `ðŸŸ¢ ${active} devices active`,
       `ðŸš¶ ${(sessions ?? []).length} patrols in progress`,
-      `âš ï¸ ${attention} item${attention === 1 ? "" : "s"} need${attention === 1 ? "s" : ""} attention`,
+      `âš ï¸ ${attention} item${attention === 1 ? "" : "s"} need${attention === 1 ? "s" : ""} attention`,
       `ðŸ†˜ ${sos} SOS alert${sos === 1 ? "" : "s"}`,
     ],
     options: [
       { id: "patrols", label: "View Active Patrols" },
       { id: "devices", label: "View Devices" },
-      { id: "secure_devices", label: "Secure Patrol Devices" },
+      ...(identity.canManageKiosk ? [{ id: "secure_devices", label: "Secure Patrol Devices" }] : []),
       { id: "attention", label: "View Live Problems" },
     ],
   };
@@ -198,7 +198,7 @@ export async function attention(
   const detail = rows
     .slice(0, 5)
     .map((row) => {
-      const icon = row.type === "panic_button" ? "ðŸ”´" : row.type === "device_offline" ? "ðŸ“´" : "âš ï¸";
+      const icon = row.type === "panic_button" ? "ðŸ”´" : row.type === "device_offline" ? "ðŸ“´" : "âš ï¸";
       return `${icon} ${row.message}\nâ± ${timeAgo(row.created_at)}`;
     })
     .join("\n\n");
@@ -211,10 +211,10 @@ export async function attention(
   if (filter === "sos" && identity.canAcknowledge) options.unshift({ id: "ack", label: "Acknowledge All SOS" });
 
   return {
-    title: `âš ï¸ ${rows.length} ITEM${rows.length === 1 ? "" : "S"} NEED ATTENTION`,
+    title: `âš ï¸ ${rows.length} ITEM${rows.length === 1 ? "" : "S"} NEED ATTENTION`,
     lines: [
       `ðŸ”´ ${counts.critical} Critical`,
-      `ðŸŸ  ${counts.medium} Medium`,
+      `ðŸŸ  ${counts.medium} Medium`,
       `ðŸ”µ ${counts.low} Low`,
       "",
       detail,
@@ -358,7 +358,7 @@ export async function incidentsView(
   return {
     title: "INCIDENTS",
     lines: rows.length
-      ? [rows.map((r) => `${r.resolved ? "âœ…" : "ðŸŸ "} ${r.title}\n${String(r.severity).toUpperCase()} Â· ${timeAgo(r.created_at)}`).join("\n\n")]
+      ? [rows.map((r) => `${r.resolved ? "âœ…" : "ðŸŸ "} ${r.title}\n${String(r.severity).toUpperCase()} Â· ${timeAgo(r.created_at)}`).join("\n\n")]
       : ["No incidents recorded."],
     options: [
       { id: "report_incident", label: "Report Incident" },
@@ -456,7 +456,7 @@ export async function reportSummary(
     }
 
     return {
-      title: problems.length ? `âš ï¸ ${problems.length} things need attention` : "âœ… Nothing went wrong",
+      title: problems.length ? `âš ï¸ ${problems.length} things need attention` : "âœ… Nothing went wrong",
       lines: problems.length ? [problems.slice(0, 12).join("\n")] : ["Everything completed normally."],
       options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
     };
@@ -468,7 +468,7 @@ export async function reportSummary(
       `ðŸ“± Devices active: ${((devices ?? []) as any[]).filter((d) => d.status === "online").length}`,
       `ðŸš¶ Patrols completed: ${completed}`,
       `âœ… Checkpoints scanned: ${(scans ?? []).length}`,
-      `âš ï¸ Missed checkpoints: ${missedCheckpoints}`,
+      `âš ï¸ Missed checkpoints: ${missedCheckpoints}`,
       `ðŸš¨ Incidents: ${(incidents ?? []).length}`,
       `ðŸ†˜ SOS alerts: ${sos}`,
     ],
@@ -770,7 +770,9 @@ export async function secureDeviceProblems(client: SupabaseClient, identity: Ide
       problemRows.slice(0, 6).map((row: Record<string, any>, index: number) => formatDeviceSecurityLine(row, index)).join("\n\n"),
     ],
     options: [
-      ...(identity.platformRole === "owner" ? [{ id: "secure_action:request_enable_kiosk_mode", label: "Enable Kiosk Mode" }] : []),
+      ...(identity.canManageKiosk && identity.platformRole === "owner"
+        ? [{ id: "secure_action:request_enable_kiosk_mode", label: "Enable Kiosk Mode" }]
+        : []),
       { id: "secure_action:request_device_lock", label: "Lock Device" },
       { id: "secure_action:request_maintenance_mode", label: "Maintenance Mode" },
       { id: "secure_action:request_app_update", label: "Require App Update" },
@@ -817,7 +819,15 @@ export async function secureDeviceInfo(client: SupabaseClient, identity: Identit
       eventLines.join("\n"),
     ],
     options: [
-      ...(identity.platformRole === "owner" ? [{ id: "secure_action_device:" + (device.kiosk_active ? "request_disable_kiosk_mode" : "request_enable_kiosk_mode") + ":" + device.device_identifier, label: device.kiosk_active ? "Disable Kiosk Mode" : "Enable Kiosk Mode" }] : []),
+      ...(identity.canManageKiosk && identity.platformRole === "owner"
+        ? [{
+            id: "secure_action_device:" +
+              (device.kiosk_active ? "request_disable_kiosk_mode" : "request_enable_kiosk_mode") +
+              ":" +
+              device.device_identifier,
+            label: device.kiosk_active ? "Disable Kiosk Mode" : "Enable Kiosk Mode",
+          }]
+        : []),
       { id: "secure_action_device:request_device_lock:" + device.device_identifier, label: "Lock Device" },
       { id: "secure_action_device:request_maintenance_mode:" + device.device_identifier, label: "Maintenance Mode" },
       { id: "secure_action_device:request_integrity_check:" + device.device_identifier, label: "Security Check" },
@@ -855,7 +865,7 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     options: [
       { id: "devices", label: "View Devices" },
       { id: "offline", label: "Offline Devices" },
-      { id: "secure_device_status", label: "Device Security" },
+      ...(identity.canManageKiosk ? [{ id: "secure_device_status", label: "Device Security" }] : []),
       { id: "register_device", label: "Register Device" },
       { id: "back", label: "Back" },
     ],

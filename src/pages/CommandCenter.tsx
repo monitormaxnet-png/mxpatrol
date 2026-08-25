@@ -316,6 +316,10 @@ export default function CommandCenter() {
       return addAssistant('CONFIRM REPORT GENERATION', <p>This runs the MX Patrol report backend for <b>{selectedSite}</b>. Confirm below.</p>);
     }
     if (action === 'secure_devices') {
+      if (!isPlatformOwner) {
+        setInlinePanel(null);
+        return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can access Secure Patrol Device Mode.</p>);
+      }
       setInlinePanel(<LiveSecureDeviceManagementPanel selectedSite={selectedSite} siteId={selectedSiteId} />);
       return addAssistant('SECURE PATROL DEVICES', <p>Secure device controls are open below. Every command requires confirmation and is queued by the backend.</p>);
     }

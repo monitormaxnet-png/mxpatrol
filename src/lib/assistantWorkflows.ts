@@ -21,7 +21,9 @@ export type WorkflowId =
   | 'register_checkpoint'
   | 'create_patrol'
   | 'create_route'
-  | 'create_schedule';
+  | 'create_schedule'
+  | 'authorize_whatsapp'
+  | 'revoke_whatsapp_access';
 
 export type WorkflowOption = { id: string; label: string };
 
@@ -32,7 +34,16 @@ export type WorkflowContext = {
   checkpoints: Array<{ id: string; name: string }>;
   routes: Array<{ id: string; name: string }>;
   forms: Array<{ id: string; name: string; field_count?: number }>;
+  users: Array<{ id: string; name: string; role?: string | null; phone?: string | null }>;
+  whatsappAuthorizations: Array<{
+    id: string;
+    display_name?: string | null;
+    phone?: string | null;
+    masked_phone?: string | null;
+    status?: string | null;
+  }>;
 };
+
 
 export type WorkflowState = { id: WorkflowId; stepIndex: number; data: Record<string, unknown> };
 

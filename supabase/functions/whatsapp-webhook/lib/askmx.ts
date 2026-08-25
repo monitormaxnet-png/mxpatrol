@@ -17,6 +17,9 @@ export type Intent =
   | { action: "checkpoints" }
   | { action: "management" }
   | { action: "whatsapp_management" }
+  | { action: "authorize_whatsapp" }
+  | { action: "view_whatsapp_numbers" }
+  | { action: "revoke_whatsapp_access" }
   | { action: "user" }
   | { action: "setup" }
   | { action: "register_device" }

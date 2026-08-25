@@ -27,6 +27,7 @@ const identity: Identity = {
   canManageKiosk: false,
   platformRole: null,
   canAcknowledge: true,
+  canManageSecureDevices: false,
 };
 
 const session = (patch: Partial<SessionRow> = {}): SessionRow => ({

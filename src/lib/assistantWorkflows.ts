@@ -21,7 +21,9 @@ export type WorkflowId =
   | 'register_checkpoint'
   | 'create_patrol'
   | 'create_route'
-  | 'create_schedule';
+  | 'create_schedule'
+  | 'authorize_whatsapp'
+  | 'revoke_whatsapp_access';
 
 export type WorkflowOption = { id: string; label: string };
 

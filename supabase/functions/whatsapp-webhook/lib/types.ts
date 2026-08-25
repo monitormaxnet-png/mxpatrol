@@ -22,6 +22,7 @@ export type Identity = {
   allowed_site_ids: string[];
   canManage: boolean;
   canManageKiosk: boolean;
+  canManageSecureDevices: boolean;
   platformRole: string | null;
   canSetup: boolean;
   canAcknowledge: boolean;

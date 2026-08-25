@@ -4,6 +4,8 @@ import {
   getSecureDeviceByIdentifier,
   getSecureDeviceEvents,
   getSecureDeviceSummary,
+  isSecureDeviceOwner,
+  OWNER_ONLY_SECURE_DEVICE_MESSAGE,
   requestSecureDeviceCommand,
   type SecureDeviceAction,
   type SecureDeviceActor,
@@ -82,9 +84,9 @@ async function resolveActor(req: Request): Promise<{ service: ReturnType<typeof 
     .limit(1);
   if (platformError) throw platformError;
   const platformRole = platformRows?.[0]?.role ? String(platformRows[0].role) : null;
-  const canManageKiosk = platformRole === "owner" || platformRole === "operator";
+  const canManageKiosk = platformRole === "owner";
   const canManage = roleName === "admin" || roleName === "supervisor";
-  return { service, actor: { company_id: profile.company_id, user_id: userId, role: roleName, canManage, canManageKiosk, platformRole, allowed_site_ids: [] } };
+  return { service, actor: { company_id: profile.company_id, user_id: userId, role: roleName, canManage, canManageKiosk, canManageSecureDevices: canManageKiosk, platformRole, allowed_site_ids: [] } };
 }
 
 serve(async (req) => {
@@ -95,6 +97,9 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({})) as Body;
     const action = body.action ?? "get_secure_device_summary";
     const { service, actor } = await resolveActor(req);
+    if (!isSecureDeviceOwner(actor)) {
+      return json({ error: OWNER_ONLY_SECURE_DEVICE_MESSAGE, owner_required: true }, 403);
+    }
     const siteId = body.site_id ?? null;
 
     if (action === "get_secure_device_summary" || action === "get_device_security_status") {
@@ -125,7 +130,7 @@ serve(async (req) => {
     const code = raw.code ? String(raw.code) : null;
     const details = raw.details ? String(raw.details) : null;
     const hint = raw.hint ? String(raw.hint) : null;
-    const status = /access|required|auth/i.test(message) && !code ? 403 : 500;
+    const status = /OWNER ACCESS REQUIRED/i.test(message) || (/access|required|auth/i.test(message) && !code) ? 403 : 500;
     console.error("[secure-device-management]", JSON.stringify({ message, code, details, hint }));
     return json({
       error: code ? message + " (" + code + ")" : message,

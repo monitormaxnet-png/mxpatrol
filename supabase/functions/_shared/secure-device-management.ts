@@ -24,6 +24,7 @@ export type SecureDeviceActor = {
   role?: string | null;
   canManage?: boolean;
   canManageKiosk?: boolean;
+  canManageSecureDevices?: boolean;
   platformRole?: string | null;
   allowed_site_ids?: string[];
 };
@@ -86,9 +87,17 @@ function normalizeDevice(row: SecureDeviceRow): SecureDeviceRow {
   };
 }
 
+export const OWNER_ONLY_SECURE_DEVICE_MESSAGE =
+  "OWNER ACCESS REQUIRED: Only MX Patrol platform owners can access Secure Patrol Device Mode.";
+
+/** Secure Patrol Device Mode is platform-owner only. Operators/admins/supervisors/guards are denied. */
+export function isSecureDeviceOwner(actor: SecureDeviceActor): boolean {
+  return actor.platformRole === "owner";
+}
+
 export function assertCanManageSecureDevices(actor: SecureDeviceActor) {
-  if (!actor.canManage && actor.role !== "admin" && actor.role !== "supervisor") {
-    throw new Error("Management access required");
+  if (!isSecureDeviceOwner(actor)) {
+    throw new Error(OWNER_ONLY_SECURE_DEVICE_MESSAGE);
   }
 }
 
@@ -178,7 +187,7 @@ export async function requestSecureDeviceCommand(
   assertCanManageSecureDevices(actor);
   const commandType = COMMAND_TYPES[action];
   if (!commandType) throw new Error("Unsupported secure device action");
-  if (isKioskModeAction(action) && !actor.canManageKiosk) {
+  if (isKioskModeAction(action) && !isSecureDeviceOwner(actor)) {
     throw new Error("Platform owner access required for kiosk mode controls");
   }
 

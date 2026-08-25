@@ -689,19 +689,24 @@ export async function missedCheckpointsView(client: SupabaseClient, identity: Id
   };
 }
 
-function managementOnly(identity: Identity): OutMessage | null {
-  if (identity.canManage) return null;
+/** Secure Patrol Device Mode is restricted to MX Patrol platform owners. */
+export function ownerOnlyDenial(): OutMessage {
   return {
-    title: "MANAGEMENT ACCESS UNAVAILABLE",
-    lines: ["Your account does not have permission to manage secure patrol devices."],
-    options: [{ id: "menu", label: "Main Menu" }],
+    title: "OWNER ACCESS REQUIRED",
+    lines: ["Only MX Patrol platform owners can access Secure Patrol Device Mode."],
+    options: [{ id: "management", label: "Management Menu" }, { id: "menu", label: "Main Menu" }],
   };
+}
+
+function managementOnly(identity: Identity): OutMessage | null {
+  if (identity.platformRole === "owner") return null;
+  return ownerOnlyDenial();
 }
 
 export function secureDeviceMenu(identity: Identity, session: SessionRow): OutMessage {
   const denied = managementOnly(identity);
   if (denied) return denied;
-  const kioskOptions = identity.canManageKiosk ? [
+  const kioskOptions = identity.platformRole === "owner" ? [
     { id: "secure_action:request_enable_kiosk_mode", label: "Enable Kiosk Mode" },
     { id: "secure_action:request_disable_kiosk_mode", label: "Disable Kiosk Mode" },
   ] : [];
@@ -765,7 +770,7 @@ export async function secureDeviceProblems(client: SupabaseClient, identity: Ide
       problemRows.slice(0, 6).map((row: Record<string, any>, index: number) => formatDeviceSecurityLine(row, index)).join("\n\n"),
     ],
     options: [
-      ...(identity.canManageKiosk ? [{ id: "secure_action:request_enable_kiosk_mode", label: "Enable Kiosk Mode" }] : []),
+      ...(identity.platformRole === "owner" ? [{ id: "secure_action:request_enable_kiosk_mode", label: "Enable Kiosk Mode" }] : []),
       { id: "secure_action:request_device_lock", label: "Lock Device" },
       { id: "secure_action:request_maintenance_mode", label: "Maintenance Mode" },
       { id: "secure_action:request_app_update", label: "Require App Update" },
@@ -812,7 +817,7 @@ export async function secureDeviceInfo(client: SupabaseClient, identity: Identit
       eventLines.join("\n"),
     ],
     options: [
-      ...(identity.canManageKiosk ? [{ id: "secure_action_device:" + (device.kiosk_active ? "request_disable_kiosk_mode" : "request_enable_kiosk_mode") + ":" + device.device_identifier, label: device.kiosk_active ? "Disable Kiosk Mode" : "Enable Kiosk Mode" }] : []),
+      ...(identity.platformRole === "owner" ? [{ id: "secure_action_device:" + (device.kiosk_active ? "request_disable_kiosk_mode" : "request_enable_kiosk_mode") + ":" + device.device_identifier, label: device.kiosk_active ? "Disable Kiosk Mode" : "Enable Kiosk Mode" }] : []),
       { id: "secure_action_device:request_device_lock:" + device.device_identifier, label: "Lock Device" },
       { id: "secure_action_device:request_maintenance_mode:" + device.device_identifier, label: "Maintenance Mode" },
       { id: "secure_action_device:request_integrity_check:" + device.device_identifier, label: "Security Check" },

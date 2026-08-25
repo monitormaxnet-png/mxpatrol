@@ -979,6 +979,12 @@ function isKioskSecureAction(action: SecureDeviceAction): boolean {
   return action === "request_enable_kiosk_mode" || action === "request_disable_kiosk_mode";
 }
 
+const OWNER_DENIAL = {
+  title: "OWNER ACCESS REQUIRED",
+  lines: ["Only MX Patrol platform owners can access Secure Patrol Device Mode."],
+  options: [{ id: "management", label: "Management Menu" }, { id: "menu", label: "Main Menu" }],
+};
+
 export async function startSecureDeviceAction(
   client: SupabaseClient,
   identity: Identity,
@@ -986,11 +992,8 @@ export async function startSecureDeviceAction(
   action: SecureDeviceAction,
   deviceIdentifier?: string | null,
 ): Promise<FlowResult> {
-  if (!identity.canManage) {
-    return { session, message: { title: "MANAGEMENT ACCESS UNAVAILABLE", lines: ["Your account does not have permission to manage secure patrol devices."], options: [{ id: "menu", label: "Main Menu" }] } };
-  }
-  if (isKioskSecureAction(action) && !identity.canManageKiosk) {
-    return { session, message: { title: "KIOSK ACCESS UNAVAILABLE", lines: ["Only MX Patrol platform owners or system operators can manage Kiosk Mode."], options: [{ id: "secure_devices", label: "Secure Device Menu" }] } };
+  if (identity.platformRole !== "owner") {
+    return { session, message: OWNER_DENIAL };
   }
 
   const data: Record<string, any> = { secure_action: action };
@@ -1018,8 +1021,8 @@ export async function startSecureDeviceAction(
 async function secureDeviceAction(client: SupabaseClient, identity: Identity, session: SessionRow, input: string): Promise<FlowResult> {
   const data = { ...(session.temporary_data ?? {}) } as Record<string, any>;
   const action = data.secure_action as SecureDeviceAction;
-  if (isKioskSecureAction(action) && !identity.canManageKiosk) {
-    return { session: await clearFlow(client, session), message: { title: "KIOSK ACCESS UNAVAILABLE", lines: ["Only MX Patrol platform owners or system operators can manage Kiosk Mode."], options: [{ id: "secure_devices", label: "Secure Device Menu" }] } };
+  if (identity.platformRole !== "owner") {
+    return { session: await clearFlow(client, session), message: OWNER_DENIAL };
   }
 
   if (session.current_step === "WAITING_FOR_DEVICE") {

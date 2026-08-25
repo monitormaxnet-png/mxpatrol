@@ -230,7 +230,7 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
   const [lastCommand, setLastCommand] = useState<CommandResult | null>(null);
   const summaryQuery = useSecureDeviceSummary(siteId);
   const commandMutation = useSecureDeviceCommand(siteId);
-  const { isPlatformAdmin } = usePlatformAdmin();
+  const { isPlatformOwner, isLoading: platformRoleLoading } = usePlatformAdmin();
   const summary = summaryQuery.data;
   const rows = summary?.rows ?? [];
   const activeDevice = rows.find((row) => deviceKey(row) === selectedDevice) ?? null;
@@ -265,6 +265,23 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
       },
     );
   };
+
+  if (platformRoleLoading) {
+    return (
+      <section className='rounded-2xl border border-emerald-400/20 bg-slate-950/50 p-3 text-sm text-slate-400'>
+        Checking platform owner access...
+      </section>
+    );
+  }
+
+  if (!isPlatformOwner) {
+    return (
+      <section className='rounded-2xl border border-red-400/25 bg-slate-950/50 p-3'>
+        <h2 className='mb-2 flex items-center gap-2 text-sm font-black uppercase tracking-[0.12em] text-red-300'><Lock className='h-4 w-4' /> Owner Access Required</h2>
+        <p className='text-sm text-red-200'>Only MX Patrol platform owners can access Secure Patrol Device Mode.</p>
+      </section>
+    );
+  }
 
   return (
     <section className='rounded-2xl border border-emerald-400/20 bg-slate-950/50 p-3'>
@@ -305,10 +322,10 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
           </div>
 
           <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-4'>
-            {(Object.entries(actionLabels) as [SecureDeviceAction, string][]).filter(([action]) => !isKioskAction(action) || isPlatformAdmin).map(([action, label]) => {
+            {(Object.entries(actionLabels) as [SecureDeviceAction, string][]).filter(([action]) => !isKioskAction(action) || isPlatformOwner).map(([action, label]) => {
               const Icon = actionIcons[action];
               const destructive = action === 'revoke_device' || action === 'request_device_disable';
-              return <button type='button' key={action} disabled={commandMutation.isPending || !canRunAction(action, activeDevice, isPlatformAdmin)} onClick={() => askCommand(action)} className={(destructive ? 'border-red-400/25 text-red-200' : 'border-emerald-400/20 text-emerald-200') + ' inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-slate-950/70 px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50'}><Icon className='h-3.5 w-3.5' />{label}</button>;
+              return <button type='button' key={action} disabled={commandMutation.isPending || !canRunAction(action, activeDevice, isPlatformOwner)} onClick={() => askCommand(action)} className={(destructive ? 'border-red-400/25 text-red-200' : 'border-emerald-400/20 text-emerald-200') + ' inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-slate-950/70 px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50'}><Icon className='h-3.5 w-3.5' />{label}</button>;
             })}
           </div>
         </div>

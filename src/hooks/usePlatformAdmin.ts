@@ -38,6 +38,7 @@ export function usePlatformAdmin() {
 
   return {
     isPlatformAdmin: data?.isPlatformAdmin ?? false,
+    isPlatformOwner: (data?.role ?? null) === "owner",
     platformRole: data?.role ?? null,
     isLoading,
   };

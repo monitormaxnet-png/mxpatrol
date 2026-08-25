@@ -12,6 +12,8 @@ const ctx: WorkflowContext = {
     { id: 'cp-3', name: 'Roof Access' },
   ],
   routes: [{ id: 'route-1', name: 'Night Route' }],
+  users: [],
+  whatsappAuthorizations: [],
   forms: [{ id: 'form-1', name: 'Gate Inspection' }],
 };
 

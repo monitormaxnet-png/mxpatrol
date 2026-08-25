@@ -30,11 +30,18 @@ describe('secure patrol device management', () => {
     expect(panel).not.toContain('Attentionsvg');
   });
 
-  it('requires explicit device selection before high-impact commands', () => {
-    expect(panel).toContain("Selected: {activeIdentifier ?? 'No device selected'}");
-    expect(panel).toContain('disabled={commandMutation.isPending || !activeIdentifier}');
+  it('selects visible device rows by stable key before enabling valid commands', () => {
+    expect(panel).toContain("Selected: {activeDeviceName}");
+    expect(panel).toContain('function deviceKey(device: SecureDeviceRow)');
+    expect(panel).toContain('rows.find((row) => deviceKey(row) === selectedDevice)');
+    expect(panel).toContain('setSelectedDevice(identifier)');
+    expect(panel).toContain('aria-pressed={selected}');
+    expect(panel).toContain('disabled={commandMutation.isPending || !canRunAction(action, activeDevice)}');
+    expect(panel).toContain('Device ID');
+    expect(panel).toContain('compactId(device.id ?? device.device_identifier)');
     expect(panel).toContain('setPendingAction(action)');
     expect(panel).not.toContain('selectedDevice ?? rows[0]');
+    expect(panel).not.toContain('row.device_identifier === selectedDevice');
   });
 
   it('uses canonical command queue and security event audit records', () => {

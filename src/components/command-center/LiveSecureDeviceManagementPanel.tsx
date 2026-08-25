@@ -176,6 +176,34 @@ function DetailLine({ label, value }: { label: string; value?: string | number |
   return <div className='flex items-center justify-between gap-3 border-b border-white/10 py-2 text-xs last:border-b-0'><span className='text-slate-500'>{label}</span><span className='text-right font-semibold text-slate-200'>{String(value)}</span></div>;
 }
 
+function deviceKey(device: SecureDeviceRow) {
+  return String(device.device_identifier ?? device.id ?? '');
+}
+
+function deviceDisplayName(device: SecureDeviceRow | null) {
+  if (!device) return 'No device selected';
+  return String(device.device_name ?? device.device_identifier ?? device.id ?? 'Device');
+}
+
+function compactId(value?: string | null) {
+  if (!value) return 'Unknown';
+  return value.length > 18 ? value.slice(0, 8) + '...' + value.slice(-6) : value;
+}
+
+function canRunAction(action: SecureDeviceAction, device: SecureDeviceRow | null) {
+  if (!device) return false;
+  const status = String(device.secure_mode_status ?? '').toLowerCase();
+  const revoked = status === 'revoked';
+  const disabled = status === 'disabled';
+  const maintenance = status === 'maintenance' || Boolean(device.maintenance_expires_at);
+  if (revoked) return action === 'revoke_device';
+  if (action === 'request_device_enable') return disabled;
+  if (action === 'request_device_disable') return !disabled;
+  if (action === 'request_maintenance_mode') return !maintenance && !disabled;
+  if (action === 'request_exit_maintenance') return maintenance;
+  if (action === 'request_device_lock') return !disabled;
+  return true;
+}
 export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { selectedSite: string; siteId: string | null }) {
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<SecureDeviceAction | null>(null);
@@ -184,8 +212,9 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
   const commandMutation = useSecureDeviceCommand(siteId);
   const summary = summaryQuery.data;
   const rows = summary?.rows ?? [];
-  const activeDevice = rows.find((row) => row.device_identifier === selectedDevice) ?? null;
-  const activeIdentifier = activeDevice?.device_identifier ?? null;
+  const activeDevice = rows.find((row) => deviceKey(row) === selectedDevice) ?? null;
+  const activeIdentifier = activeDevice ? deviceKey(activeDevice) : null;
+  const activeDeviceName = deviceDisplayName(activeDevice);
 
   const metrics = [
     ['Total Devices', summary?.total, Smartphone, 'neutral'],
@@ -239,15 +268,16 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
             {siteId && summaryQuery.isSuccess && !rows.length ? <div className='px-3 py-6 text-sm text-slate-400'>No secure patrol devices found for this active site.</div> : null}
             {siteId && summaryQuery.isSuccess && rows.map((device) => {
               const state = secureState(device);
-              const identifier = device.device_identifier ?? device.id ?? 'Device';
-              const selected = activeIdentifier === device.device_identifier;
+              const identifier = deviceKey(device);
+              const displayName = deviceDisplayName(device);
+              const selected = selectedDevice === identifier;
               return (
-                <button type='button' key={device.id ?? identifier} onClick={() => { setSelectedDevice(String(device.device_identifier ?? '')); setLastCommand(null); }} className={(selected ? 'border-emerald-400/35 bg-emerald-400/[0.07]' : 'border-white/5') + ' grid w-full grid-cols-[1.2fr_1fr_0.8fr_1fr_0.8fr] items-center gap-2 border-b px-3 py-3 text-left text-xs last:border-b-0'}>
-                  <span><b className='block text-white'>{device.device_name ?? identifier}</b><span className='text-slate-500'>{identifier}</span></span>
+                <button type='button' key={device.id ?? identifier} aria-pressed={selected} onClick={() => { setSelectedDevice(identifier); setPendingAction(null); setLastCommand(null); }} className={(selected ? 'border-emerald-400/45 bg-emerald-400/[0.09] ring-1 ring-emerald-400/30' : 'border-white/5 hover:border-emerald-400/25 hover:bg-emerald-400/[0.04]') + ' grid w-full grid-cols-[1.2fr_1fr_0.8fr_1fr_0.8fr] items-center gap-2 border-b px-3 py-3 text-left text-xs transition last:border-b-0 focus:outline-none focus:ring-2 focus:ring-emerald-400/40'}>
+                  <span><b className='block text-white'>{displayName}</b><span className='text-slate-500'>{selected ? 'Selected - ' : ''}{compactId(device.id ?? device.device_identifier)}</span></span>
                   <span className='truncate text-slate-400'>{device.site ?? 'Unassigned'}</span>
                   <span className='text-slate-300'>{device.kiosk_active ? 'Active' : 'Inactive'}</span>
                   <span className={toneClasses(state.tone)}>{state.label}</span>
-                  <span className={device.status === 'online' ? 'text-emerald-300' : device.status === 'offline' ? 'text-blue-300' : 'text-slate-300'}>{device.status ?? 'unknown'}</span>
+                  <span className={device.status === 'online' ? 'text-emerald-300' : device.status === 'offline' ? 'text-blue-300' : 'text-slate-300'}>{device.status ?? 'unknown'}{selected ? ' - Selected' : ''}</span>
                 </button>
               );
             })}
@@ -257,7 +287,7 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
             {(Object.entries(actionLabels) as [SecureDeviceAction, string][]).map(([action, label]) => {
               const Icon = actionIcons[action];
               const destructive = action === 'revoke_device' || action === 'request_device_disable';
-              return <button type='button' key={action} disabled={commandMutation.isPending || !activeIdentifier} onClick={() => askCommand(action)} className={(destructive ? 'border-red-400/25 text-red-200' : 'border-emerald-400/20 text-emerald-200') + ' inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-slate-950/70 px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50'}><Icon className='h-3.5 w-3.5' />{label}</button>;
+              return <button type='button' key={action} disabled={commandMutation.isPending || !canRunAction(action, activeDevice)} onClick={() => askCommand(action)} className={(destructive ? 'border-red-400/25 text-red-200' : 'border-emerald-400/20 text-emerald-200') + ' inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-slate-950/70 px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50'}><Icon className='h-3.5 w-3.5' />{label}</button>;
             })}
           </div>
         </div>
@@ -270,11 +300,14 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
             {summary ? <ul className='mt-2 list-inside list-disc text-slate-300'><li>{summary.outdated} outdated app versions</li><li>{summary.kiosk_disabled} kiosk inactive</li><li>{summary.integrity_failures} integrity failures</li><li>{summary.offline} offline devices</li></ul> : null}
           </div>
 
-          <div className='my-4 rounded-xl bg-emerald-600 px-4 py-2 text-sm text-white'>Selected: {activeIdentifier ?? 'No device selected'}</div>
+          <div className='my-4 rounded-xl bg-emerald-600 px-4 py-2 text-sm text-white'>Selected: {activeDeviceName}</div>
 
           {activeDevice ? <div className='mb-4 rounded-xl border border-white/10 bg-slate-950/70 p-3'>
             <p className='text-xs font-black uppercase tracking-[0.1em] text-emerald-300'>Security Status</p>
-            <DetailLine label='Device Name' value={activeDevice.device_name ?? activeIdentifier} />
+            <DetailLine label='Device Name' value={activeDeviceName} />
+            <DetailLine label='Device ID' value={compactId(activeDevice.id)} />
+            <DetailLine label='Device Identifier' value={compactId(activeDevice.device_identifier)} />
+            <DetailLine label='Site' value={activeDevice.site ?? selectedSite} />
             <DetailLine label='Kiosk' value={activeDevice.kiosk_active ? 'Active' : 'Inactive'} />
             <DetailLine label='App Version' value={activeDevice.app_version ?? 'Unknown'} />
             <DetailLine label='Minimum Version' value={activeDevice.minimum_app_version} />
@@ -286,7 +319,7 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
 
           {pendingAction && activeIdentifier ? <div className='mb-4 rounded-xl border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-50'>
             <p className='font-black uppercase tracking-[0.08em]'>{actionLabels[pendingAction]} - Confirm</p>
-            <p className='mt-2'>Device: {activeIdentifier}</p>
+            <p className='mt-2'>Device: {activeDeviceName}</p>
             <p>Site: {selectedSite}</p>
             <p className='mt-2 text-amber-100/80'>This will queue a canonical secure-device-management command and write a security event.</p>
             <div className='mt-3 flex gap-2'>

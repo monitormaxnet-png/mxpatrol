@@ -885,10 +885,47 @@ export async function createWhatsAppAuthorization(client: SupabaseClient, actor:
   const requestedPhone = normalizeWhatsAppPhone(input.phone) || target.profile_phone;
   if (!requestedPhone) throw new ManagementActionError("WhatsApp phone number is required");
 
-  const { data: active, error: activeError } = await client.from("whatsapp_authorized_numbers").select("id, display_name, phone, status, allowed_site_ids, linked_at, last_seen_at, metadata").eq("company_id", actor.company_id).eq("phone", requestedPhone).eq("status", "active").maybeSingle();
+  const { data: active, error: activeError } = await client
+    .from("whatsapp_authorized_numbers")
+    .select("id, display_name, phone, status, allowed_site_ids, linked_at, last_seen_at, metadata")
+    .eq("company_id", actor.company_id)
+    .eq("phone", requestedPhone)
+    .eq("status", "active")
+    .maybeSingle();
   if (activeError) throw new ManagementActionError(activeError.message, 500);
   if (active) {
-    return { ok: true, action: "create_whatsapp_authorization", duplicate: true, record: whatsappAuthorizationRecord(active), summary: (active.display_name ?? requestedPhone) + " is already authorized for WhatsApp." };
+    const nextSiteIds = Array.from(new Set([...(Array.isArray(active.allowed_site_ids) ? active.allowed_site_ids : []), site.id]));
+    const metadata = {
+      ...((active.metadata ?? {}) as Record<string, unknown>),
+      access_type: accessType,
+      role: target.role,
+      site_id: site.id,
+      site_name: site.name,
+      updated_via: String(input.created_via ?? "management_ai"),
+    };
+    const { data: updated, error: updateError } = await client
+      .from("whatsapp_authorized_numbers")
+      .update({
+        user_id: target.user_id,
+        guard_id: target.guard_id,
+        display_name: target.display_name,
+        allowed_site_ids: nextSiteIds,
+        authorized_by: actor.user_id ?? null,
+        metadata,
+      })
+      .eq("id", active.id)
+      .eq("company_id", actor.company_id)
+      .select("id, display_name, phone, status, link_code, link_code_expires_at, linked_at, last_seen_at, allowed_site_ids, metadata")
+      .maybeSingle();
+    if (updateError) throw new ManagementActionError(updateError.message, 500);
+    const repaired = updated ?? active;
+    return {
+      ok: true,
+      action: "create_whatsapp_authorization",
+      duplicate: true,
+      record: whatsappAuthorizationRecord(repaired),
+      summary: (repaired.display_name ?? requestedPhone) + " is already authorized for WhatsApp. Access has been refreshed as " + accessType + " for " + site.name + ".",
+    };
   }
 
   const code = await uniqueWhatsAppLinkCode(client);

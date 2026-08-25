@@ -16,6 +16,7 @@ const baseIdentity: Identity = {
   canSetup: false,
   canManage: false,
   canManageKiosk: false,
+  canManageSecureDevices: false,
   platformRole: null,
   canAcknowledge: false,
 };
@@ -99,16 +100,18 @@ describe("WhatsApp assistant allowlisted intents", () => {
 describe("WhatsApp assistant secure device kiosk protection", () => {
   it("hides kiosk actions from company management identities unless they are platform operators", () => {
     const manager: Identity = { ...baseIdentity, role: "admin", canManage: true, canAcknowledge: true };
-    const owner: Identity = { ...manager, canManageKiosk: true, platformRole: "owner" };
-    expect(secureDeviceMenu(manager, baseSession).options?.map((option) => option.id)).not.toContain("secure_action:request_enable_kiosk_mode");
+    const owner: Identity = { ...manager, canManageKiosk: true, canManageSecureDevices: true, platformRole: "owner" };
+    expect(secureDeviceMenu(manager, baseSession).title).toBe("OWNER ACCESS REQUIRED");
     expect(secureDeviceMenu(owner, baseSession).options?.map((option) => option.id)).toContain("secure_action:request_enable_kiosk_mode");
     expect(secureDeviceMenu(owner, baseSession).options?.map((option) => option.id)).toContain("secure_action:request_disable_kiosk_mode");
   });
 
-  it("rejects direct WhatsApp kiosk commands from company admins", async () => {
+  it("rejects direct WhatsApp secure device commands from company admins", async () => {
     const manager: Identity = { ...baseIdentity, role: "admin", canManage: true, canAcknowledge: true };
     const result = await startSecureDeviceAction({} as never, manager, baseSession, "request_enable_kiosk_mode", "MX-021");
-    expect(result.message.title).toBe("KIOSK ACCESS UNAVAILABLE");
+    expect(result.message.title).toBe("OWNER ACCESS REQUIRED");
+    const lock = await startSecureDeviceAction({} as never, manager, baseSession, "request_device_lock", "MX-021");
+    expect(lock.message.title).toBe("OWNER ACCESS REQUIRED");
   });
 });
 

@@ -38,7 +38,7 @@ describe('secure patrol device management', () => {
     expect(panel).toContain('rows.find((row) => deviceKey(row) === selectedDevice)');
     expect(panel).toContain('setSelectedDevice(identifier)');
     expect(panel).toContain('aria-pressed={selected}');
-    expect(panel).toContain('disabled={commandMutation.isPending || !canRunAction(action, activeDevice, isPlatformAdmin)}');
+    expect(panel).toContain('disabled={commandMutation.isPending || !canRunAction(action, activeDevice, isPlatformOwner)}');
     expect(panel).toContain('Device ID');
     expect(panel).toContain('compactId(device.id ?? device.device_identifier)');
     expect(panel).toContain('setPendingAction(action)');
@@ -63,7 +63,14 @@ describe('secure patrol device management', () => {
     expect(edge).toContain('.from("platform_admins")');
     expect(edge).toContain('canManageKiosk');
     expect(panel).toContain('usePlatformAdmin');
-    expect(panel).toContain('filter(([action]) => !isKioskAction(action) || isPlatformAdmin)');
+    expect(panel).toContain('filter(([action]) => !isKioskAction(action) || isPlatformOwner)');
+    expect(shared).toContain('OWNER ACCESS REQUIRED: Only MX Patrol platform owners can access Secure Patrol Device Mode.');
+    expect(edge).toContain('isSecureDeviceOwner(actor)');
+    expect(edge).not.toContain('platformRole === "owner" || platformRole === "operator"');
+    expect(whatsappIdentity).toContain('canManageSecureDevices: platformRole === "owner"');
+    expect(whatsappViews).toContain('OWNER ACCESS REQUIRED');
+    expect(whatsappFlows).toContain('OWNER ACCESS REQUIRED');
+    expect(whatsappAsk).toContain('secure_devices');
     expect(panel).toContain('Current Kiosk Status');
   });
 

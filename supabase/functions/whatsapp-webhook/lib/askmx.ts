@@ -16,6 +16,7 @@ export type Intent =
   | { action: "missed_checkpoints" }
   | { action: "checkpoints" }
   | { action: "management" }
+  | { action: "whatsapp_management" }
   | { action: "user" }
   | { action: "setup" }
   | { action: "register_device" }
@@ -46,6 +47,7 @@ const SCHEMA = `Return ONLY JSON matching one of these shapes:
 {"action":"missed_checkpoints"}
 {"action":"checkpoints"}
 {"action":"management"}
+{"action":"whatsapp_management"}
 {"action":"user"}
 {"action":"setup"}
 {"action":"register_device"}
@@ -82,6 +84,10 @@ export function keywordIntent(text: string): Intent | null {
   if (/^(setup|settings)$/.test(value)) return { action: "setup" };
   if (/^(change site|switch site|site)$/.test(value)) return { action: "change_site" };
   if (/^(management|manager|admin)$/i.test(value)) return { action: "management" };
+  if (/^(whatsapp management|manage whatsapp|whatsapp)$/i.test(value)) return { action: "whatsapp_management" };
+  if (/authorize.*whatsapp|whatsapp.*authorize|create.*link code/i.test(value)) return { action: "authorize_whatsapp" };
+  if (/view.*whatsapp|list.*whatsapp|authorized numbers?/i.test(value)) return { action: "view_whatsapp_numbers" };
+  if (/revoke.*whatsapp|remove.*whatsapp/i.test(value)) return { action: "revoke_whatsapp_access" };
   if (/^(secure devices?|device security|secure patrol devices?)$/i.test(value)) return { action: "secure_devices" };
   if (/^(secure device status|device security status)$/i.test(value)) return { action: "secure_device_status" };
   if (/(security problems|secure.*problems|devices?.*(outdated|developer mode|kiosk|insecure|security issue)|which devices need app update)/i.test(value)) return { action: "secure_device_problems" };

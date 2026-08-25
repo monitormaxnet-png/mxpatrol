@@ -7,6 +7,7 @@ import { clearFlow, loadSession, patchSession } from "./lib/session.ts";
 import { renderText, sendLocation, twiml } from "./lib/render.ts";
 import { classifyIntent, keywordIntent, type Intent } from "./lib/askmx.ts";
 import { handleFlowInput, startFlow, startSecureDeviceAction } from "./lib/flows.ts";
+import { runManagementAction, type ManagementActor } from "../_shared/management-actions.ts";
 import {
   activePatrols,
   attention,
@@ -45,7 +46,8 @@ const LOCKOUT: OutMessage = {
   lines: [
     "This WhatsApp number isn't linked to an MX Patrol account.",
     "",
-    "Ask your company administrator to authorize this number, or send the link code from your MX Patrol profile.",
+    "Ask a manager to open WhatsApp Management and create a link code for your number.",
+    "Then send that code here from this same WhatsApp number. Example: MX-WA-482731",
   ],
   footer: "",
 };
@@ -58,6 +60,17 @@ type Ctx = {
 
 function optionMenu(title: string, lines: string[], options: Array<{ id: string; label: string }>): OutMessage {
   return { title, lines, options };
+}
+
+function managementActor(identity: Identity): ManagementActor {
+  return {
+    company_id: identity.company_id,
+    user_id: identity.user_id,
+    guard_id: identity.guard_id,
+    role: identity.role,
+    canManage: identity.canManage,
+    allowed_site_ids: identity.allowed_site_ids ?? [],
+  };
 }
 
 function siteChooser(sites: SiteRow[]): OutMessage {
@@ -196,6 +209,13 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: ctx.identity.canManage ? "management" : "user" });
       return managementMenu(ctx.identity, ctx.session);
 
+    case "whatsapp_management":
+      if (!ctx.identity.canManage) {
+        return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "Main Menu" }]);
+      }
+      ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "management" });
+      return WA_SUBMENUS.management_whatsapp;
+
     case "change_site": {
       const sites = await allowedSites(ctx.client, ctx.identity);
       ctx.session = await patchSession(ctx.client, ctx.session, {
@@ -320,6 +340,17 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       ctx.session = result.session;
       return result.message;
     }
+
+    case "view_whatsapp_numbers": {
+      if (!ctx.identity.canManage) {
+        return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "Main Menu" }]);
+      }
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      const result = await runManagementAction(ctx.client, managementActor(ctx.identity), "list_whatsapp_authorizations", { site_id: siteId });
+      const rows = ((result.record.rows ?? []) as Array<Record<string, unknown>>);
+      return optionMenu("WHATSAPP AUTHORIZED NUMBERS", rows.length ? rows.map((row, index) => String(index + 1) + ". " + String(row.display_name ?? "Unknown") + " - " + String(row.masked_phone ?? row.phone ?? "Not linked") + " (" + String(row.status ?? "unknown") + ")" + (row.link_code ? " - code " + String(row.link_code) : "")) : ["No WhatsApp numbers are authorized for this site yet."], [{ id: "management_whatsapp", label: "WhatsApp Management" }, { id: "menu", label: "Main Menu" }]);
+    }
     case "setup":
       if (!ctx.identity.canSetup) {
         return optionMenu("NOT ALLOWED", ["Only company administrators can change setup."], [{ id: "menu", label: "Main Menu" }]);
@@ -329,7 +360,9 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
     case "register_device":
     case "add_checkpoint":
     case "create_patrol":
-    case "report_incident": {
+    case "report_incident":
+    case "authorize_whatsapp":
+    case "revoke_whatsapp_access": {
       if (!ctx.identity.canManage) {
         return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "Main Menu" }]);
       }
@@ -341,7 +374,11 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
           ? "CREATE_CHECKPOINT"
           : intent.action === "create_patrol"
             ? "CREATE_PATROL"
-            : "REPORT_INCIDENT";
+            : intent.action === "authorize_whatsapp"
+              ? "AUTHORIZE_WHATSAPP"
+              : intent.action === "revoke_whatsapp_access"
+                ? "REVOKE_WHATSAPP"
+                : "REPORT_INCIDENT";
       const result = await startFlow(ctx.client, ctx.identity, ctx.session, flow as any);
       ctx.session = result.session;
       return result.message;

@@ -1,13 +1,19 @@
 // deno-lint-ignore no-explicit-any
 type SupabaseClient = any;
 import type { Identity, Role } from "./types.ts";
+import { normalizeWhatsAppPhone } from "../../_shared/management-actions.ts";
 
 export type IdentityResult =
   | { kind: "authorized"; identity: Identity }
   | { kind: "linked"; identity: Identity }
   | { kind: "unknown" };
 
-const LINK_CODE_PATTERN = /^[A-Z0-9]{6,10}$/;
+function linkCodeCandidates(body: string): string[] {
+  const compact = body.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const suffix = compact.startsWith("MXWA") ? compact.slice(4) : compact;
+  if (!/^[A-Z0-9]{6,10}$/.test(suffix)) return [];
+  return ["MX-WA-" + suffix, suffix];
+}
 
 async function buildIdentity(client: SupabaseClient, row: Record<string, any>): Promise<Identity> {
   let role: Role = "guard";
@@ -68,19 +74,21 @@ export async function resolveIdentity(
     return { kind: "authorized", identity: await buildIdentity(client, existing) };
   }
 
-  const candidate = body.trim().toUpperCase().replace(/[\s-]/g, "");
-  if (LINK_CODE_PATTERN.test(candidate)) {
+  const candidates = linkCodeCandidates(body);
+  if (candidates.length) {
     const { data: pending } = await client
       .from("whatsapp_authorized_numbers")
-      .select("id, company_id, user_id, guard_id, display_name, allowed_site_ids, link_code_expires_at, status")
-      .eq("link_code", candidate)
+      .select("id, company_id, user_id, guard_id, phone, display_name, allowed_site_ids, link_code, link_code_expires_at, status")
+      .in("link_code", candidates)
+      .eq("status", "pending")
       .maybeSingle();
 
     const notExpired = pending?.link_code_expires_at
       ? new Date(pending.link_code_expires_at).getTime() > Date.now()
-      : true;
+      : false;
+    const intendedPhone = normalizeWhatsAppPhone(pending?.phone);
 
-    if (pending && pending.status !== "revoked" && notExpired) {
+    if (pending && notExpired && (!intendedPhone || intendedPhone === phone)) {
       const { data: updated } = await client
         .from("whatsapp_authorized_numbers")
         .update({
@@ -92,6 +100,8 @@ export async function resolveIdentity(
           last_seen_at: new Date().toISOString(),
         })
         .eq("id", pending.id)
+        .eq("status", "pending")
+        .eq("link_code", pending.link_code)
         .select("id, company_id, user_id, guard_id, phone, display_name, allowed_site_ids")
         .maybeSingle();
       if (updated) return { kind: "linked", identity: await buildIdentity(client, updated) };

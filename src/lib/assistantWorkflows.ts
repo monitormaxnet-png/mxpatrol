@@ -92,6 +92,11 @@ const YES_NO_OPTIONS: WorkflowOption[] = [
   { id: 'no', label: 'No' },
 ];
 
+const WHATSAPP_ACCESS_OPTIONS: WorkflowOption[] = [
+  { id: 'user', label: 'User Assistant' },
+  { id: 'management', label: 'Management Assistant' },
+];
+
 const CHECKLIST_FIELDS = [
   { label: 'Door locked?', field_type: 'yes_no', required: true, sequence_order: 1 },
   { label: 'Lights working?', field_type: 'yes_no', required: true, sequence_order: 2 },
@@ -523,6 +528,94 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
       name: data.name,
       checkpoint_ids: data.checkpoint_ids,
       enforce_sequence: data.enforce_sequence === 'yes',
+    }),
+  },
+
+
+  authorize_whatsapp: {
+    id: 'authorize_whatsapp',
+    title: 'AUTHORIZE WHATSAPP NUMBER',
+    action: 'create_whatsapp_authorization',
+    steps: () => [
+      {
+        key: 'target_user_id',
+        title: 'MX Patrol user',
+        prompt: (ctx) => ctx.users.length
+          ? ['Who should receive WhatsApp access?', ...ctx.users.map((user, index) => String(index + 1) + '. ' + user.name + (user.role ? ' (' + user.role + ')' : '') + (user.phone ? ' - ' + user.phone : ''))]
+          : ['Type the exact MX Patrol user full name. The backend will only authorize a user in your company.'],
+        options: (ctx) => ctx.users.map((user) => ({ id: user.id, label: user.name })),
+        parse: (input, ctx) => {
+          if (!ctx.users.length) {
+            const value = input.trim();
+            if (value.length < 2) return { ok: false, error: 'Please provide the user full name.' };
+            return { ok: true, patch: { target_user: value, display_name: value } };
+          }
+          const option = pickOption(input, ctx.users.map((user) => ({ id: user.id, label: user.name })));
+          if (!option) return { ok: false, error: 'Reply with one of the user numbers listed.' };
+          const user = ctx.users.find((row) => row.id === option.id);
+          return { ok: true, patch: { target_user_id: option.id, target_user: option.label, display_name: option.label, user_phone: user?.phone ?? '' } };
+        },
+      },
+      {
+        key: 'phone',
+        title: 'WhatsApp number',
+        prompt: (_ctx, data) => ['WhatsApp number for ' + data.display_name + '? Include country code, e.g. +26771234567.'],
+        parse: (input) => {
+          const value = input.trim().replace(/^whatsapp:/i, '').replace(/[^+0-9]/g, '');
+          const normalized = value.startsWith('+') ? value : '+' + value;
+          if (!/^\+\d{7,15}$/.test(normalized)) return { ok: false, error: 'Send the WhatsApp number with country code, e.g. +26771234567.' };
+          return { ok: true, patch: { phone: normalized } };
+        },
+      },
+      choiceStep('access_type', 'Access type', 'Which assistant should this number use?', WHATSAPP_ACCESS_OPTIONS),
+    ],
+    summary: (data, ctx) => [
+      'User: ' + data.display_name,
+      'WhatsApp Number: ' + data.phone,
+      'Access: ' + data.access_type_label,
+      'Site: ' + ctx.siteName,
+      '',
+      'A link code will be created. Nothing is active until that person sends the code from the same WhatsApp number.',
+    ],
+    payload: (data, ctx) => ({
+      site_id: ctx.siteId,
+      target_user_id: data.target_user_id,
+      target_user: data.target_user,
+      display_name: data.display_name,
+      phone: data.phone,
+      access_type: data.access_type,
+      created_via: 'web_management_ai',
+    }),
+  },
+
+  revoke_whatsapp_access: {
+    id: 'revoke_whatsapp_access',
+    title: 'REVOKE WHATSAPP ACCESS',
+    action: 'revoke_whatsapp_authorization',
+    steps: () => [
+      {
+        key: 'authorization_id',
+        title: 'Authorized number',
+        prompt: (ctx) => ctx.whatsappAuthorizations.length
+          ? ['Which WhatsApp authorization should be revoked?', ...ctx.whatsappAuthorizations.map((row, index) => String(index + 1) + '. ' + (row.display_name ?? 'Unknown') + ' - ' + (row.masked_phone ?? row.phone ?? 'Not linked') + ' (' + (row.status ?? 'unknown') + ')')]
+          : ['No WhatsApp authorizations are loaded for this site.'],
+        options: (ctx) => ctx.whatsappAuthorizations.map((row) => ({ id: row.id, label: (row.display_name ?? 'Unknown') + ' - ' + (row.masked_phone ?? row.phone ?? 'Not linked') })),
+        parse: (input, ctx) => {
+          if (!ctx.whatsappAuthorizations.length) return { ok: false, error: 'No WhatsApp authorizations are available to revoke.' };
+          const option = pickOption(input, ctx.whatsappAuthorizations.map((row) => ({ id: row.id, label: (row.display_name ?? 'Unknown') + ' - ' + (row.masked_phone ?? row.phone ?? 'Not linked') })));
+          if (!option) return { ok: false, error: 'Reply with one of the authorization numbers listed.' };
+          return { ok: true, patch: { authorization_id: option.id, authorization_label: option.label } };
+        },
+      },
+    ],
+    summary: (data, ctx) => [
+      'Authorization: ' + data.authorization_label,
+      'Site: ' + ctx.siteName,
+      'This will revoke WhatsApp access and clear the active WhatsApp session.',
+    ],
+    payload: (data, ctx) => ({
+      site_id: ctx.siteId,
+      authorization_id: data.authorization_id,
     }),
   },
 

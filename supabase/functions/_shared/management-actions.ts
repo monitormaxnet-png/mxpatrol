@@ -25,7 +25,10 @@ export type ManagementActionName =
   | "create_checkpoint"
   | "create_patrol_template"
   | "create_route"
-  | "create_schedule";
+  | "create_schedule"
+  | "create_whatsapp_authorization"
+  | "list_whatsapp_authorizations"
+  | "revoke_whatsapp_authorization";
 
 export type ManagementResult = {
   ok: true;
@@ -48,6 +51,8 @@ const SEVERITIES = ["low", "medium", "high", "critical"];
 const FREQUENCIES = ["once", "hourly", "daily", "weekdays", "weekends", "weekly", "custom", "every_n_minutes", "every_n_hours"];
 const DEVICE_TYPES = ["mobile", "pda", "nfc_reader", "tablet"];
 const PAIRING_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const WHATSAPP_LINK_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const WHATSAPP_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 
 /* --------------------------------- guards --------------------------------- */
@@ -772,6 +777,197 @@ export async function createSchedule(client: SupabaseClient, actor: ManagementAc
   };
 }
 
+
+/* -------------------------- WhatsApp authorization ------------------------- */
+
+export function normalizeWhatsAppPhone(value: unknown): string {
+  const raw = String(value ?? "").trim().replace(/^whatsapp:/i, "");
+  const compact = raw.replace(/[^+0-9]/g, "");
+  if (!compact) return "";
+  return compact.startsWith("+") ? compact : "+" + compact;
+}
+
+function maskPhone(phone: string | null | undefined): string {
+  if (!phone) return "Not linked";
+  const visible = phone.slice(-3);
+  return phone.slice(0, Math.min(4, phone.length)) + "***" + visible;
+}
+
+function generateWhatsAppLinkCode(): string {
+  let suffix = "";
+  for (let index = 0; index < 6; index += 1) {
+    suffix += WHATSAPP_LINK_CODE_ALPHABET[Math.floor(Math.random() * WHATSAPP_LINK_CODE_ALPHABET.length)];
+  }
+  return "MX-WA-" + suffix;
+}
+
+async function uniqueWhatsAppLinkCode(client: SupabaseClient): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = generateWhatsAppLinkCode();
+    const { data, error } = await client.from("whatsapp_authorized_numbers").select("id").eq("link_code", code).maybeSingle();
+    if (error) throw new ManagementActionError(error.message, 500);
+    if (!data) return code;
+  }
+  throw new ManagementActionError("Could not generate a unique WhatsApp link code", 500);
+}
+
+function highestRole(rows: Array<Record<string, any>> | null | undefined): string {
+  const roles = (rows ?? []).map((row) => String(row.role ?? ""));
+  if (roles.includes("admin")) return "admin";
+  if (roles.includes("supervisor")) return "supervisor";
+  if (roles.includes("guard")) return "guard";
+  return "guard";
+}
+
+async function resolveWhatsAppTarget(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>) {
+  const targetUserId = typeof input.target_user_id === "string" ? input.target_user_id.trim() : "";
+  const target = text(input.target_user ?? input.display_name, "MX Patrol user", { min: 2, max: 120 });
+  let profile: Record<string, any> | null = null;
+
+  if (targetUserId) {
+    const { data, error } = await client.from("profiles").select("id, full_name, phone, company_id").eq("company_id", actor.company_id).eq("id", targetUserId).maybeSingle();
+    if (error) throw new ManagementActionError(error.message, 500);
+    profile = data;
+  } else {
+    const normalizedTargetPhone = normalizeWhatsAppPhone(target);
+    const safeTarget = target.replace(/[%,]/g, "");
+    const filter = normalizedTargetPhone ? "full_name.ilike.%" + safeTarget + "%,phone.eq." + normalizedTargetPhone : "full_name.ilike.%" + safeTarget + "%";
+    const { data, error } = await client.from("profiles").select("id, full_name, phone, company_id").eq("company_id", actor.company_id).or(filter).limit(2);
+    if (error) throw new ManagementActionError(error.message, 500);
+    if ((data ?? []).length > 1) throw new ManagementActionError("More than one MX Patrol user matched. Select the exact user in the Web Assistant or use the full name.", 409);
+    profile = data?.[0] ?? null;
+  }
+
+  if (!profile?.id) throw new ManagementActionError("Target MX Patrol user was not found in your company", 404);
+
+  const { data: roles, error: roleError } = await client.from("user_roles").select("role").eq("user_id", profile.id);
+  if (roleError) throw new ManagementActionError(roleError.message, 500);
+  const role = highestRole(roles);
+
+  const { data: guard } = await client.from("guards").select("id, full_name, phone").eq("company_id", actor.company_id).eq("user_id", profile.id).limit(1).maybeSingle();
+
+  return {
+    user_id: profile.id as string,
+    guard_id: guard?.id ?? null,
+    display_name: profile.full_name ?? guard?.full_name ?? target,
+    profile_phone: normalizeWhatsAppPhone(profile.phone ?? guard?.phone ?? ""),
+    role,
+  };
+}
+
+function whatsappAuthorizationRecord(row: Record<string, any>) {
+  const meta = (row.metadata ?? {}) as Record<string, unknown>;
+  return {
+    id: row.id,
+    display_name: row.display_name,
+    phone: row.phone,
+    masked_phone: maskPhone(row.phone),
+    status: row.status,
+    link_code: row.status === "pending" ? row.link_code : null,
+    link_code_expires_at: row.link_code_expires_at,
+    linked_at: row.linked_at,
+    last_seen_at: row.last_seen_at,
+    allowed_site_ids: Array.isArray(row.allowed_site_ids) ? row.allowed_site_ids : [],
+    access_type: meta.access_type ?? "user",
+    site_name: meta.site_name ?? null,
+  };
+}
+
+export async function createWhatsAppAuthorization(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
+  assertCanManage(actor);
+  const site = await resolveSite(client, actor, input.site_id);
+  const target = await resolveWhatsAppTarget(client, actor, input);
+  const accessType = String(input.access_type ?? "user").toLowerCase() === "management" ? "management" : "user";
+  if (accessType === "management" && !["admin", "supervisor"].includes(target.role)) {
+    throw new ManagementActionError("Management WhatsApp access can only be linked to an admin or supervisor account", 403);
+  }
+
+  const requestedPhone = normalizeWhatsAppPhone(input.phone) || target.profile_phone;
+  if (!requestedPhone) throw new ManagementActionError("WhatsApp phone number is required");
+
+  const { data: active, error: activeError } = await client.from("whatsapp_authorized_numbers").select("id, display_name, phone, status, allowed_site_ids, linked_at, last_seen_at, metadata").eq("company_id", actor.company_id).eq("phone", requestedPhone).eq("status", "active").maybeSingle();
+  if (activeError) throw new ManagementActionError(activeError.message, 500);
+  if (active) {
+    return { ok: true, action: "create_whatsapp_authorization", duplicate: true, record: whatsappAuthorizationRecord(active), summary: (active.display_name ?? requestedPhone) + " is already authorized for WhatsApp." };
+  }
+
+  const code = await uniqueWhatsAppLinkCode(client);
+  const expiresAt = new Date(Date.now() + WHATSAPP_LINK_TTL_MS).toISOString();
+  const row = {
+    company_id: actor.company_id,
+    user_id: target.user_id,
+    guard_id: target.guard_id,
+    phone: requestedPhone,
+    display_name: target.display_name,
+    status: "pending",
+    link_code: code,
+    link_code_expires_at: expiresAt,
+    allowed_site_ids: [site.id],
+    authorized_by: actor.user_id ?? null,
+    metadata: { access_type: accessType, role: target.role, site_id: site.id, site_name: site.name, created_via: String(input.created_via ?? "management_ai") },
+  };
+
+  const { data: reusable, error: reusableError } = await client
+    .from("whatsapp_authorized_numbers")
+    .select("id")
+    .eq("company_id", actor.company_id)
+    .eq("phone", requestedPhone)
+    .neq("status", "active")
+    .maybeSingle();
+  if (reusableError) throw new ManagementActionError(reusableError.message, 500);
+
+  const write = reusable?.id
+    ? client.from("whatsapp_authorized_numbers").update(row).eq("id", reusable.id).eq("company_id", actor.company_id)
+    : client.from("whatsapp_authorized_numbers").insert(row);
+  const { data, error } = await write
+    .select("id, display_name, phone, status, link_code, link_code_expires_at, linked_at, last_seen_at, allowed_site_ids, metadata")
+    .maybeSingle();
+  if (error) throw new ManagementActionError(error.message, 500);
+  if (!data) throw new ManagementActionError("WhatsApp authorization could not be created", 500);
+
+  return {
+    ok: true,
+    action: "create_whatsapp_authorization",
+    duplicate: false,
+    record: whatsappAuthorizationRecord(data),
+    summary: "Link code " + code + " created for " + target.display_name + ". They must send this code from " + requestedPhone + " within 24 hours to activate WhatsApp access for " + site.name + ".",
+  };
+}
+
+export async function listWhatsAppAuthorizations(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
+  assertCanManage(actor);
+  const site = await resolveSite(client, actor, input.site_id);
+  const { data, error } = await client.from("whatsapp_authorized_numbers").select("id, display_name, phone, status, link_code, link_code_expires_at, linked_at, last_seen_at, allowed_site_ids, metadata").eq("company_id", actor.company_id).order("created_at", { ascending: false }).limit(50);
+  if (error) throw new ManagementActionError(error.message, 500);
+  const rows = (data ?? []).filter((row: Record<string, any>) => !Array.isArray(row.allowed_site_ids) || !row.allowed_site_ids.length || row.allowed_site_ids.includes(site.id)).map(whatsappAuthorizationRecord);
+  return { ok: true, action: "list_whatsapp_authorizations", duplicate: false, record: { site_id: site.id, site_name: site.name, rows, count: rows.length }, summary: rows.length + " WhatsApp authorization" + (rows.length === 1 ? "" : "s") + " found for " + site.name + "." };
+}
+
+export async function revokeWhatsAppAuthorization(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
+  assertCanManage(actor);
+  const site = await resolveSite(client, actor, input.site_id);
+  const id = typeof input.authorization_id === "string" ? input.authorization_id.trim() : "";
+  const phone = normalizeWhatsAppPhone(input.phone);
+  if (!id && !phone) throw new ManagementActionError("Choose an authorized WhatsApp number to revoke");
+
+  let query = client.from("whatsapp_authorized_numbers").select("id, display_name, phone, status, allowed_site_ids, metadata").eq("company_id", actor.company_id);
+  query = id ? query.eq("id", id) : query.eq("phone", phone);
+  const { data: existing, error: findError } = await query.maybeSingle();
+  if (findError) throw new ManagementActionError(findError.message, 500);
+  if (!existing) throw new ManagementActionError("WhatsApp authorization was not found", 404);
+  if (Array.isArray(existing.allowed_site_ids) && existing.allowed_site_ids.length && !existing.allowed_site_ids.includes(site.id)) {
+    throw new ManagementActionError("That WhatsApp authorization belongs to another site", 403);
+  }
+
+  const metadata = { ...((existing.metadata ?? {}) as Record<string, unknown>), revoked_by: actor.user_id ?? null, revoked_at: new Date().toISOString() };
+  const { data, error } = await client.from("whatsapp_authorized_numbers").update({ status: "revoked", link_code: null, link_code_expires_at: null, metadata }).eq("id", existing.id).eq("company_id", actor.company_id).select("id, display_name, phone, status, link_code, link_code_expires_at, linked_at, last_seen_at, allowed_site_ids, metadata").maybeSingle();
+  if (error) throw new ManagementActionError(error.message, 500);
+  if (!data) throw new ManagementActionError("WhatsApp authorization could not be revoked", 500);
+  if (existing.phone) await client.from("whatsapp_sessions").delete().eq("phone", existing.phone);
+
+  return { ok: true, action: "revoke_whatsapp_authorization", duplicate: false, record: whatsappAuthorizationRecord(data), summary: "WhatsApp access revoked for " + (existing.display_name ?? maskPhone(existing.phone)) + " at " + site.name + "." };
+}
+
 /* -------------------------------- dispatcher ------------------------------ */
 
 export async function runManagementAction(
@@ -795,6 +991,12 @@ export async function runManagementAction(
       return await createRoute(client, actor, input);
     case "create_schedule":
       return await createSchedule(client, actor, input);
+    case "create_whatsapp_authorization":
+      return await createWhatsAppAuthorization(client, actor, input);
+    case "list_whatsapp_authorizations":
+      return await listWhatsAppAuthorizations(client, actor, input);
+    case "revoke_whatsapp_authorization":
+      return await revokeWhatsAppAuthorization(client, actor, input);
     default:
       throw new ManagementActionError(`Unsupported management action: ${action}`, 400);
   }

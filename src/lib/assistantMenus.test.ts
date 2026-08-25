@@ -140,8 +140,13 @@ describe("permission-checked mode switching", () => {
     expect(resolveAssistantInput(userState(), "generate report", guard)).toMatchObject({ kind: "denied" });
   });
 
+  it("opens WhatsApp management from management home", () => {
+    const result = resolveAssistantInput(mgmtState(), "7", manager);
+    expect(result).toMatchObject({ kind: "menu", menuKey: "management_whatsapp" });
+  });
+
   it("returns to the user assistant from management", () => {
-    const result = resolveAssistantInput(mgmtState(), "9", manager);
+    const result = resolveAssistantInput(mgmtState(), "10", manager);
     expect(result.state.mode).toBe("user");
     expect(result.state.activeMenu).toBe(USER_HOME);
   });

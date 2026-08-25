@@ -885,6 +885,17 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
       { id: "back", label: "Back" },
     ],
   },
+  management_whatsapp: {
+    title: "WHATSAPP MANAGEMENT",
+    menuKey: "management_whatsapp",
+    lines: ["Manage WhatsApp assistant access."],
+    options: [
+      { id: "authorize_whatsapp", label: "Authorize WhatsApp Number" },
+      { id: "view_whatsapp_numbers", label: "View Authorized Numbers" },
+      { id: "revoke_whatsapp_access", label: "Revoke WhatsApp Access" },
+      { id: "back", label: "Back" },
+    ],
+  },
   management_reports: {
     title: "REPORTS",
     menuKey: "management_reports",
@@ -906,6 +917,7 @@ export const WA_MENU_PARENTS: Record<string, string> = {
   management_incidents: MANAGEMENT_HOME_KEY,
   management_patrol_config: MANAGEMENT_HOME_KEY,
   management_reports: MANAGEMENT_HOME_KEY,
+  management_whatsapp: MANAGEMENT_HOME_KEY,
   report_period: USER_HOME_KEY,
   [MANAGEMENT_HOME_KEY]: MANAGEMENT_HOME_KEY,
   [USER_HOME_KEY]: USER_HOME_KEY,

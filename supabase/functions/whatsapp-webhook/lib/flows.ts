@@ -65,7 +65,7 @@ export async function startFlow(
   client: SupabaseClient,
   identity: Identity,
   session: SessionRow,
-  flow: "REGISTER_DEVICE" | "CREATE_CHECKPOINT" | "CREATE_PATROL" | "REPORT_INCIDENT",
+  flow: "REGISTER_DEVICE" | "CREATE_CHECKPOINT" | "CREATE_PATROL" | "REPORT_INCIDENT" | "AUTHORIZE_WHATSAPP" | "REVOKE_WHATSAPP",
 ): Promise<FlowResult> {
   if (!identity.canManage) {
     return {
@@ -77,6 +77,19 @@ export async function startFlow(
       },
     };
   }
+  if (flow === "AUTHORIZE_WHATSAPP") {
+    const next = await patchSession(client, session, { current_flow: flow, current_step: "WAITING_FOR_USER", temporary_data: {} });
+    return { session: next, message: { title: "AUTHORIZE WHATSAPP", lines: ["Who should receive WhatsApp access?", "Send the exact MX Patrol user full name."], footer: "Type *cancel* to stop." } };
+  }
+
+  if (flow === "REVOKE_WHATSAPP") {
+    const outcome = await callManagement(client, identity, "list_whatsapp_authorizations", { site_id: session.current_site_id });
+    const rows = ((outcome.result?.record?.rows ?? []) as Array<Record<string, any>>).filter((row) => row.status !== "revoked");
+    if (!rows.length) return { session, message: { title: "WHATSAPP MANAGEMENT", lines: ["No WhatsApp authorizations found for this site."], options: [{ id: "management_whatsapp", label: "WhatsApp Management" }] } };
+    const next = await patchSession(client, session, { current_flow: flow, current_step: "WAITING_FOR_AUTHORIZATION", temporary_data: { authorization_choices: rows.slice(0, 9) } });
+    return { session: next, message: { title: "REVOKE WHATSAPP ACCESS", lines: ["Which number should be revoked?"], options: rows.slice(0, 9).map((row, index) => ({ id: String(index + 1), label: String(row.display_name ?? "Unknown") + " - " + String(row.masked_phone ?? row.phone ?? "Not linked") + " (" + String(row.status ?? "unknown") + ")" })), footer: "Type *cancel* to stop." } };
+  }
+
   if (flow === "REPORT_INCIDENT") {
     const next = await patchSession(client, session, {
       current_flow: flow,
@@ -759,6 +772,78 @@ async function createPatrol(
         options: [{ id: "routes", label: "Create Route" }, { id: "schedules", label: "Create Schedule" }, { id: "menu", label: "Main Menu" }],
       },
     };
+  }
+
+  return { session: await clearFlow(client, session), message: CANCELLED };
+}
+
+
+/* -------------------------- WhatsApp authorization ------------------------- */
+
+const WHATSAPP_ACCESS_OPTIONS = [
+  { id: "user", label: "User Assistant" },
+  { id: "management", label: "Management Assistant" },
+];
+
+async function authorizeWhatsApp(client: SupabaseClient, identity: Identity, session: SessionRow, input: string): Promise<FlowResult> {
+  const data = { ...(session.temporary_data ?? {}) } as Record<string, any>;
+
+  if (session.current_step === "WAITING_FOR_USER") {
+    const user = input.trim().slice(0, 120);
+    if (user.length < 2) return { session, message: { title: "AUTHORIZE WHATSAPP", lines: ["Send the exact MX Patrol user full name."], footer: "Type *cancel* to stop." } };
+    data.target_user = user;
+    data.display_name = user;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_PHONE", temporary_data: data });
+    return { session: next, message: { title: "WHATSAPP NUMBER", lines: ["WhatsApp number for " + user + "?", "Include country code, e.g. +26771234567."], footer: "Type *cancel* to stop." } };
+  }
+
+  if (session.current_step === "WAITING_FOR_PHONE") {
+    const compact = input.trim().replace(/^whatsapp:/i, "").replace(/[^+0-9]/g, "");
+    const phone = compact.startsWith("+") ? compact : "+" + compact;
+    if (!/^\+\d{7,15}$/.test(phone)) return { session, message: { title: "WHATSAPP NUMBER", lines: ["Send the WhatsApp number with country code, e.g. +26771234567."], footer: "Type *cancel* to stop." } };
+    data.phone = phone;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_ACCESS", temporary_data: data });
+    return { session: next, message: { title: "ACCESS TYPE", lines: ["Which assistant should this number use?"], options: WHATSAPP_ACCESS_OPTIONS.map((option, index) => ({ id: String(index + 1), label: option.label })) } };
+  }
+
+  if (session.current_step === "WAITING_FOR_ACCESS") {
+    const choice = pickChoice(input, WHATSAPP_ACCESS_OPTIONS, (option) => option.label);
+    if (!choice) return { session, message: { title: "ACCESS TYPE", lines: ["Reply with one of the numbers listed."], options: WHATSAPP_ACCESS_OPTIONS.map((option, index) => ({ id: String(index + 1), label: option.label })) } };
+    data.access_type = choice.id;
+    data.access_type_label = choice.label;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
+    return { session: next, message: { title: "AUTHORIZE WHATSAPP - CONFIRM", lines: ["User: " + data.display_name, "WhatsApp Number: " + data.phone, "Access: " + data.access_type_label, "Site: " + (session.current_site_name ?? "Active site"), "", "A link code will be created. Nothing is active until that person sends the code from the same WhatsApp number.", "", "Reply confirm to save, or cancel to discard."], options: [{ id: "confirm", label: "Create Link Code" }, { id: "cancel", label: "Cancel" }] } };
+  }
+
+  if (session.current_step === "WAITING_FOR_CONFIRM") {
+    if (!/^(1|confirm|yes|y|create|save)$/i.test(input.trim())) return { session: await clearFlow(client, session), message: CANCELLED };
+    const outcome = await callManagement(client, identity, "create_whatsapp_authorization", { site_id: session.current_site_id, target_user: data.target_user, display_name: data.display_name, phone: data.phone, access_type: data.access_type, created_via: "whatsapp_management_ai" });
+    if (!outcome.result) return { session: await clearFlow(client, session), message: { title: "COULD NOT AUTHORIZE", lines: [outcome.message], options: [{ id: "management_whatsapp", label: "WhatsApp Management" }] } };
+    const record = outcome.result.record as Record<string, any>;
+    return { session: await clearFlow(client, session), message: { title: outcome.result.duplicate ? "ALREADY AUTHORIZED" : "LINK CODE CREATED", lines: [outcome.result.summary, record.link_code ? "Code: " + record.link_code : "", "The number must send the code to this WhatsApp assistant to activate."].filter(Boolean) as string[], options: [{ id: "management_whatsapp", label: "WhatsApp Management" }, { id: "menu", label: "Main Menu" }] } };
+  }
+
+  return { session: await clearFlow(client, session), message: CANCELLED };
+}
+
+async function revokeWhatsApp(client: SupabaseClient, identity: Identity, session: SessionRow, input: string): Promise<FlowResult> {
+  const data = { ...(session.temporary_data ?? {}) } as Record<string, any>;
+  const choices = (data.authorization_choices ?? []) as Array<Record<string, any>>;
+
+  if (session.current_step === "WAITING_FOR_AUTHORIZATION") {
+    const selected = pickChoice(input, choices, (row) => String(row.display_name ?? row.phone ?? row.id));
+    if (!selected) return { session, message: { title: "REVOKE WHATSAPP ACCESS", lines: ["Reply with one of the numbers listed."], options: choices.map((row, index) => ({ id: String(index + 1), label: String(row.display_name ?? "Unknown") + " - " + String(row.masked_phone ?? row.phone ?? "Not linked") })) } };
+    data.authorization_id = selected.id;
+    data.authorization_label = String(selected.display_name ?? "Unknown") + " - " + String(selected.masked_phone ?? selected.phone ?? "Not linked");
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_CONFIRM", temporary_data: data });
+    return { session: next, message: { title: "REVOKE WHATSAPP - CONFIRM", lines: ["Authorization: " + data.authorization_label, "Site: " + (session.current_site_name ?? "Active site"), "This will revoke WhatsApp access and clear the active session.", "", "Reply confirm to revoke, or cancel to discard."], options: [{ id: "confirm", label: "Revoke" }, { id: "cancel", label: "Cancel" }] } };
+  }
+
+  if (session.current_step === "WAITING_FOR_CONFIRM") {
+    if (!/^(1|confirm|yes|y|revoke)$/i.test(input.trim())) return { session: await clearFlow(client, session), message: CANCELLED };
+    const outcome = await callManagement(client, identity, "revoke_whatsapp_authorization", { site_id: session.current_site_id, authorization_id: data.authorization_id });
+    if (!outcome.result) return { session: await clearFlow(client, session), message: { title: "COULD NOT REVOKE", lines: [outcome.message], options: [{ id: "management_whatsapp", label: "WhatsApp Management" }] } };
+    return { session: await clearFlow(client, session), message: { title: "WHATSAPP ACCESS REVOKED", lines: [outcome.result.summary], options: [{ id: "management_whatsapp", label: "WhatsApp Management" }, { id: "menu", label: "Main Menu" }] } };
   }
 
   return { session: await clearFlow(client, session), message: CANCELLED };

@@ -96,7 +96,7 @@ export default function CommandCenter() {
     queryKey: ['assistant_workflow_options', selectedSiteId],
     enabled: !!selectedSiteId && canManage,
     queryFn: async () => {
-      const [routes, forms] = await Promise.all([
+      const [routes, forms, profiles, roles] = await Promise.all([
         supabase.from('patrol_routes').select('id, name').eq('site_id', selectedSiteId!).eq('status', 'active').order('name'),
         supabase
           .from('data_log_forms')
@@ -104,13 +104,31 @@ export default function CommandCenter() {
           .eq('is_active', true)
           .or(`site_id.is.null,site_id.eq.${selectedSiteId!}`)
           .order('name'),
+        supabase.from('profiles').select('id, full_name, phone').order('full_name'),
+        supabase.from('user_roles').select('user_id, role'),
       ]);
       if (routes.error) throw routes.error;
       if (forms.error) throw forms.error;
-      return { routes: routes.data ?? [], forms: forms.data ?? [] };
+      if (profiles.error) throw profiles.error;
+      if (roles.error) throw roles.error;
+      const roleByUser = new Map((roles.data ?? []).map((row: any) => [String(row.user_id), String(row.role)]));
+      const users = (profiles.data ?? []).map((row: any) => ({ id: String(row.id), name: String(row.full_name ?? row.phone ?? row.id), phone: row.phone ?? null, role: roleByUser.get(String(row.id)) ?? null }));
+      return { routes: routes.data ?? [], forms: forms.data ?? [], users };
     },
   });
 
+  const whatsappAuthorizations = useQuery({
+    queryKey: ['assistant_whatsapp_authorizations', selectedSiteId],
+    enabled: !!selectedSiteId && canManage,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('management-actions', {
+        body: { action: 'list_whatsapp_authorizations', input: { site_id: selectedSiteId } },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return (((data as any)?.record?.rows ?? []) as any[]);
+    },
+  });
 
   const patrols = useQuery({
     queryKey: ['assistant_patrol_sessions', selectedSiteId],
@@ -166,7 +184,9 @@ export default function CommandCenter() {
         field_count: Array.isArray(row.data_log_form_fields) ? row.data_log_form_fields.length : 0,
       }))
       .filter((form: { field_count: number }) => form.field_count > 0),
-  }), [selectedSiteId, selectedSite, canManage, checkpoints.data, configOptions.data]);
+    users: configOptions.data?.users ?? [],
+    whatsappAuthorizations: whatsappAuthorizations.data ?? [],
+  }), [selectedSiteId, selectedSite, canManage, checkpoints.data, configOptions.data, whatsappAuthorizations.data]);
 
   /** Runs the canonical management service shared with the WhatsApp Management AI. */
   const runManagementAction = async (payload: { action: string; input: Record<string, unknown> }) => {
@@ -187,6 +207,7 @@ export default function CommandCenter() {
       queryClient.invalidateQueries({ queryKey: ['checkpoints'] }),
       queryClient.invalidateQueries({ queryKey: ['assistant_config'] }),
       queryClient.invalidateQueries({ queryKey: ['assistant_workflow_options'] }),
+      queryClient.invalidateQueries({ queryKey: ['assistant_whatsapp_authorizations'] }),
     ]);
     return data as { summary: string; duplicate: boolean; record: Record<string, unknown> };
   };
@@ -274,6 +295,7 @@ export default function CommandCenter() {
     if (action === 'late_patrols') return addAssistant('LATE / DELAYED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'late')} variant='late' />);
     if (action === 'missed_patrols') return addAssistant('MISSED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'missed')} variant='missed' />);
     if (action === 'missed_checkpoints') return addAssistant('MISSED CHECKPOINTS - ' + selectedSite, <MissedCheckpointList rows={missedCheckpoints.data ?? []} loading={missedCheckpoints.isLoading} />);
+    if (action === 'view_whatsapp_numbers') return addAssistant('WHATSAPP AUTHORIZED NUMBERS - ' + selectedSite, <WhatsAppAuthorizationList rows={whatsappAuthorizations.data ?? []} loading={whatsappAuthorizations.isLoading} />);
     if (action === 'routes' || action === 'schedules') return addAssistant(action === 'routes' ? 'PATROL ROUTES' : 'PATROL SCHEDULES', <ConfigList kind={action} siteId={selectedSiteId} />);
     if (action.startsWith('report:')) return runReportPeriod(action.slice(7) as keyof typeof PERIODS);
     if (action === 'saved_reports') return addAssistant('SAVED REPORTS - ' + selectedSite, <SavedReports jobs={siteReportJobs} loading={reportJobs.isLoading} />);
@@ -443,6 +465,12 @@ function SavedReports({ jobs, loading }: { jobs: Array<{ id: string; report_type
     <p className='text-slate-400'>{assistantDate(job.ai_reports?.generated_at ?? job.created_at)} {assistantTime(job.ai_reports?.generated_at ?? job.created_at)}</p>
     {job.ai_reports?.summary_text ? <p className='mt-1 text-slate-200'>{job.ai_reports.summary_text.slice(0, 400)}</p> : null}
   </div>)}</div>;
+}
+
+function WhatsAppAuthorizationList({ rows, loading }: { rows: any[]; loading: boolean }) {
+  if (loading) return <p>Loading WhatsApp authorizations...</p>;
+  if (!rows.length) return <p>No WhatsApp numbers are authorized for this site yet.</p>;
+  return <div className='space-y-2'>{rows.slice(0, 12).map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.display_name ?? 'Unknown user'}</b><p className='text-slate-400'>{row.masked_phone ?? row.phone ?? 'Not linked'} - {row.status ?? 'unknown'}{row.link_code ? ' - code ' + row.link_code : ''}</p></div>)}</div>;
 }
 
 function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: string | null }) {

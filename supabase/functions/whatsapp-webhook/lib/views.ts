@@ -865,7 +865,7 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     options: [
       { id: "devices", label: "View Devices" },
       { id: "offline", label: "Offline Devices" },
-      ...(identity.canManageKiosk ? [{ id: "secure_device_status", label: "Device Security" }] : []),
+      { id: "secure_device_status", label: "Device Security" },
       { id: "register_device", label: "Register Device" },
       { id: "back", label: "Back" },
     ],

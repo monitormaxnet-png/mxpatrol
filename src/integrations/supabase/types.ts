@@ -2915,6 +2915,21 @@ export type Database = {
           },
         ]
       }
+      tmp_scan_verify: {
+        Row: {
+          detail: Json | null
+          step: string | null
+        }
+        Insert: {
+          detail?: Json | null
+          step?: string | null
+        }
+        Update: {
+          detail?: Json | null
+          step?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string

@@ -2540,6 +2540,104 @@ export type Database = {
           },
         ]
       }
+      scan_investigations: {
+        Row: {
+          accuracy: number | null
+          checkpoint_id: string | null
+          company_id: string
+          created_at: string
+          device_id: string | null
+          device_identifier: string | null
+          id: string
+          investigation_type: string
+          latitude: number | null
+          longitude: number | null
+          notes: string | null
+          reason: string
+          registered_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          scan_log_id: string | null
+          scanned_at: string
+          scanned_uid: string | null
+          site_id: string | null
+          status: string
+        }
+        Insert: {
+          accuracy?: number | null
+          checkpoint_id?: string | null
+          company_id: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          id?: string
+          investigation_type?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          reason: string
+          registered_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scan_log_id?: string | null
+          scanned_at?: string
+          scanned_uid?: string | null
+          site_id?: string | null
+          status?: string
+        }
+        Update: {
+          accuracy?: number | null
+          checkpoint_id?: string | null
+          company_id?: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          id?: string
+          investigation_type?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          reason?: string
+          registered_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scan_log_id?: string | null
+          scanned_at?: string
+          scanned_uid?: string | null
+          site_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_investigations_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_investigations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_investigations_scan_log_id_fkey"
+            columns: ["scan_log_id"]
+            isOneToOne: false
+            referencedRelation: "scan_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_investigations_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scan_logs: {
         Row: {
           checkpoint_id: string | null
@@ -3247,6 +3345,15 @@ export type Database = {
     }
     Functions: {
       advance_due_patrol_session_statuses: { Args: never; Returns: number }
+      create_scan_investigation_for_log: {
+        Args: {
+          p_reason: string
+          p_registered_status?: string
+          p_scan_log_id: string
+          p_type: string
+        }
+        Returns: string
+      }
       finalize_patrol_session: {
         Args: { p_session_id: string }
         Returns: {
@@ -3316,19 +3423,19 @@ export type Database = {
       match_scan_to_patrol_session: {
         Args: { p_scan_log_id: string }
         Returns: {
+          checkpoint_status: string
           code: string
-          completed: number
+          completed_count: number
           match_status: string
           next_checkpoint_id: string
           next_checkpoint_name: string
-          patrol_name: string
+          patrol_status: string
           progress_percent: number
-          required: number
           schedule_id: string
           selection_reason: string
           session_checkpoint_id: string
           session_id: string
-          session_status: string
+          total_count: number
         }[]
       }
       next_patrol_schedule_run: {

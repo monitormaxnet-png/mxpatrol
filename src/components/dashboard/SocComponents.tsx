@@ -21,10 +21,11 @@ export function SocPageShell({
 }: {
   title: string;
   subtitle: string;
-  realtime: { status: "connecting" | "live" | "reconnecting"; lastUpdatedAt: string | null; markUpdated: () => void; };
+  realtime?: { status: "connecting" | "live" | "reconnecting"; lastUpdatedAt: string | null; markUpdated: () => void; };
   children: ReactNode;
 }) {
-  const connected = realtime.status === "live";
+  const status = realtime?.status ?? "live";
+  const connected = status === "live";
   return (
     <div className="min-h-full space-y-4 bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.07),transparent_26%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.08),transparent_30%)] pb-4">
       <header className="flex flex-col gap-4 rounded-xl border border-white/10 bg-slate-950/70 px-4 py-4 shadow-[0_0_36px_rgba(0,0,0,0.26)] xl:flex-row xl:items-center xl:justify-between">
@@ -43,7 +44,7 @@ export function SocPageShell({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <SocStatusPill icon={Wifi} label={realtimeStatusLabel(realtime.status)} tone={connected ? "green" : "amber"} />
+          <SocStatusPill icon={Wifi} label={realtimeStatusLabel(status)} tone={connected ? "green" : "amber"} />
           <SocIconButton icon={Bell} label="Notifications" badge />
           <SocIconButton icon={Sun} label="Display" />
           <div className="flex h-10 items-center gap-3 rounded-lg border border-white/10 bg-slate-950/80 px-3 text-sm text-slate-200">

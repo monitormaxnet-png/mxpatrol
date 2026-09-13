@@ -78,7 +78,9 @@ export function managementMenu(identity: Identity, session: SessionRow): OutMess
       { id: "management_patrol_config", label: "Patrol Configuration" },
       { id: "management_reports", label: "Reports" },
       { id: "management_whatsapp", label: "WhatsApp Management" },
-      ...(identity.canManageKiosk ? [{ id: "secure_devices", label: "Secure Patrol Devices" }] : []),
+      ...(identity.canManageSecureDevices && identity.platformRole === "owner"
+        ? [{ id: "secure_devices", label: "Secure Patrol Devices" }]
+        : []),
       { id: "change_site", label: "Change Site" },
       { id: "user", label: "User Assistant" },
     ],

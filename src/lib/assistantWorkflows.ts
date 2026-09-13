@@ -849,7 +849,7 @@ export function startWorkflow(id: WorkflowId, ctx: WorkflowContext): WorkflowRep
   if (!ctx.canManage) {
     return { kind: 'denied', title: 'MANAGEMENT ACCESS REQUIRED', lines: ['Your account does not have permission for management actions.'] };
   }
-  if (needsActiveSite(state.id) && !ctx.siteId) {
+  if (needsActiveSite(id) && !ctx.siteId) {
     return { kind: 'denied', title: def.title, lines: ['Choose an active site before creating records.'] };
   }
   const state: WorkflowState = { id, stepIndex: 0, data: {} };

@@ -10,12 +10,14 @@ import { normalizeFormFields, normalizeFormType, type NormalizedFormField } from
 type SupabaseClient = any;
 
 export type ManagementActor = {
-  company_id: string;
+  company_id: string | null;
   user_id?: string | null;
   guard_id?: string | null;
   role?: string | null;
   canManage?: boolean;
   allowed_site_ids?: string[];
+  platformRole?: string | null;
+  isPlatformOwner?: boolean;
 };
 
 export type ManagementActionName =
@@ -26,6 +28,10 @@ export type ManagementActionName =
   | "create_patrol_template"
   | "create_route"
   | "create_schedule"
+  | "create_company"
+  | "create_site"
+  | "list_companies"
+  | "list_sites"
   | "create_whatsapp_authorization"
   | "list_whatsapp_authorizations"
   | "revoke_whatsapp_authorization";
@@ -65,6 +71,9 @@ export function assertCanManage(actor: ManagementActor | null | undefined) {
   }
 }
 
+export function assertPlatformOwner(actor: ManagementActor | null | undefined) {
+  if (!actor?.isPlatformOwner) throw new ManagementActionError("Platform owner access required", 403);
+}
 export function text(value: unknown, field: string, opts: { min?: number; max?: number; required?: boolean } = {}): string {
   const raw = typeof value === "string" ? value.trim() : "";
   const min = opts.min ?? 1;
@@ -360,7 +369,7 @@ function devicePairedResult(row: Record<string, any>, site: { id: string; name: 
 
 /** Back-compat alias: both assistants and older callers hit the same canonical binding path. */
 export async function attachDeviceByCode(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
-  return await registerDevice(client, actor, input);
+  return await registerDevice(client, effectiveActor, input);
 }
 
 
@@ -778,6 +787,140 @@ export async function createSchedule(client: SupabaseClient, actor: ManagementAc
 }
 
 
+/* --------------------------- organization setup --------------------------- */
+
+const COMPANY_STATUSES = ["active", "inactive"];
+
+function normalizeStatus(value: unknown): string {
+  const status = String(value ?? "active").trim().toLowerCase();
+  if (!COMPANY_STATUSES.includes(status)) throw new ManagementActionError("Status must be active or inactive");
+  return status;
+}
+
+function numberOrNull(value: unknown, field: string, min: number, max: number): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) throw new ManagementActionError(`${field} is invalid`);
+  return parsed;
+}
+
+function companyReference(id: unknown, name: unknown): string {
+  const prefix = String(name ?? "CMP").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3).padEnd(3, "X");
+  return `${prefix}-${String(id).slice(0, 8).toUpperCase()}`;
+}
+
+async function countSitesByCompany(client: SupabaseClient, companyIds: string[]) {
+  const counts: Record<string, number> = {};
+  for (const id of companyIds) counts[id] = 0;
+  if (!companyIds.length) return counts;
+  const { data, error } = await client.from("sites").select("company_id").in("company_id", companyIds);
+  if (error) throw new ManagementActionError(error.message, 500);
+  for (const row of data ?? []) if (counts[row.company_id] !== undefined) counts[row.company_id] += 1;
+  return counts;
+}
+
+export async function listCompanies(client: SupabaseClient, actor: ManagementActor, _input: Record<string, unknown>): Promise<ManagementResult> {
+  assertPlatformOwner(actor);
+  const { data, error } = await client.from("companies").select("id, name, domain, settings, created_at, updated_at").order("name", { ascending: true }).limit(100);
+  if (error) throw new ManagementActionError(error.message, 500);
+  const counts = await countSitesByCompany(client, (data ?? []).map((company: Record<string, any>) => String(company.id)));
+  const rows = (data ?? []).map((company: Record<string, any>) => ({
+    id: company.id,
+    name: company.name,
+    domain: company.domain ?? null,
+    status: company.settings?.status ?? "active",
+    site_count: counts[company.id] ?? 0,
+    reference: companyReference(company.id, company.name),
+  }));
+  return { ok: true, action: "list_companies", duplicate: false, record: { rows, count: rows.length }, summary: `${rows.length} compan${rows.length === 1 ? "y" : "ies"} found.` };
+}
+
+async function resolveTargetCompany(client: SupabaseClient, actor: ManagementActor, requestedCompanyId: unknown) {
+  const requested = typeof requestedCompanyId === "string" ? requestedCompanyId.trim() : "";
+  const id = actor.isPlatformOwner ? requested || actor.company_id : actor.company_id;
+  if (!id) throw new ManagementActionError("Select a company before registering a site", 400);
+  if (!actor.isPlatformOwner && requested && requested !== actor.company_id) throw new ManagementActionError("You cannot create a site for another company", 403);
+  const { data, error } = await client.from("companies").select("id, name, settings").eq("id", id).maybeSingle();
+  if (error) throw new ManagementActionError(error.message, 500);
+  if (!data) throw new ManagementActionError("Company not found", 404);
+  return { id: String(data.id), name: String(data.name), settings: data.settings ?? {} };
+}
+
+export async function listSites(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
+  assertCanManage(actor);
+  const company = await resolveTargetCompany(client, actor, input.company_id);
+  const { data, error } = await client.from("sites").select("id, company_id, name, address, gps_lat, gps_lng, status, created_at").eq("company_id", company.id).order("name", { ascending: true }).limit(100);
+  if (error) throw new ManagementActionError(error.message, 500);
+  const rows = (data ?? []).map((site: Record<string, any>) => ({ ...site, company_name: company.name }));
+  return { ok: true, action: "list_sites", duplicate: false, record: { company_id: company.id, company_name: company.name, rows, count: rows.length }, summary: `${rows.length} site${rows.length === 1 ? "" : "s"} found for ${company.name}.` };
+}
+
+export async function createCompany(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
+  assertPlatformOwner(actor);
+  const name = text(input.name, "Company name", { min: 2, max: 120 });
+  const domain = text(input.domain, "Domain", { required: false, max: 120 }).toLowerCase() || null;
+  const contactEmail = text(input.contact_email, "Primary contact email", { min: 5, max: 160 }).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) throw new ManagementActionError("Primary contact email is invalid");
+  const status = normalizeStatus(input.status);
+
+  const { data: existingByName, error: nameError } = await client.from("companies").select("id, name, settings").ilike("name", name).maybeSingle();
+  if (nameError) throw new ManagementActionError(nameError.message, 500);
+  if (existingByName) {
+    return {
+      ok: true,
+      action: "create_company",
+      duplicate: true,
+      record: { id: existingByName.id, name: existingByName.name, reference: companyReference(existingByName.id, existingByName.name), status: existingByName.settings?.status ?? "active" },
+      summary: `${existingByName.name} already exists.`,
+    };
+  }
+  if (domain) {
+    const { data: existingDomain, error: domainError } = await client.from("companies").select("id, name, settings").eq("domain", domain).maybeSingle();
+    if (domainError) throw new ManagementActionError(domainError.message, 500);
+    if (existingDomain) throw new ManagementActionError(`Company domain/reference is already used by ${existingDomain.name}`, 409);
+  }
+
+  const settings = {
+    status,
+    country: text(input.country, "Country", { required: false, max: 80 }) || null,
+    timezone: text(input.timezone, "Timezone", { required: false, max: 80 }) || null,
+    contact_name: text(input.contact_name, "Primary contact name", { required: false, max: 120 }) || null,
+    contact_phone: text(input.contact_phone, "Primary contact phone", { required: false, max: 40 }) || null,
+    contact_email: contactEmail,
+    notes: text(input.notes, "Notes", { required: false, max: 500 }) || null,
+    created_via: String(input.created_via ?? "management_ai"),
+    created_by: actor.user_id ?? null,
+    created_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await client.from("companies").insert({ name, domain, settings }).select("id, name, domain, settings, created_at").maybeSingle();
+  if (error) throw new ManagementActionError(error.message, 500);
+  if (!data?.id) throw new ManagementActionError("Company could not be created", 500);
+  const reference = companyReference(data.id, data.name);
+  return { ok: true, action: "create_company", duplicate: false, record: { id: data.id, reference, name: data.name, status }, summary: `${data.name} created. Company ID: ${reference}. Status: ${status}.` };
+}
+
+export async function createSite(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
+  assertCanManage(actor);
+  const company = await resolveTargetCompany(client, actor, input.company_id);
+  const name = text(input.name, "Site name", { min: 2, max: 120 });
+  const address = text(input.address, "Physical address", { required: false, max: 240 }) || null;
+  const gpsLat = numberOrNull(input.gps_lat, "GPS latitude", -90, 90);
+  const gpsLng = numberOrNull(input.gps_lng, "GPS longitude", -180, 180);
+  const status = normalizeStatus(input.status);
+
+  const { data: existing, error: existingError } = await client.from("sites").select("id, name, status").eq("company_id", company.id).ilike("name", name).maybeSingle();
+  if (existingError) throw new ManagementActionError(existingError.message, 500);
+  if (existing) {
+    return { ok: true, action: "create_site", duplicate: true, record: { id: existing.id, name: existing.name, company_id: company.id, company_name: company.name, status: existing.status }, summary: `${existing.name} already exists for ${company.name}.` };
+  }
+
+  const { data, error } = await client.from("sites").insert({ company_id: company.id, name, address, gps_lat: gpsLat, gps_lng: gpsLng, status }).select("id, company_id, name, address, gps_lat, gps_lng, status, created_at").maybeSingle();
+  if (error) throw new ManagementActionError(error.message, 500);
+  if (!data?.id) throw new ManagementActionError("Site could not be created", 500);
+  return { ok: true, action: "create_site", duplicate: false, record: { ...data, company_name: company.name }, summary: `${name} created for ${company.name}. Status: ${status}.` };
+}
+
 /* -------------------------- WhatsApp authorization ------------------------- */
 
 export function normalizeWhatsAppPhone(value: unknown): string {
@@ -1013,27 +1156,37 @@ export async function runManagementAction(
   action: string,
   input: Record<string, unknown>,
 ): Promise<ManagementResult> {
+  const requestedCompanyId = typeof input.company_id === "string" ? input.company_id.trim() : "";
+  const effectiveActor = actor.isPlatformOwner && requestedCompanyId ? { ...actor, company_id: requestedCompanyId } : actor;
   switch (action) {
     case "create_incident":
-      return await createIncident(client, actor, input);
+      return await createIncident(client, effectiveActor, input);
     case "register_device":
-      return await registerDevice(client, actor, input);
+      return await registerDevice(client, effectiveActor, input);
     case "attach_device_by_code":
-      return await attachDeviceByCode(client, actor, input);
+      return await attachDeviceByCode(client, effectiveActor, input);
     case "create_checkpoint":
-      return await createCheckpoint(client, actor, input);
+      return await createCheckpoint(client, effectiveActor, input);
     case "create_patrol_template":
-      return await createPatrolTemplate(client, actor, input);
+      return await createPatrolTemplate(client, effectiveActor, input);
     case "create_route":
-      return await createRoute(client, actor, input);
+      return await createRoute(client, effectiveActor, input);
     case "create_schedule":
-      return await createSchedule(client, actor, input);
+      return await createSchedule(client, effectiveActor, input);
     case "create_whatsapp_authorization":
-      return await createWhatsAppAuthorization(client, actor, input);
+      return await createWhatsAppAuthorization(client, effectiveActor, input);
+    case "create_company":
+      return await createCompany(client, actor, input);
+    case "create_site":
+      return await createSite(client, effectiveActor, input);
+    case "list_companies":
+      return await listCompanies(client, actor, input);
+    case "list_sites":
+      return await listSites(client, effectiveActor, input);
     case "list_whatsapp_authorizations":
-      return await listWhatsAppAuthorizations(client, actor, input);
+      return await listWhatsAppAuthorizations(client, effectiveActor, input);
     case "revoke_whatsapp_authorization":
-      return await revokeWhatsAppAuthorization(client, actor, input);
+      return await revokeWhatsAppAuthorization(client, effectiveActor, input);
     default:
       throw new ManagementActionError(`Unsupported management action: ${action}`, 400);
   }

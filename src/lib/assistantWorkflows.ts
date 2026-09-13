@@ -22,6 +22,8 @@ export type WorkflowId =
   | 'create_patrol'
   | 'create_route'
   | 'create_schedule'
+  | 'register_company'
+  | 'register_site'
   | 'authorize_whatsapp'
   | 'revoke_whatsapp_access';
 
@@ -35,6 +37,10 @@ export type WorkflowContext = {
   routes: Array<{ id: string; name: string }>;
   forms: Array<{ id: string; name: string; field_count?: number }>;
   users: Array<{ id: string; name: string; role?: string | null; phone?: string | null }>;
+  companies: Array<{ id: string; name: string; status?: string | null; site_count?: number }>;
+  selectedCompanyId: string | null;
+  selectedCompanyName: string;
+  isPlatformOwner: boolean;
   whatsappAuthorizations: Array<{
     id: string;
     display_name?: string | null;
@@ -108,6 +114,57 @@ const WHATSAPP_ACCESS_OPTIONS: WorkflowOption[] = [
   { id: 'management', label: 'Management Assistant' },
 ];
 
+const STATUS_OPTIONS: WorkflowOption[] = [
+  { id: 'active', label: 'Active' },
+  { id: 'inactive', label: 'Inactive' },
+];
+
+function emailStep(key: string, title: string, prompt: string): StepDef {
+  return {
+    key,
+    title,
+    prompt: () => [prompt],
+    parse: (input) => {
+      const value = input.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return { ok: false, error: 'Send a valid email address.' };
+      return { ok: true, patch: { [key]: value.slice(0, 160) } };
+    },
+  };
+}
+
+function gpsStep(): StepDef {
+  return {
+    key: 'gps',
+    title: 'GPS coordinates',
+    prompt: () => ['GPS latitude/longitude? Send as -24.6479, 25.9147, or reply skip.'],
+    parse: (input) => {
+      const value = input.trim().toLowerCase();
+      if (['skip', 'none', 'later', ''].includes(value)) return { ok: true, patch: { gps_lat: null, gps_lng: null, gps_label: 'Not set' } };
+      const parts = value.split(/[ ,]+/).map(Number).filter((item) => Number.isFinite(item));
+      if (parts.length < 2 || parts[0] < -90 || parts[0] > 90 || parts[1] < -180 || parts[1] > 180) {
+        return { ok: false, error: 'Send coordinates as latitude, longitude, e.g. -24.6479, 25.9147.' };
+      }
+      return { ok: true, patch: { gps_lat: parts[0], gps_lng: parts[1], gps_label: `${parts[0]}, ${parts[1]}` } };
+    },
+  };
+}
+
+function companySelectionStep(): StepDef {
+  return {
+    key: 'company_id',
+    title: 'Company',
+    prompt: (ctx) => ctx.companies.length
+      ? ['Which company should this site belong to?', ...ctx.companies.map((company, index) => `${index + 1}. ${company.name}`)]
+      : ['No companies are loaded. Create or select a company first.'],
+    options: (ctx) => ctx.companies.map((company) => ({ id: company.id, label: company.name })),
+    parse: (input, ctx) => {
+      if (!ctx.companies.length) return { ok: false, error: 'No companies are available for site registration.' };
+      const option = pickOption(input, ctx.companies.map((company) => ({ id: company.id, label: company.name })));
+      if (!option) return { ok: false, error: 'Reply with one of the company numbers listed.' };
+      return { ok: true, patch: { company_id: option.id, company_name: option.label } };
+    },
+  };
+}
 const CHECKLIST_FIELDS = [
   { label: 'Door locked?', field_type: 'yes_no', required: true, sequence_order: 1 },
   { label: 'Lights working?', field_type: 'yes_no', required: true, sequence_order: 2 },
@@ -123,13 +180,14 @@ function pickOption(input: string, options: WorkflowOption[]): WorkflowOption | 
   return options.find((option) => option.label.toLowerCase() === lower || option.id.toLowerCase() === lower) ?? null;
 }
 
-function textStep(key: string, title: string, prompt: string, opts: { min?: number; max?: number } = {}): StepDef {
+function textStep(key: string, title: string, prompt: string, opts: { min?: number; max?: number; required?: boolean } = {}): StepDef {
   return {
     key,
     title,
     prompt: () => [prompt],
     parse: (input) => {
       const value = input.trim();
+      if ((!value || value.toLowerCase() === 'skip') && opts.required === false) return { ok: true, patch: { [key]: '' } };
       if (value.length < (opts.min ?? 2)) return { ok: false, error: `Please provide at least ${opts.min ?? 2} characters.` };
       return { ok: true, patch: { [key]: value.slice(0, opts.max ?? 120) } };
     },
@@ -331,6 +389,77 @@ function checkpointSteps(data: Record<string, unknown>, ctx: WorkflowContext): S
 }
 
 const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
+  register_company: {
+    id: 'register_company',
+    title: 'REGISTER COMPANY',
+    action: 'create_company',
+    steps: () => [
+      textStep('name', 'Company name', 'Company name?', { min: 2, max: 120 }),
+      textStep('domain', 'Domain', 'Domain/reference if used by this company? Reply skip if none.', { required: false, min: 2, max: 120 }),
+      textStep('country', 'Country', 'Country?', { min: 2, max: 80 }),
+      textStep('timezone', 'Timezone', 'Timezone? e.g. Africa/Gaborone', { min: 3, max: 80 }),
+      textStep('contact_name', 'Primary contact', 'Primary contact name?', { min: 2, max: 120 }),
+      textStep('contact_phone', 'Phone', 'Primary contact phone?', { min: 5, max: 40 }),
+      emailStep('contact_email', 'Email', 'Primary contact email?'),
+      choiceStep('status', 'Status', 'Company status?', STATUS_OPTIONS),
+      textStep('notes', 'Notes', 'Optional notes? Reply skip if none.', { required: false, min: 2, max: 500 }),
+    ],
+    summary: (data) => [
+      `Company: ${data.name}`,
+      ...(data.domain ? [`Domain: ${data.domain}`] : []),
+      `Country: ${data.country}`,
+      `Timezone: ${data.timezone}`,
+      `Primary Contact: ${data.contact_name}`,
+      `Phone: ${data.contact_phone}`,
+      `Email: ${data.contact_email}`,
+      `Status: ${data.status_label}`,
+      ...(data.notes ? [`Notes: ${data.notes}`] : []),
+    ],
+    payload: (data) => ({
+      name: data.name,
+      domain: data.domain || null,
+      country: data.country,
+      timezone: data.timezone,
+      contact_name: data.contact_name,
+      contact_phone: data.contact_phone,
+      contact_email: data.contact_email,
+      status: data.status,
+      notes: data.notes || null,
+      created_via: 'web_management_ai',
+    }),
+  },
+
+  register_site: {
+    id: 'register_site',
+    title: 'REGISTER SITE',
+    action: 'create_site',
+    steps: (data, ctx) => [
+      ...(ctx.isPlatformOwner && !ctx.selectedCompanyId && !data.company_id ? [companySelectionStep()] : []),
+      textStep('name', 'Site name', 'Site name?', { min: 2, max: 120 }),
+      textStep('address', 'Physical address', 'Physical address?', { required: false, min: 2, max: 240 }),
+      gpsStep(),
+      choiceStep('status', 'Status', 'Site status?', STATUS_OPTIONS),
+    ],
+    summary: (data, ctx) => {
+      const companyName = String(data.company_name ?? ctx.selectedCompanyName ?? 'Your company');
+      return [
+        `Company: ${companyName}`,
+        `Site: ${data.name}`,
+        ...(data.address ? [`Address: ${data.address}`] : []),
+        `GPS: ${data.gps_label ?? 'Not set'}`,
+        `Status: ${data.status_label}`,
+      ];
+    },
+    payload: (data, ctx) => ({
+      company_id: data.company_id ?? ctx.selectedCompanyId ?? null,
+      name: data.name,
+      address: data.address || null,
+      gps_lat: data.gps_lat ?? null,
+      gps_lng: data.gps_lng ?? null,
+      status: data.status,
+      created_via: 'web_management_ai',
+    }),
+  },
   register_incident: {
     id: 'register_incident',
     title: 'REGISTER INCIDENT',
@@ -711,12 +840,16 @@ function confirmFor(def: WorkflowDef, state: WorkflowState, ctx: WorkflowContext
   };
 }
 
+function needsActiveSite(id: WorkflowId): boolean {
+  return id !== 'register_company' && id !== 'register_site';
+}
+
 export function startWorkflow(id: WorkflowId, ctx: WorkflowContext): WorkflowReply {
   const def = WORKFLOWS[id];
   if (!ctx.canManage) {
     return { kind: 'denied', title: 'MANAGEMENT ACCESS REQUIRED', lines: ['Your account does not have permission for management actions.'] };
   }
-  if (!ctx.siteId) {
+  if (needsActiveSite(state.id) && !ctx.siteId) {
     return { kind: 'denied', title: def.title, lines: ['Choose an active site before creating records.'] };
   }
   const state: WorkflowState = { id, stepIndex: 0, data: {} };
@@ -733,7 +866,7 @@ export function advanceWorkflow(state: WorkflowState, rawInput: string, ctx: Wor
   if (!ctx.canManage) {
     return { kind: 'denied', title: 'MANAGEMENT ACCESS REQUIRED', lines: ['Your account does not have permission for management actions.'] };
   }
-  if (!ctx.siteId) {
+  if (needsActiveSite(state.id) && !ctx.siteId) {
     return { kind: 'denied', title: def.title, lines: ['Choose an active site before creating records.'] };
   }
 

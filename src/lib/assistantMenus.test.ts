@@ -14,10 +14,14 @@ const manager = { canManage: true };
 const guard = { canManage: false };
 
 describe("context-aware numeric menu routing", () => {
-  it("management home 1 opens Operations", () => {
+  it("management home 1 opens Organization Setup", () => {
     const result = resolveAssistantInput(mgmtState(), "1", manager);
-    expect(result).toMatchObject({ kind: "menu", menuKey: "management_operations" });
-    expect(result.state.activeMenu).toBe("management_operations");
+    expect(result).toMatchObject({ kind: "menu", menuKey: "management_organization" });
+    expect(result.state.activeMenu).toBe("management_organization");
+  });
+
+  it("management home 2 opens Operations", () => {
+    expect(resolveAssistantInput(mgmtState(), "2", manager)).toMatchObject({ kind: "menu", menuKey: "management_operations" });
   });
 
   it("operations 2 opens the Patrol Status submenu", () => {
@@ -44,8 +48,8 @@ describe("context-aware numeric menu routing", () => {
   });
 
   it("numeric meaning changes after submenu navigation", () => {
-    const opened = resolveAssistantInput(mgmtState(), "1", manager);
-    const before = resolveAssistantInput(mgmtState(), "2", manager);
+    const opened = resolveAssistantInput(mgmtState(), "2", manager);
+    const before = resolveAssistantInput(mgmtState(), "3", manager);
     const after = resolveAssistantInput(opened.state, "2", manager);
     expect(before).toMatchObject({ kind: "menu", menuKey: "management_devices" });
     expect(after).toMatchObject({ kind: "menu", menuKey: "management_patrol_status" });
@@ -140,13 +144,20 @@ describe("permission-checked mode switching", () => {
     expect(resolveAssistantInput(userState(), "generate report", guard)).toMatchObject({ kind: "denied" });
   });
 
+
+  it("routes Organization Setup actions from the submenu", () => {
+    expect(resolveAssistantInput(mgmtState("management_organization"), "1", manager)).toMatchObject({ action: "register_company" });
+    expect(resolveAssistantInput(mgmtState("management_organization"), "2", manager)).toMatchObject({ action: "register_site" });
+    expect(resolveAssistantInput(mgmtState("management_organization"), "3", manager)).toMatchObject({ action: "view_companies" });
+    expect(resolveAssistantInput(mgmtState("management_organization"), "4", manager)).toMatchObject({ action: "view_sites" });
+  });
   it("opens WhatsApp management from management home", () => {
-    const result = resolveAssistantInput(mgmtState(), "7", manager);
+    const result = resolveAssistantInput(mgmtState(), "8", manager);
     expect(result).toMatchObject({ kind: "menu", menuKey: "management_whatsapp" });
   });
 
   it("returns to the user assistant from management", () => {
-    const result = resolveAssistantInput(mgmtState(), "10", manager);
+    const result = resolveAssistantInput(mgmtState(), "11", manager);
     expect(result.state.mode).toBe("user");
     expect(result.state.activeMenu).toBe(USER_HOME);
   });
@@ -170,7 +181,7 @@ describe("natural language stays independent of numeric routing", () => {
   });
 
   it("keeps the active site across navigation", () => {
-    const opened = resolveAssistantInput(mgmtState(), "1", manager);
+    const opened = resolveAssistantInput(mgmtState(), "2", manager);
     expect(opened.state.activeSiteId).toBe("site-1");
     expect(resolveAssistantInput(opened.state, "2", manager).state.activeSiteId).toBe("site-1");
   });
@@ -218,5 +229,30 @@ describe("patrol output includes canonical times", () => {
     expect(view.scheduledTime).toBe("Unknown");
     expect(view.scheduledWindow).toBeNull();
     expect(view.actualStart).toBeNull();
+  });
+});
+
+describe("Reports category menu", () => {
+  const owner = { canManage: true, isPlatformOwner: true };
+
+  it("shows report categories and hides Device Security Reports from non-owners", () => {
+    expect(resolveAssistantInput(userState(), "5", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
+    expect(resolveAssistantInput(userState("user_reports"), "1", guard)).toMatchObject({ kind: "menu", menuKey: "reports_checkpoint_scans" });
+    expect(resolveAssistantInput(userState("user_reports"), "2", guard)).toMatchObject({ kind: "menu", menuKey: "reports_patrols" });
+    expect(resolveAssistantInput(userState("user_reports"), "10", guard)).toMatchObject({ kind: "menu", menuKey: USER_HOME });
+  });
+
+  it("allows only platform owners into Device Security Reports", () => {
+    expect(resolveAssistantInput(mgmtState("management_reports"), "10", manager)).toMatchObject({ kind: "menu", menuKey: MANAGEMENT_HOME });
+    expect(resolveAssistantInput(mgmtState("management_reports"), "10", owner)).toMatchObject({ kind: "menu", menuKey: "reports_device_security" });
+    expect(resolveAssistantInput(mgmtState(), "device security reports", manager)).toMatchObject({ kind: "denied" });
+    expect(resolveAssistantInput(mgmtState(), "device security reports", owner)).toMatchObject({ kind: "menu", menuKey: "reports_device_security" });
+  });
+
+  it("routes report submenus and back navigation in the current assistant mode", () => {
+    expect(resolveAssistantInput(userState("reports_checkpoint_scans"), "3", guard)).toMatchObject({ action: "report:checkpoint_scans:matrix" });
+    expect(resolveAssistantInput(mgmtState("reports_patrols"), "1", owner)).toMatchObject({ action: "report:patrols:summary" });
+    expect(resolveAssistantInput(userState("reports_checkpoint_scans"), "8", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
+    expect(resolveAssistantInput(mgmtState("reports_checkpoint_scans"), "8", owner)).toMatchObject({ kind: "menu", menuKey: "management_reports" });
   });
 });

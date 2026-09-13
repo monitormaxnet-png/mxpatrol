@@ -1,12 +1,12 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Bot, Lock, MapPin, Send, ShieldCheck, Smartphone, UserCog, X } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, Bell, Bot, CheckCircle2, ChevronDown, Clock3, Cpu, Lock, MapPin, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { usePlatformAdmin } from '@/hooks/usePlatformAdmin';
 import { useSites } from '@/hooks/useSites';
-import { useAlerts, useDevices, useIncidents, useScanLogs, useCheckpoints } from '@/hooks/useDashboardData';
+import { useAlerts, useDevices, useIncidents, useScanLogs, useCheckpoints, useRealtimeSubscriptions } from '@/hooks/useDashboardData';
 import { useReportJobs } from '@/hooks/useReports';
 import { supabase } from '@/integrations/supabase/client';
 import { LiveSecureDeviceManagementPanel } from '@/components/command-center/LiveSecureDeviceManagementPanel';
@@ -39,6 +39,9 @@ import {
   type WorkflowReply,
   type WorkflowState,
 } from '@/lib/assistantWorkflows';
+import { reportMenuItems } from '@/lib/assistantReportDefinitions';
+
+const LiveMap = lazy(() => import('@/components/dashboard/LiveMap'));
 
 type Message = { id: number; from: 'assistant' | 'user'; title?: string; body: ReactNode };
 type SessionRow = AssistantPatrolRow & { patrol_routes?: { name: string } | null; patrol_templates?: { name: string } | null; sites?: { name: string } | null };
@@ -51,6 +54,13 @@ type MissedCheckpointRow = {
   checkpoints?: { name: string } | null;
   patrol_sessions?: { id: string; status: string | null; scheduled_start: string | null; site_id: string | null; patrol_routes?: { name: string } | null; sites?: { name: string } | null } | null;
 };
+
+type DashboardDevice = { id: string; status?: string | null; device_identifier?: string | null; device_name?: string | null; last_seen_at?: string | null; site_id?: string | null };
+type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | null; title?: string | null; message?: string | null; created_at?: string | null; site_id?: string | null };
+type DashboardIncident = { id: string; resolved?: boolean | null; severity?: string | null; title?: string | null; incident_type?: string | null; created_at?: string | null; site_id?: string | null };
+type DashboardScan = { id: string; scanned_at?: string | null; tag_status?: string | null; device_identifier?: string | null; checkpoints?: { name?: string | null } | null; guards?: { full_name?: string | null } | null };
+type AssistantCompany = { id: string; name: string; status?: string | null; site_count?: number; reference?: string | null };
+type AssistantSite = { id: string; company_id: string; company_name?: string | null; name: string; address?: string | null; gps_lat?: number | null; gps_lng?: number | null; status?: string | null; created_at?: string | null };
 
 const PERIODS: Record<string, { label: string; from: () => Date; to: () => Date; range: string }> = {
   today: { label: 'Today', range: 'today', from: () => startOfDay(0), to: () => new Date() },
@@ -75,16 +85,44 @@ export default function CommandCenter() {
   const { isPlatformOwner } = usePlatformAdmin();
   const { data: sites = [] } = useSites();
   const queryClient = useQueryClient();
+  useRealtimeSubscriptions();
   const [state, setState] = useState<RouterState>({ mode: 'user', activeMenu: USER_HOME, activeSiteId: null });
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inlinePanel, setInlinePanel] = useState<ReactNode | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<null | { label: string; run: () => Promise<void> }>(null);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
 
-  const activeSite = sites.find((site) => site.id === state.activeSiteId) ?? sites[0] ?? null;
+  const platformCompanies = useQuery({
+    queryKey: ['assistant_platform_companies', isPlatformOwner],
+    enabled: !!user && isPlatformOwner,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('management-actions', { body: { action: 'list_companies', input: {} } });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return (((data as any)?.record?.rows ?? []) as AssistantCompany[]);
+    },
+  });
+
+  const selectedCompany = (platformCompanies.data ?? []).find((company) => company.id === selectedCompanyId) ?? null;
+  const selectedCompanyName = selectedCompany?.name ?? (isPlatformOwner ? 'No company selected' : 'Your company');
+
+  const platformSites = useQuery({
+    queryKey: ['assistant_company_sites', selectedCompanyId],
+    enabled: !!user && canManage && isPlatformOwner && !!selectedCompanyId,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('management-actions', { body: { action: 'list_sites', input: { company_id: selectedCompanyId } } });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return (((data as any)?.record?.rows ?? []) as AssistantSite[]);
+    },
+  });
+
+  const availableSites = (isPlatformOwner ? (platformSites.data ?? []) : sites) as AssistantSite[];
+  const activeSite = availableSites.find((site) => site.id === state.activeSiteId) ?? availableSites[0] ?? null;
   const selectedSiteId = activeSite?.id ?? null;
-  const selectedSite = activeSite?.name ?? 'No site assigned';
+  const selectedSite = activeSite?.name ?? (isPlatformOwner && !selectedCompanyId ? 'Select company first' : 'No site assigned');
   const mode: AssistantMode = state.mode;
 
   const devices = useDevices(selectedSiteId ?? 'all');
@@ -93,6 +131,20 @@ export default function CommandCenter() {
   const scans = useScanLogs(selectedSiteId ?? 'all');
   const checkpoints = useCheckpoints(selectedSiteId ?? 'all');
   const reportJobs = useReportJobs();
+  const scanCountToday = useQuery({
+    queryKey: ['dashboard_scan_count_today', selectedSiteId],
+    enabled: !!user,
+    queryFn: async () => {
+      let query = supabase
+        .from('scan_logs')
+        .select('id', { count: 'exact', head: true })
+        .gte('scanned_at', startOfDay(0).toISOString());
+      if (selectedSiteId) query = query.eq('site_id', selectedSiteId);
+      const { count, error } = await query;
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
 
   const configOptions = useQuery({
     queryKey: ['assistant_workflow_options', selectedSiteId],
@@ -163,11 +215,11 @@ export default function CommandCenter() {
     },
   });
 
-  const siteDevices = devices.data ?? [];
-  const siteAlerts = (alerts.data ?? []).filter((row: any) => !selectedSiteId || row.site_id === selectedSiteId);
-  const siteIncidents = (incidents.data ?? []).filter((row: any) => !selectedSiteId || row.site_id === selectedSiteId);
+  const siteDevices = (devices.data ?? []) as DashboardDevice[];
+  const siteAlerts = ((alerts.data ?? []) as DashboardAlert[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
+  const siteIncidents = ((incidents.data ?? []) as DashboardIncident[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
   const sitePatrols = patrols.data ?? [];
-  const siteScans = scans.data ?? [];
+  const siteScans = (scans.data ?? []) as DashboardScan[];
   const siteReportJobs = (reportJobs.data ?? []).filter((job) => !selectedSiteId || job.site_id === selectedSiteId || job.site_id === null);
 
   const addAssistant = (title: string, body: ReactNode) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'assistant', title, body }]);
@@ -187,8 +239,12 @@ export default function CommandCenter() {
       }))
       .filter((form: { field_count: number }) => form.field_count > 0),
     users: configOptions.data?.users ?? [],
+    companies: platformCompanies.data ?? [],
+    selectedCompanyId: isPlatformOwner ? selectedCompanyId : null,
+    selectedCompanyName,
+    isPlatformOwner,
     whatsappAuthorizations: whatsappAuthorizations.data ?? [],
-  }), [selectedSiteId, selectedSite, canManage, checkpoints.data, configOptions.data, whatsappAuthorizations.data]);
+  }), [selectedSiteId, selectedSite, canManage, checkpoints.data, configOptions.data, whatsappAuthorizations.data, platformCompanies.data, selectedCompanyId, selectedCompanyName, isPlatformOwner]);
 
   /** Runs the canonical management service shared with the WhatsApp Management AI. */
   const runManagementAction = async (payload: { action: string; input: Record<string, unknown> }) => {
@@ -210,6 +266,9 @@ export default function CommandCenter() {
       queryClient.invalidateQueries({ queryKey: ['assistant_config'] }),
       queryClient.invalidateQueries({ queryKey: ['assistant_workflow_options'] }),
       queryClient.invalidateQueries({ queryKey: ['assistant_whatsapp_authorizations'] }),
+      queryClient.invalidateQueries({ queryKey: ['assistant_platform_companies'] }),
+      queryClient.invalidateQueries({ queryKey: ['assistant_company_sites'] }),
+      queryClient.invalidateQueries({ queryKey: ['sites'] }),
     ]);
     return data as { summary: string; duplicate: boolean; record: Record<string, unknown> };
   };
@@ -246,7 +305,7 @@ export default function CommandCenter() {
     if (key === 'user_patrol_status' || key === 'management_patrol_status') {
       return addAssistant(`PATROL STATUS - ${selectedSite}`, <PatrolStatusOverview site={selectedSite} rows={sitePatrols} node={node} loading={patrols.isLoading} />);
     }
-    addAssistant(node.title, <MenuView site={selectedSite} node={node} />);
+    addAssistant(node.title, <MenuView site={selectedSite} node={node} isPlatformOwner={isPlatformOwner} />);
   };
 
 
@@ -280,7 +339,7 @@ export default function CommandCenter() {
   };
 
   const runAction = (action: string) => {
-    if (action === 'change_site') return addAssistant('CHANGE SITE', <SitePicker sites={sites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
+    if (action === 'change_site') return addAssistant('CHANGE SITE', <SitePicker sites={availableSites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
     if (action === 'live') return addAssistant('LIVE NOW - ' + selectedSite, <Summary devices={siteDevices} alerts={siteAlerts} incidents={siteIncidents} patrols={sitePatrols} scans={siteScans} />);
     if (action === 'attention') return addAssistant('ATTENTION - ' + selectedSite, <Attention devices={siteDevices} alerts={siteAlerts} patrols={sitePatrols} />);
     if (action === 'devices') return addAssistant('DEVICES - ' + selectedSite, <DeviceList devices={siteDevices} />);
@@ -297,9 +356,19 @@ export default function CommandCenter() {
     if (action === 'late_patrols') return addAssistant('LATE / DELAYED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'late')} variant='late' />);
     if (action === 'missed_patrols') return addAssistant('MISSED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'missed')} variant='missed' />);
     if (action === 'missed_checkpoints') return addAssistant('MISSED CHECKPOINTS - ' + selectedSite, <MissedCheckpointList rows={missedCheckpoints.data ?? []} loading={missedCheckpoints.isLoading} />);
+    if (action === 'view_companies') {
+      if (!isPlatformOwner) return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can view all companies.</p>);
+      return addAssistant('COMPANIES', <CompanyList rows={platformCompanies.data ?? []} loading={platformCompanies.isLoading} selectedId={selectedCompanyId} onSelect={(company) => { setSelectedCompanyId(company.id); setState((prev) => ({ ...prev, activeSiteId: null })); addAssistant('COMPANY CONTEXT UPDATED', <p>Now managing <b>{company.name}</b>. Choose <b>View Sites</b> or <b>Register Site</b> next.</p>); }} />);
+    }
+    if (action === 'view_sites') return addAssistant('SITES - ' + selectedCompanyName, <SitePicker sites={availableSites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
     if (action === 'view_whatsapp_numbers') return addAssistant('WHATSAPP AUTHORIZED NUMBERS - ' + selectedSite, <WhatsAppAuthorizationList rows={whatsappAuthorizations.data ?? []} loading={whatsappAuthorizations.isLoading} />);
     if (action === 'routes' || action === 'schedules') return addAssistant(action === 'routes' ? 'PATROL ROUTES' : 'PATROL SCHEDULES', <ConfigList kind={action} siteId={selectedSiteId} />);
-    if (action.startsWith('report:')) return runReportPeriod(action.slice(7) as keyof typeof PERIODS);
+    if (action.startsWith('report:')) {
+      const period = action.slice(7) as keyof typeof PERIODS;
+      if (PERIODS[period]) return runReportPeriod(period);
+      if (action.startsWith('report:device_security:') && !isPlatformOwner) return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can access Device Security Reports.</p>);
+      return addAssistant(reportTitle(action) + ' - ' + selectedSite, <AssistantReportPanel action={action} site={selectedSite} scans={siteScans} patrols={sitePatrols} alerts={siteAlerts} incidents={siteIncidents} devices={siteDevices} checkpoints={(checkpoints.data ?? []) as any[]} routes={configOptions.data?.routes ?? []} forms={configOptions.data?.forms ?? []} loading={scans.isLoading || patrols.isLoading || devices.isLoading || alerts.isLoading || incidents.isLoading} />);
+    }
     if (action === 'saved_reports') return addAssistant('SAVED REPORTS - ' + selectedSite, <SavedReports jobs={siteReportJobs} loading={reportJobs.isLoading} />);
     if (action === 'generate_report') {
       setPendingConfirm({
@@ -356,7 +425,7 @@ export default function CommandCenter() {
     }
 
 
-    const result = resolveAssistantInput(state, text, { canManage });
+    const result = resolveAssistantInput(state, text, { canManage, isPlatformOwner });
     setState(result.state);
 
     if (result.kind === 'menu') {
@@ -367,17 +436,263 @@ export default function CommandCenter() {
       return addAssistant('MANAGEMENT ACCESS REQUIRED', <p>Your account ({role}) does not have permission for management actions.</p>);
     }
     if (result.kind === 'unknown') {
-      return addAssistant(menuNode(result.state.activeMenu).title, <div><p>I didn't understand that. Reply with a number from this menu.</p><MenuView site={selectedSite} node={menuNode(result.state.activeMenu)} /></div>);
+      return addAssistant(menuNode(result.state.activeMenu).title, <div><p>I didn't understand that. Reply with a number from this menu.</p><MenuView site={selectedSite} node={menuNode(result.state.activeMenu)} isPlatformOwner={isPlatformOwner} /></div>);
     }
     return runAction(result.action);
   };
 
   const switchMode = () => submit(mode === 'management' ? 'user' : 'management');
   const homeNode = menuNode(homeMenu(mode));
+  const onlineDevices = siteDevices.filter((device) => device.status === 'online').length;
+  const activePatrolCount = sitePatrols.filter((row) => ['active', 'in_progress'].includes(String(row.status))).length;
+  const sosAlertCount = siteAlerts.filter((row) => row.type === 'panic_button' && !row.is_read).length;
+  const openIncidentCount = siteIncidents.filter((row) => !row.resolved).length;
+  const highPriorityIncidentCount = siteIncidents.filter((row) => ['high', 'critical'].includes(String(row.severity))).length;
+  const loadedScansToday = siteScans.filter((row) => new Date(row.scanned_at ?? 0) >= startOfDay(0)).length;
+  const scanCountValue = scanCountToday.data ?? loadedScansToday;
+  const patrolCounts = patrolStatusCounts(sitePatrols);
+  const totalPatrols = Object.values(patrolCounts).reduce((total, value) => total + value, 0) || sitePatrols.length;
+  const activityBuckets = Array.from({ length: 12 }, (_, index) => {
+    const hour = index * 2;
+    return {
+      label: String(hour).padStart(2, '0'),
+      patrols: siteScans.filter((row) => new Date(row.scanned_at ?? 0).getHours() >= hour && new Date(row.scanned_at ?? 0).getHours() < hour + 2).length,
+      alerts: siteAlerts.filter((row) => new Date(row.created_at ?? 0).getHours() >= hour && new Date(row.created_at ?? 0).getHours() < hour + 2).length,
+    };
+  });
+  const topPatrols = (sitePatrols.filter((row) => ['active', 'in_progress'].includes(String(row.status))).length
+    ? sitePatrols.filter((row) => ['active', 'in_progress'].includes(String(row.status)))
+    : sitePatrols).slice(0, 3);
+  const recentIncidents = siteIncidents.slice(0, 3);
 
-  return <div className='min-h-screen bg-[#030811] text-white'><div className='mx-auto flex min-h-screen max-w-6xl flex-col px-3 py-3 sm:px-4'><header className='mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-400/20 bg-slate-950/80 px-4 py-3'><TTechMxPatrolLogo variant='header' priority className='w-44' /><div className='flex flex-wrap items-center gap-2'><label className='flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-100'><MapPin className='h-4 w-4' /><select value={selectedSiteId ?? ''} onChange={(event) => setState((prev) => ({ ...prev, activeSiteId: event.target.value }))} className='bg-transparent font-semibold outline-none'>{sites.map((site) => <option key={site.id} value={site.id} className='bg-slate-950'>{site.name}</option>)}</select></label><span className='inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 text-sm font-semibold text-emerald-200'><span className='h-2 w-2 rounded-full bg-emerald-400' /> Online</span><span className='inline-flex h-10 items-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 text-sm font-semibold text-cyan-100'>{mode === 'management' ? <UserCog className='h-4 w-4' /> : <Bot className='h-4 w-4' />}{mode === 'management' ? 'Management' : 'User AI'}</span></div></header><main className='flex min-h-0 flex-1 flex-col rounded-2xl border border-cyan-400/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_30%),linear-gradient(145deg,rgba(2,6,23,0.96),rgba(3,12,24,0.98))]'><section className='border-b border-cyan-400/15 p-4'><p className='text-xs font-black uppercase tracking-[0.16em] text-emerald-300'>{mode === 'management' ? 'Management Web AI Assistant' : 'User Web AI Assistant'}</p><h1 className='mt-2 text-2xl font-black'>{mode === 'management' ? 'Authorized management access' : 'Ask MX Patrol what you need'}</h1><p className='mt-1 text-sm text-slate-400'>Signed in as {user?.email ?? role}. Active site: {selectedSite}.</p></section><section className='grid flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]'><div className='flex min-h-[34rem] flex-col rounded-2xl border border-white/10 bg-slate-950/60'><div className='flex-1 space-y-3 overflow-y-auto p-4'><AssistantBubble title={homeNode.title}><MenuView site={selectedSite} node={homeNode} /></AssistantBubble>{messages.map((message) => message.from === 'user' ? <UserBubble key={message.id}>{message.body}</UserBubble> : <AssistantBubble key={message.id} title={message.title ?? 'MX PATROL'}>{message.body}</AssistantBubble>)}{pendingConfirm ? <div className='rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-100'><p className='font-bold'>{pendingConfirm.label}</p><div className='mt-2 flex gap-2'><button type='button' onClick={() => submit('confirm')} className='rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 font-semibold text-emerald-200'>Confirm</button><button type='button' onClick={() => submit('cancel')} className='rounded-xl border border-white/10 px-3 py-2 font-semibold text-slate-300'>Cancel</button></div></div> : null}{inlinePanel ? <div className='rounded-2xl border border-emerald-400/25'>{inlinePanel}</div> : null}</div><div className='border-t border-white/10 p-3'><div className='flex items-center gap-3'><input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit(); }} className='h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-4 text-sm text-white outline-none placeholder:text-slate-500' placeholder={mode === 'management' ? 'Type a number or management command...' : 'Type a number or ask MX Patrol...'} /><button onClick={() => submit()} className='flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]' aria-label='Send'><Send className='h-5 w-5' /></button></div><p className='mt-2 text-center text-[11px] text-slate-500'>Reply with the number shown in the current menu. Type back, menu or cancel any time.</p></div></div><aside className='space-y-3'>{mode === 'management' || canManage ? <Shortcut onClick={switchMode} icon={mode === 'management' ? Bot : Lock} label={mode === 'management' ? 'User Assistant' : 'Management'} /> : null}<Shortcut onClick={() => submit('live now')} icon={ShieldCheck} label='Live Now' /><Shortcut onClick={() => submit('which devices are offline')} icon={Smartphone} label='Offline Devices' /><Shortcut onClick={() => { setInlinePanel(null); submit('menu'); }} icon={X} label='Close Inline Panel' /><div className='rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-sm text-slate-300'><p className='font-black uppercase tracking-[0.12em] text-emerald-300'>Hidden system</p><p className='mt-2 leading-6'>Dashboard, map, patrols, routes, schedules and admin tools stay behind assistant actions.</p></div></aside></section></main></div></div>;
+  return (
+    <div className='min-h-screen overflow-x-hidden bg-[#030811] text-white'>
+      <div className='mx-auto flex min-h-screen max-w-[120rem] flex-col gap-3 px-3 py-3 sm:px-4'>
+        <header className='grid gap-3 rounded-lg border border-cyan-400/20 bg-slate-950/85 p-3 shadow-[0_0_35px_rgba(14,165,233,0.08)] lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-center'>
+          <div className='flex min-h-14 items-center justify-center rounded-md bg-black/50 px-3'>
+            <TTechMxPatrolLogo variant='header' priority className='w-44' />
+          </div>
+          <div className='grid gap-3 lg:grid-cols-[minmax(15rem,1fr)_minmax(13rem,0.8fr)_auto_auto] lg:items-center'>
+            <label className='flex min-w-0 items-center gap-3 rounded-md border border-cyan-400/20 bg-slate-950/70 px-3 py-2 text-sm text-slate-300'>
+              <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-400/25 text-cyan-300'><MapPin className='h-4 w-4' /></span>
+              <span className='min-w-0 flex-1'>
+                <span className='block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500'>Active Site</span>
+                <select value={selectedSiteId ?? ''} onChange={(event) => setState((prev) => ({ ...prev, activeSiteId: event.target.value }))} className='w-full bg-transparent text-base font-bold text-white outline-none'>
+                  {availableSites.map((site) => <option key={site.id} value={site.id} className='bg-slate-950'>{site.name}</option>)}
+                </select>
+              </span>
+              <ChevronDown className='h-4 w-4 text-slate-500' />
+            </label>
+            <div className='flex items-center gap-3 rounded-md border border-emerald-400/20 bg-slate-950/70 px-4 py-3'>
+              <span className='h-3 w-3 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.8)]' />
+              <span><span className='block text-sm font-black uppercase text-emerald-300'>Online</span><span className='text-xs text-slate-400'>All systems operational</span></span>
+            </div>
+            <div className='flex items-center gap-3 rounded-md border border-white/10 bg-slate-950/70 px-4 py-3'>
+              <Clock3 className='h-5 w-5 text-cyan-300' />
+              <span><span className='block font-mono text-sm font-bold'>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span className='text-xs text-slate-400'>{new Date().toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span></span>
+            </div>
+            <div className='flex items-center justify-between gap-3 rounded-md border border-white/10 bg-slate-950/70 px-4 py-3'>
+              <Bell className='h-5 w-5 text-slate-300' />
+              <span className='h-9 w-9 rounded-full border border-emerald-400/50 text-center text-sm font-black leading-9 text-emerald-300'>{(user?.email ?? role ?? 'AI').slice(0, 2).toUpperCase()}</span>
+            </div>
+          </div>
+        </header>
+
+        <section className='grid gap-3 md:grid-cols-2 xl:grid-cols-5'>
+          <KpiCard title='Active Patrols' value={activePatrolCount} total={totalPatrols || undefined} note='Live sessions' icon={Users} tone='emerald' />
+          <KpiCard title='Devices Online' value={onlineDevices} total={siteDevices.length || undefined} note='Reporting devices' icon={Smartphone} tone='cyan' />
+          <KpiCard title='SOS Alerts' value={sosAlertCount} note='Active alerts' icon={ShieldAlert} tone='rose' />
+          <KpiCard title='Incidents' value={openIncidentCount} note={`${highPriorityIncidentCount} high priority`} icon={Shield} tone='amber' />
+          <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${siteScans.length} recent loaded`} icon={ScanLine} tone='blue' />
+        </section>
+
+        <main className='grid flex-1 gap-3 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
+          <div className='flex min-h-0 flex-col gap-3'>
+            <DashboardPanel title='Patrol Status' icon={ShieldCheck} action='Today'>
+              <PatrolStatusDonut counts={patrolCounts} total={totalPatrols} />
+            </DashboardPanel>
+            <DashboardPanel title='Device Feedback' icon={Cpu} action='View all' className='flex-1'>
+              <DeviceFeedbackRows devices={siteDevices} scans={siteScans} alerts={siteAlerts} />
+            </DashboardPanel>
+          </div>
+
+          <DashboardPanel title={`Live Map - ${selectedSite}`} icon={MapPin} action='Map Controls' className='min-h-[34rem] overflow-hidden' bodyClassName='min-h-[32rem] p-0'>
+            <Suspense fallback={<div className='flex h-full min-h-[32rem] items-center justify-center text-sm text-slate-400'>Loading live map...</div>}>
+              <LiveMap operationsMode resizeSignal={messages.length} />
+            </Suspense>
+          </DashboardPanel>
+
+          <section className='flex min-h-[34rem] flex-col overflow-hidden rounded-lg border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_35px_rgba(14,165,233,0.08)]'>
+            <div className='flex items-center justify-between border-b border-white/10 px-4 py-3'>
+              <h2 className='flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-100'><Bot className='h-4 w-4 text-cyan-300' /> Web AI Assistant</h2>
+              <span className='rounded-md border border-cyan-400/25 px-2 py-1 text-xs font-bold text-cyan-200'>{mode === 'management' ? 'Management AI' : 'User AI'}</span>
+            </div>
+            <div className='flex min-h-0 flex-1 flex-col'>
+              <div className='flex-1 space-y-3 overflow-y-auto p-4'>
+                <AssistantBubble title={homeNode.title}><MenuView site={selectedSite} node={homeNode} isPlatformOwner={isPlatformOwner} /></AssistantBubble>
+                {messages.map((message) => message.from === 'user' ? <UserBubble key={message.id}>{message.body}</UserBubble> : <AssistantBubble key={message.id} title={message.title ?? 'MX PATROL'}>{message.body}</AssistantBubble>)}
+                {pendingConfirm ? <div className='rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-100'><p className='font-bold'>{pendingConfirm.label}</p><div className='mt-2 flex gap-2'><button type='button' onClick={() => submit('confirm')} className='rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 font-semibold text-emerald-200'>Confirm</button><button type='button' onClick={() => submit('cancel')} className='rounded-xl border border-white/10 px-3 py-2 font-semibold text-slate-300'>Cancel</button></div></div> : null}
+                {inlinePanel ? <div className='rounded-2xl border border-emerald-400/25'>{inlinePanel}</div> : null}
+              </div>
+              <div className='border-t border-white/10 p-3'>
+                <div className='flex items-center gap-3'>
+                  <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit(); }} className='h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-4 text-sm text-white outline-none placeholder:text-slate-500' placeholder={mode === 'management' ? 'Type a number or management command...' : 'Type a number or ask MX Patrol...'} />
+                  <button onClick={() => submit()} className='flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]' aria-label='Send'><Send className='h-5 w-5' /></button>
+                </div>
+                <p className='mt-2 text-center text-[11px] text-slate-500'>Reply with the number shown in the current menu. Type back, menu or cancel any time.</p>
+              </div>
+              <div className='grid gap-2 border-t border-white/10 p-3 sm:grid-cols-2'>
+                {mode === 'management' || canManage ? <Shortcut onClick={switchMode} icon={mode === 'management' ? Bot : Lock} label={mode === 'management' ? 'User Assistant' : 'Management'} /> : null}
+                <Shortcut onClick={() => submit('live now')} icon={ShieldCheck} label='Live Now' />
+                <Shortcut onClick={() => submit('which devices are offline')} icon={Smartphone} label='Offline Devices' />
+                <Shortcut onClick={() => { setInlinePanel(null); submit('menu'); }} icon={X} label='Close Inline Panel' />
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <section className='grid gap-3 xl:grid-cols-[1.15fr_0.85fr_0.85fr]'>
+          <DashboardPanel title="Today's Activity Timeline" icon={Activity}>
+            <ActivityTimeline buckets={activityBuckets} />
+          </DashboardPanel>
+          <DashboardPanel title='Top Active Patrols' icon={Route} action='View all'>
+            <ActivePatrolRows rows={topPatrols} />
+          </DashboardPanel>
+          <DashboardPanel title='Recent Incidents' icon={AlertTriangle} action='View all'>
+            <RecentIncidentRows rows={recentIncidents} />
+          </DashboardPanel>
+        </section>
+      </div>
+    </div>
+  );
+}
+type Tone = 'emerald' | 'cyan' | 'rose' | 'amber' | 'blue';
+
+const toneClasses: Record<Tone, { border: string; text: string; bg: string; glow: string }> = {
+  emerald: { border: 'border-emerald-400/25', text: 'text-emerald-300', bg: 'bg-emerald-400/10', glow: 'shadow-[0_0_28px_rgba(16,185,129,0.16)]' },
+  cyan: { border: 'border-cyan-400/25', text: 'text-cyan-300', bg: 'bg-cyan-400/10', glow: 'shadow-[0_0_28px_rgba(34,211,238,0.14)]' },
+  rose: { border: 'border-rose-500/30', text: 'text-rose-300', bg: 'bg-rose-500/10', glow: 'shadow-[0_0_28px_rgba(244,63,94,0.14)]' },
+  amber: { border: 'border-amber-400/25', text: 'text-amber-300', bg: 'bg-amber-400/10', glow: 'shadow-[0_0_28px_rgba(245,158,11,0.14)]' },
+  blue: { border: 'border-blue-400/25', text: 'text-blue-300', bg: 'bg-blue-400/10', glow: 'shadow-[0_0_28px_rgba(96,165,250,0.14)]' },
+};
+
+function DashboardPanel({ title, icon: Icon, action, children, className = '', bodyClassName = '' }: { title: string; icon: typeof Bot; action?: string; children: ReactNode; className?: string; bodyClassName?: string }) {
+  return (
+    <section className={`flex flex-col rounded-lg border border-cyan-400/15 bg-slate-950/75 shadow-[0_0_30px_rgba(14,165,233,0.07)] ${className}`}>
+      <div className='flex min-h-12 items-center justify-between border-b border-white/10 px-4 py-3'>
+        <h2 className='flex min-w-0 items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-100'><Icon className='h-4 w-4 shrink-0 text-cyan-300' /><span className='truncate'>{title}</span></h2>
+        {action ? <span className='shrink-0 rounded-md border border-white/10 px-2 py-1 text-xs text-slate-400'>{action}</span> : null}
+      </div>
+      <div className={`flex-1 p-4 ${bodyClassName}`}>{children}</div>
+    </section>
+  );
 }
 
+function KpiCard({ title, value, total, note, icon: Icon, tone }: { title: string; value: number; total?: number; note: string; icon: typeof Bot; tone: Tone }) {
+  const classes = toneClasses[tone];
+  return (
+    <article className={`rounded-lg border ${classes.border} bg-slate-950/75 p-5 ${classes.glow}`}>
+      <div className='flex items-start justify-between gap-4'>
+        <div className='min-w-0'>
+          <p className={`text-sm font-black uppercase tracking-[0.08em] ${classes.text}`}>{title}</p>
+          <p className='mt-3 flex items-end gap-2 font-mono'><span className='text-4xl font-black leading-none text-white'>{value}</span>{total ? <span className='pb-1 text-lg font-bold text-slate-400'>/ {total}</span> : null}</p>
+          <p className='mt-2 text-xs text-slate-400'>{note}</p>
+        </div>
+        <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full border ${classes.border} ${classes.bg}`}><Icon className={`h-7 w-7 ${classes.text}`} /></span>
+      </div>
+    </article>
+  );
+}
+
+function PatrolStatusDonut({ counts, total }: { counts: Record<PatrolStatusGroup, number>; total: number }) {
+  const safeTotal = Math.max(total, 1);
+  const completed = Math.round((counts.completed / safeTotal) * 100);
+  const incomplete = Math.round((counts.incomplete / safeTotal) * 100);
+  const late = Math.round((counts.late / safeTotal) * 100);
+  const missed = Math.max(0, 100 - completed - incomplete - late);
+  const gradient = `conic-gradient(#22c55e 0 ${completed}%, #60a5fa ${completed}% ${completed + incomplete}%, #fbbf24 ${completed + incomplete}% ${completed + incomplete + late}%, #ef4444 ${completed + incomplete + late}% 100%)`;
+  const rows: Array<[PatrolStatusGroup, string, string, number]> = [
+    ['completed', 'Completed', 'bg-emerald-400', completed],
+    ['incomplete', 'Incomplete', 'bg-blue-400', incomplete],
+    ['late', 'Late / Delayed', 'bg-amber-400', late],
+    ['missed', 'Missed', 'bg-rose-400', missed],
+  ];
+  return (
+    <div className='grid gap-5 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center xl:grid-cols-1 2xl:grid-cols-[9rem_minmax(0,1fr)]'>
+      <div className='relative mx-auto h-36 w-36 rounded-full p-4' style={{ background: gradient }}>
+        <div className='flex h-full w-full flex-col items-center justify-center rounded-full bg-slate-950 text-center'>
+          <span className='font-mono text-3xl font-black text-white'>{total}</span>
+          <span className='text-xs text-slate-400'>Total Patrols</span>
+        </div>
+      </div>
+      <div className='space-y-3'>
+        {rows.map(([key, label, color, percent]) => (
+          <div key={key} className='grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm'>
+            <span className='flex min-w-0 items-center gap-2 text-slate-200'><span className={`h-2.5 w-2.5 rounded-full ${color}`} />{label}</span>
+            <span className='font-mono font-bold text-white'>{counts[key]}</span>
+            <span className='w-9 text-right font-mono text-slate-500'>{percent}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DeviceFeedbackRows({ devices, scans, alerts }: { devices: DashboardDevice[]; scans: DashboardScan[]; alerts: DashboardAlert[] }) {
+  const rows = [
+    ...alerts.filter((alert) => alert.type === 'panic_button').slice(0, 2).map((alert) => ({ id: alert.id, title: alert.title ?? 'SOS Alert', detail: alert.message ?? 'Panic button activated', time: assistantTime(alert.created_at), tone: 'rose' as Tone, icon: ShieldAlert })),
+    ...devices.filter((device) => device.status === 'offline').slice(0, 3).map((device) => ({ id: device.id, title: device.device_identifier ?? device.device_name ?? 'Offline device', detail: 'Device offline', time: assistantTime(device.last_seen_at), tone: 'amber' as Tone, icon: AlertTriangle })),
+    ...scans.slice(0, 4).map((scan) => ({ id: scan.id, title: scan.checkpoints?.name ?? scan.device_identifier ?? 'Checkpoint scan', detail: scan.guards?.full_name ?? formatStatusText(scan.tag_status ?? 'Scan received'), time: assistantTime(scan.scanned_at), tone: 'emerald' as Tone, icon: CheckCircle2 })),
+  ].slice(0, 5);
+  if (!rows.length) return <p className='text-sm text-slate-400'>No device feedback yet.</p>;
+  return <div className='space-y-3'>{rows.map((row) => <FeedbackRow key={row.id} row={row} />)}</div>;
+}
+
+function FeedbackRow({ row }: { row: { title: string; detail: string; time: string | null; tone: Tone; icon: typeof Bot } }) {
+  const classes = toneClasses[row.tone];
+  const Icon = row.icon;
+  return (
+    <div className='grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/10 pb-3 last:border-b-0 last:pb-0'>
+      <span className={`flex h-8 w-8 items-center justify-center rounded-md border ${classes.border} ${classes.bg}`}><Icon className={`h-4 w-4 ${classes.text}`} /></span>
+      <span className='min-w-0'><span className={`block truncate text-sm font-bold ${classes.text}`}>{row.title}</span><span className='block truncate text-xs text-slate-400'>{row.detail}</span></span>
+      <span className='font-mono text-xs text-slate-500'>{row.time ?? '--:--'}</span>
+    </div>
+  );
+}
+
+function ActivityTimeline({ buckets }: { buckets: Array<{ label: string; patrols: number; alerts: number }> }) {
+  const max = Math.max(1, ...buckets.map((bucket) => bucket.patrols + bucket.alerts));
+  return (
+    <div>
+      <div className='flex h-28 items-end gap-2'>
+        {buckets.map((bucket) => (
+          <div key={bucket.label} className='flex flex-1 flex-col items-center gap-1'>
+            <div className='flex h-24 w-full items-end justify-center gap-1'>
+              <span className='w-2 rounded-t bg-emerald-400' style={{ height: `${Math.max(8, (bucket.patrols / max) * 96)}px` }} />
+              <span className='w-2 rounded-t bg-rose-400' style={{ height: `${Math.max(bucket.alerts ? 8 : 0, (bucket.alerts / max) * 96)}px` }} />
+            </div>
+            <span className='font-mono text-[10px] text-slate-500'>{bucket.label}:00</span>
+          </div>
+        ))}
+      </div>
+      <div className='mt-4 flex gap-5 text-xs text-slate-400'><span className='flex items-center gap-2'><span className='h-2 w-2 rounded-full bg-emerald-400' />Patrols</span><span className='flex items-center gap-2'><span className='h-2 w-2 rounded-full bg-rose-400' />Alerts</span></div>
+    </div>
+  );
+}
+
+function ActivePatrolRows({ rows }: { rows: AssistantPatrolRow[] }) {
+  if (!rows.length) return <p className='text-sm text-slate-400'>No active patrols for this site.</p>;
+  return <div className='space-y-3'>{rows.map((row, index) => { const view = describePatrol(row); return <div key={row.id} className='grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/10 pb-3 last:border-b-0 last:pb-0'><span className='flex h-7 w-7 items-center justify-center rounded-md border border-cyan-400/30 font-mono text-sm font-black text-cyan-300'>{index + 1}</span><span className='min-w-0'><span className='block truncate text-sm font-bold text-white'>{view.patrol}</span><span className='block truncate text-xs text-slate-400'>{view.site}</span></span><span className='text-xs font-bold text-emerald-300'>{view.status}</span></div>; })}</div>;
+}
+
+function RecentIncidentRows({ rows }: { rows: DashboardIncident[] }) {
+  if (!rows.length) return <p className='text-sm text-slate-400'>No recent incidents for this site.</p>;
+  return <div className='space-y-3'>{rows.map((incident) => <div key={incident.id} className='grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/10 pb-3 last:border-b-0 last:pb-0'><span className='flex h-8 w-8 items-center justify-center rounded-md border border-rose-400/25 bg-rose-400/10'><AlertTriangle className='h-4 w-4 text-rose-300' /></span><span className='min-w-0'><span className='block truncate text-sm font-bold text-white'>{incident.title ?? incident.incident_type ?? 'Incident'}</span><span className='block truncate text-xs text-slate-400'>{incident.resolved ? 'Resolved' : 'Open'}</span></span><span className='text-right'><span className='block font-mono text-xs text-slate-500'>{assistantTime(incident.created_at) ?? '--:--'}</span><span className='text-xs font-bold capitalize text-amber-300'>{incident.severity ?? 'normal'}</span></span></div>)}</div>;
+}
+
+function formatStatusText(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
 function WorkflowBody({ lines, options }: { lines: string[]; options?: WorkflowOption[] }) {
   return (
     <div>
@@ -418,14 +733,128 @@ function PatrolStatusOverview({ site, rows, node, loading }: { site: string; row
 }
 
 
-function MenuView({ site, node }: { site: string; node: { title: string; items: { label: string }[] } }) {
-  return <div><p>Viewing: <b>{site}</b></p><p className='mt-2'>What would you like to do?</p><NumberList items={node.items.map((item) => item.label)} /><p className='mt-3 text-slate-300'>Reply with a number, or type your request.</p></div>;
+function reportTitle(action: string) {
+  const title = action.split(':').slice(1).join(' ').replace(/_/g, ' ');
+  return title.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function scanBucket(scan: DashboardScan) {
+  const status = String(scan.tag_status ?? 'registered').toLowerCase();
+  if (status.includes('duplicate')) return 'Duplicate';
+  if (status.includes('unregistered') || status.includes('unknown')) return 'Unregistered';
+  if (status.includes('offline')) return 'Offline Synced';
+  if (status.includes('reject') || status.includes('fail')) return 'Rejected / Failed';
+  return 'Registered';
+}
+
+function checkpointName(scan: DashboardScan) {
+  return scan.checkpoints?.name ?? 'Unassigned checkpoint';
+}
+
+function countBy<T>(rows: T[], getKey: (row: T) => string) {
+  const counts = new Map<string, number>();
+  for (const row of rows) counts.set(getKey(row), (counts.get(getKey(row)) ?? 0) + 1);
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+}
+
+function AssistantReportPanel({ action, site, scans, patrols, alerts, incidents, devices, checkpoints, routes, forms, loading }: { action: string; site: string; scans: DashboardScan[]; patrols: AssistantPatrolRow[]; alerts: DashboardAlert[]; incidents: DashboardIncident[]; devices: DashboardDevice[]; checkpoints: any[]; routes: any[]; forms: any[]; loading: boolean }) {
+  if (loading) return <p>Loading report data for {site}...</p>;
+  const [, category, report] = action.split(':');
+  const sos = alerts.filter((row) => row.type === 'panic_button');
+  const openIncidents = incidents.filter((row) => !row.resolved);
+  const resolvedIncidents = incidents.filter((row) => row.resolved);
+  const statusCounts = patrolStatusCounts(patrols);
+  const duplicateScans = scans.filter((scan) => scanBucket(scan) === 'Duplicate');
+  const unregisteredScans = scans.filter((scan) => scanBucket(scan) === 'Unregistered');
+  const offlineScans = scans.filter((scan) => scanBucket(scan) === 'Offline Synced');
+  const onlineDevices = devices.filter((device) => device.status === 'online');
+  const offlineDevices = devices.filter((device) => device.status === 'offline');
+
+  if (category === 'checkpoint_scans' && report === 'matrix') return <CheckpointTimeMatrix scans={scans} checkpoints={checkpoints} />;
+  if (category === 'checkpoint_scans') {
+    const rows = report === 'unregistered' ? unregisteredScans : report === 'duplicate' ? duplicateScans : report === 'offline_synced' ? offlineScans : scans;
+    const grouped = report === 'checkpoint' ? countBy(rows, checkpointName) : report === 'device' ? countBy(rows, (row) => row.device_identifier ?? 'Unknown device') : countBy(rows, scanBucket);
+    return <div><MetricGrid items={[['Total scans', scans.length], ['Registered', scans.filter((scan) => scanBucket(scan) === 'Registered').length], ['Unregistered', unregisteredScans.length], ['Duplicates', duplicateScans.length], ['Offline synced', offlineScans.length]]} /><ReportRows rows={grouped.map(([label, value]) => ({ label, value: String(value) }))} empty='No checkpoint scans match this report.' /></div>;
+  }
+
+  if (category === 'patrols') {
+    if (report === 'details' || report === 'timeline') return <PatrolList rows={patrols} />;
+    return <div><MetricGrid items={[['Patrol definitions', routes.length], ['Scheduled sessions', patrols.length], ['Completed', statusCounts.completed], ['Incomplete', statusCounts.incomplete], ['Late / Delayed', statusCounts.late], ['Missed', statusCounts.missed]]} /><PatrolStatusDonut counts={statusCounts} total={patrols.length} /></div>;
+  }
+
+  if (category === 'sos') {
+    const rows = report === 'active' ? sos.filter((row) => !row.is_read) : report === 'resolved' ? sos.filter((row) => row.is_read) : sos;
+    return <div><MetricGrid items={[['Total SOS', sos.length], ['Active', sos.filter((row) => !row.is_read).length], ['Resolved', sos.filter((row) => row.is_read).length]]} /><AlertRows rows={rows} /></div>;
+  }
+
+  if (category === 'incidents') {
+    const grouped = report === 'device' ? countBy(incidents as any[], (row) => String(row.device_identifier ?? 'Unknown device')) : countBy(incidents, (row) => row.severity ?? 'normal');
+    return <div><MetricGrid items={[['Total incidents', incidents.length], ['Open', openIncidents.length], ['Resolved', resolvedIncidents.length], ['High Priority', incidents.filter((row) => ['high', 'critical'].includes(String(row.severity))).length]]} /><ReportRows rows={grouped.map(([label, value]) => ({ label, value: String(value) }))} empty='No incidents match this report.' /></div>;
+  }
+
+  if (category === 'devices') {
+    const selected = report === 'online' ? onlineDevices : report === 'disabled' ? devices.filter((device: any) => ['disabled', 'revoked'].includes(String(device.status))) : devices;
+    return <div><MetricGrid items={[['Total devices', devices.length], ['Online', onlineDevices.length], ['Offline', offlineDevices.length], ['Disabled / Revoked', devices.filter((device: any) => ['disabled', 'revoked'].includes(String(device.status))).length]]} /><DeviceList devices={selected} /></div>;
+  }
+
+  if (category === 'checkpoint_performance') {
+    const grouped = countBy(scans, checkpointName);
+    const rows = report === 'least_scanned' ? grouped.slice().reverse() : grouped;
+    return <ReportRows rows={rows.map(([label, value]) => ({ label, value: `${value} scans` }))} empty='No checkpoint performance data yet.' />;
+  }
+
+  if (category === 'data_logs') {
+    return <div><MetricGrid items={[['Forms available', forms.length], ['Submissions', 0], ['Incomplete', 0], ['Offline synced', 0]]} /><ReportRows rows={forms.map((form: any) => ({ label: String(form.name ?? 'Data log form'), value: 'Available form' }))} empty='No data log forms are configured for this site.' /></div>;
+  }
+
+  if (category === 'schedules') {
+    return <div><MetricGrid items={[['Schedules', routes.length], ['Completed sessions', statusCounts.completed], ['Missed sessions', statusCounts.missed], ['Late starts', statusCounts.late]]} /><ReportRows rows={routes.map((route: any) => ({ label: String(route.name ?? 'Schedule'), value: 'Configured route' }))} empty='No schedules or routes are configured for this site.' /></div>;
+  }
+
+  if (category === 'routes') {
+    const usage = countBy(patrols, (row) => row.patrol_name ?? 'Unassigned route');
+    return <div><MetricGrid items={[['Total routes', routes.length], ['Used routes', usage.length], ['Completed sessions', statusCounts.completed], ['Avg completion', patrols.length ? Math.round((statusCounts.completed / patrols.length) * 100) : 0]]} /><ReportRows rows={usage.map(([label, value]) => ({ label, value: `${value} sessions` }))} empty='No route usage has been recorded for this site.' /></div>;
+  }
+
+  if (category === 'device_security') {
+    const secureRows = devices as Array<DashboardDevice & { kiosk_active?: boolean | null; app_version?: string | null; device_owner_active?: boolean | null; secure_mode_status?: string | null; developer_mode_detected?: boolean | null; adb_detected?: boolean | null }>;
+    return <div><MetricGrid items={[['Total devices', devices.length], ['Kiosk inactive', secureRows.filter((device) => device.device_owner_active && !device.kiosk_active).length], ['Integrity failures', secureRows.filter((device) => String(device.secure_mode_status ?? '').includes('fail') || device.developer_mode_detected || device.adb_detected).length], ['Disabled', secureRows.filter((device) => device.status === 'disabled').length]]} /><DeviceList devices={devices} /></div>;
+  }
+
+  return <p>This report uses the active site context and existing MX Patrol data sources.</p>;
+}
+
+function ReportRows({ rows, empty }: { rows: Array<{ label: string; value: string }>; empty: string }) {
+  if (!rows.length) return <p>{empty}</p>;
+  return <div className='mt-3 space-y-2'>{rows.slice(0, 12).map((row) => <div key={row.label} className='flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-950/70 p-3'><span className='min-w-0 truncate font-bold'>{row.label}</span><span className='shrink-0 font-mono text-sm text-emerald-300'>{row.value}</span></div>)}</div>;
+}
+
+function AlertRows({ rows }: { rows: DashboardAlert[] }) {
+  if (!rows.length) return <p className='mt-3'>No SOS alerts match this report.</p>;
+  return <div className='mt-3 space-y-2'>{rows.slice(0, 8).map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.title ?? 'SOS Alert'}</b><p className='text-slate-400'>{row.is_read ? 'Resolved' : 'Active'} - {assistantDate(row.created_at) ?? ''} {assistantTime(row.created_at) ?? ''}</p></div>)}</div>;
+}
+
+function CheckpointTimeMatrix({ scans, checkpoints }: { scans: DashboardScan[]; checkpoints: any[] }) {
+  const names = (checkpoints.length ? checkpoints.map((row: any) => String(row.name)) : Array.from(new Set(scans.map(checkpointName)))).slice(0, 6);
+  const sessions = Array.from(new Set(scans.map((scan) => assistantTime(scan.scanned_at)?.slice(0, 2) ?? 'Unknown'))).sort().slice(0, 8);
+  if (!names.length || !sessions.length) return <p>No checkpoint scans available for the matrix.</p>;
+  return <div className='mt-2 overflow-x-auto'><table className='min-w-full text-left text-xs'><thead><tr><th className='border-b border-white/10 p-2 text-slate-400'>Time</th>{names.map((name) => <th key={name} className='border-b border-white/10 p-2 text-slate-400'>{name}</th>)}</tr></thead><tbody>{sessions.map((hour) => <tr key={hour}><td className='border-b border-white/10 p-2 font-mono text-emerald-300'>{hour}:00</td>{names.map((name) => { const hit = scans.find((scan) => checkpointName(scan) === name && (assistantTime(scan.scanned_at)?.startsWith(hour) ?? false)); return <td key={name} className='border-b border-white/10 p-2'>{hit ? `${assistantTime(hit.scanned_at)} - ${scanBucket(hit)}` : 'Missed'}</td>; })}</tr>)}</tbody></table></div>;
+}
+function MenuView({ site, node, isPlatformOwner = false }: { site: string; node: { key?: string; title: string; items: { label: string }[] }; isPlatformOwner?: boolean }) {
+  const visibleItems = node.key ? reportMenuItems(node.key, isPlatformOwner) : [];
+  const items = visibleItems.length ? visibleItems : node.items;
+  return <div><p>Viewing: <b>{site}</b></p><p className='mt-2'>What would you like to do?</p><NumberList items={items.map((item) => item.label)} /><p className='mt-3 text-slate-300'>Reply with a number, or type your request.</p></div>;
 }
 function NumberList({ items }: { items: readonly string[] }) { return <ol className='mt-3 space-y-1'>{items.map((item, index) => <li key={item + index}><span className='text-emerald-300'>{index + 1}.</span> {item}</li>)}</ol>; }
 function AssistantBubble({ title, children }: { title: string; children: ReactNode }) { return <div className='max-w-2xl rounded-2xl border border-white/10 bg-slate-900/75 p-4 text-sm text-white'><p className='mb-2 font-black uppercase tracking-[0.08em] text-emerald-300'>{title}</p><div className='leading-6 text-slate-100'>{children}</div></div>; }
 function UserBubble({ children }: { children: ReactNode }) { return <div className='ml-auto max-w-xl rounded-2xl bg-emerald-600 px-4 py-3 text-sm text-white'>{children}</div>; }
 function Shortcut({ icon: Icon, label, onClick }: { icon: typeof Bot; label: string; onClick: () => void }) { return <button type='button' onClick={onClick} className='flex w-full items-center justify-between rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-left text-sm font-semibold text-slate-100 hover:border-emerald-400/30'><span className='flex items-center gap-3'><Icon className='h-5 w-5 text-emerald-300' />{label}</span><ArrowRight className='h-4 w-4 text-slate-500' /></button>; }
-function SitePicker({ sites, selectedId, onSelect }: { sites: Array<{ id: string; name: string }>; selectedId: string | null; onSelect: (site: { id: string; name: string }) => void }) { if (!sites.length) return <p>No sites are assigned to your account yet.</p>; return <div className='grid gap-2'>{sites.map((site) => <button key={site.id} onClick={() => onSelect(site)} className={(site.id === selectedId ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-slate-950/70 text-slate-300') + ' rounded-xl border px-3 py-2 text-left'}>{site.name}</button>)}</div>; }
+function SitePicker({ sites, selectedId, onSelect }: { sites: Array<{ id: string; name: string; status?: string | null }>; selectedId: string | null; onSelect: (site: { id: string; name: string; status?: string | null }) => void }) { if (!sites.length) return <p>No sites are assigned to your account yet.</p>; return <div className='grid gap-2'>{sites.map((site) => <button key={site.id} onClick={() => onSelect(site)} className={(site.id === selectedId ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-slate-950/70 text-slate-300') + ' rounded-xl border px-3 py-2 text-left'}>{site.name}</button>)}</div>; }
+function CompanyList({ rows, loading, selectedId, onSelect }: { rows: AssistantCompany[]; loading: boolean; selectedId: string | null; onSelect: (company: AssistantCompany) => void }) {
+  if (loading) return <p>Loading companies...</p>;
+  if (!rows.length) return <p>No companies found.</p>;
+  return <div className='space-y-2'>{rows.slice(0, 20).map((company, index) => <button key={company.id} type='button' onClick={() => onSelect(company)} className={(company.id === selectedId ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-slate-950/70 text-slate-300') + ' grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3 py-2 text-left'}><span className='font-mono text-emerald-300'>{index + 1}.</span><span className='min-w-0'><span className='block truncate font-bold'>{company.name}</span><span className='block text-xs text-slate-400'>{company.status ?? 'active'}</span></span><span className='text-xs text-slate-400'>Sites: {company.site_count ?? 0}</span></button>)}</div>;
+}
 function MetricGrid({ items }: { items: Array<[string, number]> }) { return <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>{items.map(([label, value]) => <div key={label} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><p className='text-2xl font-black text-emerald-300'>{value}</p><p className='text-xs text-slate-400'>{label}</p></div>)}</div>; }
 function Summary({ devices, alerts, incidents, patrols, scans }: { devices: any[]; alerts: any[]; incidents: any[]; patrols: AssistantPatrolRow[]; scans: any[] }) { return <MetricGrid items={[['Devices Online', devices.filter((row) => row.status === 'online').length], ['Devices Offline', devices.filter((row) => row.status === 'offline').length], ['Active Patrols', patrols.filter((row) => ['active', 'in_progress'].includes(String(row.status))).length], ['Completed', filterPatrols(patrols, 'completed').length], ['Incidents', incidents.length], ['SOS', alerts.filter((row: any) => row.type === 'panic_button').length], ['Scans', scans.length]]} />; }
 function Attention({ devices, alerts, patrols }: { devices: any[]; alerts: any[]; patrols: AssistantPatrolRow[] }) { return <MetricGrid items={[['Open Alerts', alerts.filter((row: any) => !row.is_read).length], ['SOS Alerts', alerts.filter((row: any) => row.type === 'panic_button').length], ['Offline Devices', devices.filter((row) => row.status === 'offline').length], ['Missed Patrols', filterPatrols(patrols, 'missed').length]]} />; }
@@ -495,4 +924,9 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` · ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` · ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
+
+
+
+
 

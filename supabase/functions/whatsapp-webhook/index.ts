@@ -23,6 +23,7 @@ import {
   missedCheckpointsView,
   reportPeriodMenu,
   reportSummary,
+  reportCategorySummary,
   setupMenu,
   secureDeviceInfo,
   secureDeviceList,
@@ -268,7 +269,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
     }
 
     case "reports": {
-      if (!intent.period) return reportPeriodMenu();
+      if (!intent.period) return reportPeriodMenu(ctx.identity);
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
       return await reportSummary(ctx.client, ctx.identity, siteId, intent.period, intent.problems_only ?? false);
@@ -399,16 +400,36 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
 
 /** Handles the ids that only exist as menu selections (site:, device:, ack, problems, periods). */
 async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
-  if (WA_SUBMENUS[id]) {
+  if (id === "reports") return reportPeriodMenu(ctx.identity);
+
+  if (id === "management_reports") {
     if (!ctx.identity.canManage) {
       return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "User Assistant" }]);
     }
     ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "management" });
+    const menu = reportPeriodMenu(ctx.identity);
+    return { ...menu, menuKey: "management_reports" };
+  }
+
+  if (WA_SUBMENUS[id]) {
+    const isReportMenu = id.startsWith("reports_");
+    if (id === "reports_device_security" && ctx.identity.platformRole !== "owner") return ownerOnlyDenial();
+    if (!isReportMenu && !ctx.identity.canManage) {
+      return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "User Assistant" }]);
+    }
+    if (!isReportMenu) ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "management" });
     return WA_SUBMENUS[id];
+  }
+
+  if (id.startsWith("report:")) {
+    const { siteId, ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    return await reportCategorySummary(ctx.client, ctx.identity, siteId, id);
   }
 
   if (id === "back") {
     const target = backTarget(ctx.session);
+    if (target === "report_period") return reportPeriodMenu(ctx.identity);
     if (WA_SUBMENUS[target]) return WA_SUBMENUS[target];
     if (target === MANAGEMENT_HOME_KEY && ctx.identity.canManage) return managementMenu(ctx.identity, ctx.session);
     ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "user" });
@@ -629,3 +650,7 @@ serve(async (req) => {
     );
   }
 });
+
+
+
+

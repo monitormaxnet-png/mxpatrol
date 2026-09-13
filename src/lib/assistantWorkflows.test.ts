@@ -13,6 +13,10 @@ const ctx: WorkflowContext = {
   ],
   routes: [{ id: 'route-1', name: 'Night Route' }],
   users: [],
+  companies: [{ id: 'company-1', name: 'ABC Security', status: 'active', site_count: 1 }],
+  selectedCompanyId: 'company-1',
+  selectedCompanyName: 'ABC Security',
+  isPlatformOwner: false,
   whatsappAuthorizations: [],
   forms: [{ id: 'form-1', name: 'Gate Inspection' }],
 };
@@ -53,6 +57,24 @@ describe('confirmation gating', () => {
     const cancelled = advanceWorkflow(reply.state, 'cancel', ctx);
     expect(cancelled.kind).toBe('cancelled');
     expect(cancelled.lines.join(' ')).toMatch(/no partial record/i);
+  });
+
+
+  it('company registration reaches confirm without requiring an active site', () => {
+    const reply = run('register_company', ['ABC Security', 'abc-security.com', 'Botswana', 'Africa/Gaborone', 'John Doe', '+26771234567', 'john@example.com', '1', 'skip'], { ...ctx, siteId: null, isPlatformOwner: true, selectedCompanyId: null });
+    expect(reply.kind).toBe('confirm');
+    if (reply.kind !== 'confirm') return;
+    expect(reply.payload.action).toBe('create_company');
+    expect(reply.payload.input).toMatchObject({ name: 'ABC Security', country: 'Botswana', timezone: 'Africa/Gaborone', contact_email: 'john@example.com', status: 'active' });
+    expect(reply.lines.join(' ')).toContain('Reply *confirm* to save');
+  });
+
+  it('site registration uses the selected platform company context', () => {
+    const reply = run('register_site', ['Tlokweng Branch', 'Plot 543, Gaborone', '-24.6479, 25.9147', '1'], { ...ctx, siteId: null, isPlatformOwner: true, selectedCompanyId: 'company-1', selectedCompanyName: 'ABC Security' });
+    expect(reply.kind).toBe('confirm');
+    if (reply.kind !== 'confirm') return;
+    expect(reply.payload.action).toBe('create_site');
+    expect(reply.payload.input).toMatchObject({ company_id: 'company-1', name: 'Tlokweng Branch', gps_lat: -24.6479, gps_lng: 25.9147, status: 'active' });
   });
 
   it('reaches a confirm step with the canonical incident payload', () => {

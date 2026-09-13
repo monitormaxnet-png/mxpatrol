@@ -8,6 +8,7 @@ import {
   mainMenu,
   managementMenu,
   patrolStatusOverview,
+  reportPeriodMenu,
   resolveMenuChoice,
 } from "../../supabase/functions/whatsapp-webhook/lib/views";
 import { keywordIntent } from "../../supabase/functions/whatsapp-webhook/lib/askmx";
@@ -186,3 +187,27 @@ describe("WhatsApp report language routing", () => {
     expect(keywordIntent("patrol status")).toEqual({ action: "patrol_status" });
   });
 });
+
+describe("WhatsApp reports category menus", () => {
+  it("hides Device Security Reports unless the identity is a platform owner", () => {
+    const normalOptions = reportPeriodMenu(identity).options ?? [];
+    expect(normalOptions.map((option) => option.label)).not.toContain("Device Security Reports");
+    expect(resolveMenuChoice(session({ temporary_data: { last_options: normalOptions, last_menu_key: "report_period" } }), "10")).toBe("back");
+
+    const owner = { ...identity, platformRole: "owner" as const, canManageKiosk: true, canManageSecureDevices: true };
+    const ownerOptions = reportPeriodMenu(owner).options ?? [];
+    expect(ownerOptions[9]).toMatchObject({ id: "reports_device_security", label: "Device Security Reports" });
+  });
+
+  it("routes report submenus from the last displayed options", () => {
+    const reportMenu = reportPeriodMenu(identity);
+    const reportSession = session({ temporary_data: { last_options: reportMenu.options ?? [], last_menu_key: "report_period" } });
+    expect(resolveMenuChoice(reportSession, "1")).toBe("reports_checkpoint_scans");
+    expect(resolveMenuChoice(reportSession, "2")).toBe("reports_patrols");
+
+    const scanSession = session({ temporary_data: { last_options: WA_SUBMENUS.reports_checkpoint_scans.options ?? [], last_menu_key: "reports_checkpoint_scans" } });
+    expect(resolveMenuChoice(scanSession, "3")).toBe("report:checkpoint_scans:matrix");
+    expect(backTarget(scanSession)).toBe("report_period");
+  });
+});
+

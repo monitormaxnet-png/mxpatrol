@@ -4,6 +4,27 @@ import type { Identity, OutMessage, SessionRow } from "./types.ts";
 import { greeting, timeAgo } from "./types.ts";
 import { deviceSecurityState, formatDeviceSecurityLine, formatSecureDeviceLabel, getSecureDeviceByIdentifier, getSecureDeviceEvents, getSecureDeviceRows, getSecureDeviceSummary } from "../../_shared/secure-device-management.ts";
 
+const REPORT_ROOT_OPTIONS = [
+  { id: "reports_checkpoint_scans", label: "Checkpoint Scan Reports" },
+  { id: "reports_patrols", label: "Patrol Reports" },
+  { id: "reports_sos", label: "SOS Reports" },
+  { id: "reports_incidents", label: "Incident Reports" },
+  { id: "reports_data_logs", label: "Data Log Reports" },
+  { id: "reports_devices", label: "Device Reports" },
+  { id: "reports_checkpoint_performance", label: "Checkpoint Performance Reports" },
+  { id: "reports_schedules", label: "Schedule Reports" },
+  { id: "reports_routes", label: "Route Reports" },
+  { id: "reports_device_security", label: "Device Security Reports", ownerOnly: true },
+  { id: "back", label: "Back" },
+];
+
+function reportRootOptions(identity: Identity) {
+  return REPORT_ROOT_OPTIONS.filter((option) => !option.ownerOnly || identity.platformRole === "owner");
+}
+
+function reportMenu(title: string, menuKey: string, options: Array<{ id: string; label: string }>): OutMessage {
+  return { title, menuKey, lines: ["Choose a report category."], options };
+}
 function siteFilter<T>(query: any, identity: Identity, siteId: string | null) {
   let next = query.eq("company_id", identity.company_id);
   if (siteId) next = next.eq("site_id", siteId);
@@ -480,16 +501,12 @@ export async function reportSummary(
   };
 }
 
-export function reportPeriodMenu(): OutMessage {
+export function reportPeriodMenu(identity?: Identity): OutMessage {
   return {
-    title: "WHAT HAPPENED?",
+    title: "REPORTS",
     menuKey: "report_period",
-    lines: ["Choose a period."],
-    options: [
-      { id: "today", label: "Today" },
-      { id: "yesterday", label: "Yesterday" },
-      { id: "week", label: "This Week" },
-    ],
+    lines: ["Please choose a report category:"],
+    options: reportRootOptions(identity ?? ({ platformRole: null } as Identity)),
   };
 }
 
@@ -836,6 +853,41 @@ export async function secureDeviceInfo(client: SupabaseClient, identity: Identit
   };
 }
 
+
+export async function reportCategorySummary(client: SupabaseClient, identity: Identity, siteId: string | null, action: string): Promise<OutMessage> {
+  if (action.startsWith("report:device_security:") && identity.platformRole !== "owner") return ownerOnlyDenial();
+  const [, category, report] = action.split(":");
+  const title = (category + " " + report).replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  const { data: scans } = await siteFilter<any>(client.from("scan_logs").select("id, tag_status, device_identifier, scanned_at, checkpoints(name)").order("scanned_at", { ascending: false }).limit(200), identity, siteId);
+  const { data: sessions } = await siteFilter<any>(client.from("patrol_sessions").select("id, status, scheduled_start, checkpoint_completed, checkpoint_total, patrol_routes(name)").order("scheduled_start", { ascending: false }).limit(100), identity, siteId);
+  const { data: alerts } = await siteFilter<any>(client.from("alerts").select("id, type, is_read, created_at, device_identifier").order("created_at", { ascending: false }).limit(100), identity, siteId);
+  const { data: incidents } = await siteFilter<any>(client.from("incidents").select("id, resolved, severity, created_at, device_identifier").order("created_at", { ascending: false }).limit(100), identity, siteId);
+  const { data: devices } = await siteFilter<any>(client.from("devices").select("id, status, device_identifier, app_version, minimum_app_version, secure_mode_enabled, secure_mode_status, kiosk_active, device_owner_active, developer_mode_detected, adb_detected"), identity, siteId);
+  const scanRows = scans ?? [];
+  const patrolRows = sessions ?? [];
+  const sosRows = (alerts ?? []).filter((row: any) => row.type === "panic_button");
+  const incidentRows = incidents ?? [];
+  const deviceRows = devices ?? [];
+  const completed = patrolRows.filter((row: any) => ["completed", "completed_late"].includes(String(row.status))).length;
+  const missed = patrolRows.filter((row: any) => String(row.status) === "missed").length;
+  const late = patrolRows.filter((row: any) => ["late", "late_start", "completed_late"].includes(String(row.status))).length;
+  const unregistered = scanRows.filter((row: any) => String(row.tag_status ?? "").includes("unregistered") || String(row.tag_status ?? "").includes("unknown")).length;
+  const duplicate = scanRows.filter((row: any) => String(row.tag_status ?? "").includes("duplicate")).length;
+  const offlineSynced = scanRows.filter((row: any) => String(row.tag_status ?? "").includes("offline")).length;
+  const lines = [
+    `Site: ${siteId ? "selected site" : "allowed sites"}`,
+    `Checkpoint scans: ${scanRows.length} (${unregistered} unregistered, ${duplicate} duplicate, ${offlineSynced} offline synced)`,
+    `Patrol sessions: ${patrolRows.length} (${completed} completed, ${late} late/delayed, ${missed} missed)`,
+    `SOS alerts: ${sosRows.length} (${sosRows.filter((row: any) => !row.is_read).length} active)`,
+    `Incidents: ${incidentRows.length} (${incidentRows.filter((row: any) => !row.resolved).length} open)`,
+    `Devices: ${deviceRows.length} (${deviceRows.filter((row: any) => row.status === "online").length} online, ${deviceRows.filter((row: any) => row.status === "offline").length} offline)`,
+  ];
+  if (category === "device_security") {
+    lines.push(`Kiosk inactive: ${deviceRows.filter((row: any) => row.device_owner_active && !row.kiosk_active).length}`);
+    lines.push(`Integrity failures: ${deviceRows.filter((row: any) => String(row.secure_mode_status ?? "").includes("fail") || row.developer_mode_detected || row.adb_detected).length}`);
+  }
+  return { title: title.toUpperCase(), lines, options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }] };
+}
 // ===== Context-aware menu state (kept here so it deploys with the function bundle) =====
 
 export const USER_HOME_KEY = "user_home";
@@ -865,7 +917,6 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     options: [
       { id: "devices", label: "View Devices" },
       { id: "offline", label: "Offline Devices" },
-      { id: "secure_device_status", label: "Device Security" },
       { id: "register_device", label: "Register Device" },
       { id: "back", label: "Back" },
     ],
@@ -912,17 +963,103 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
       { id: "back", label: "Back" },
     ],
   },
+  reports_checkpoint_scans: reportMenu("CHECKPOINT SCAN REPORTS", "reports_checkpoint_scans", [
+    { id: "report:checkpoint_scans:site_time", label: "Scans by Site / Date / Time" },
+    { id: "report:checkpoint_scans:checkpoint", label: "Scans by Checkpoint" },
+    { id: "report:checkpoint_scans:matrix", label: "Checkpoint Time Matrix" },
+    { id: "report:checkpoint_scans:device", label: "Scans by Device" },
+    { id: "report:checkpoint_scans:unregistered", label: "Unregistered Tags" },
+    { id: "report:checkpoint_scans:duplicate", label: "Duplicate Scans" },
+    { id: "report:checkpoint_scans:offline_synced", label: "Offline Synced Scans" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_patrols: reportMenu("PATROL REPORTS", "reports_patrols", [
+    { id: "report:patrols:summary", label: "Patrol Summary" },
+    { id: "report:patrols:details", label: "Patrol Session Details" },
+    { id: "report:patrols:performance", label: "Patrol Performance" },
+    { id: "report:patrols:timeline", label: "Patrol Timeline" },
+    { id: "missed_checkpoints", label: "Missed Checkpoints" },
+    { id: "late_patrols", label: "Late / Delayed Sessions" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_sos: reportMenu("SOS REPORTS", "reports_sos", [
+    { id: "report:sos:summary", label: "SOS Summary" },
+    { id: "report:sos:active", label: "Active SOS" },
+    { id: "report:sos:resolved", label: "Resolved SOS" },
+    { id: "report:sos:device", label: "SOS by Device" },
+    { id: "report:sos:site", label: "SOS by Site" },
+    { id: "report:sos:response_times", label: "Response Times" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_incidents: reportMenu("INCIDENT REPORTS", "reports_incidents", [
+    { id: "report:incidents:summary", label: "Incident Summary" },
+    { id: "incidents", label: "Open Incidents" },
+    { id: "report:incidents:high", label: "High Priority" },
+    { id: "report:incidents:resolved", label: "Resolved Incidents" },
+    { id: "report:incidents:site", label: "Incidents by Site" },
+    { id: "report:incidents:device", label: "Incidents by Device" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_data_logs: reportMenu("DATA LOG REPORTS", "reports_data_logs", [
+    { id: "report:data_logs:summary", label: "Submission Summary" },
+    { id: "report:data_logs:checkpoint", label: "By Checkpoint" },
+    { id: "report:data_logs:form", label: "By Form" },
+    { id: "report:data_logs:device", label: "By Device" },
+    { id: "report:data_logs:missing", label: "Missing/Incomplete Data Logs" },
+    { id: "report:data_logs:offline_synced", label: "Offline Synced Data Logs" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_devices: reportMenu("DEVICE REPORTS", "reports_devices", [
+    { id: "report:devices:summary", label: "Device Summary" },
+    { id: "report:devices:online", label: "Online Devices" },
+    { id: "offline", label: "Offline Devices" },
+    { id: "report:devices:activity", label: "Device Activity" },
+    { id: "report:devices:patrol_activity", label: "Device Patrol Activity" },
+    { id: "report:devices:app_versions", label: "App Version Status" },
+    { id: "report:devices:disabled", label: "Disabled/Revoked Devices" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_checkpoint_performance: reportMenu("CHECKPOINT PERFORMANCE", "reports_checkpoint_performance", [
+    { id: "report:checkpoint_performance:most_scanned", label: "Most Scanned" },
+    { id: "report:checkpoint_performance:least_scanned", label: "Least Scanned" },
+    { id: "report:checkpoint_performance:missed_rate", label: "Missed Checkpoint Rate" },
+    { id: "report:checkpoint_performance:repeatedly_missed", label: "Repeatedly Missed Checkpoints" },
+    { id: "report:checkpoint_performance:timing", label: "Average Scan Timing" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_schedules: reportMenu("SCHEDULE REPORTS", "reports_schedules", [
+    { id: "report:schedules:summary", label: "Schedule Summary" },
+    { id: "report:schedules:active", label: "Active Schedules" },
+    { id: "report:schedules:paused", label: "Paused Schedules" },
+    { id: "missed_patrols", label: "Missed Scheduled Sessions" },
+    { id: "late_patrols", label: "Late Starts" },
+    { id: "report:schedules:completion_rate", label: "Completion Rate" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_routes: reportMenu("ROUTE REPORTS", "reports_routes", [
+    { id: "report:routes:summary", label: "Route Summary" },
+    { id: "report:routes:usage", label: "Route Usage" },
+    { id: "report:routes:completion_rate", label: "Route Completion Rate" },
+    { id: "report:routes:missed_checkpoints", label: "Missed Checkpoints by Route" },
+    { id: "report:routes:duration", label: "Average Route Duration" },
+    { id: "report:routes:schedules", label: "Schedules Using Route" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_device_security: reportMenu("DEVICE SECURITY REPORTS", "reports_device_security", [
+    { id: "report:device_security:summary", label: "Security Summary" },
+    { id: "report:device_security:kiosk_inactive", label: "Kiosk Inactive" },
+    { id: "report:device_security:outdated_apps", label: "Outdated Apps" },
+    { id: "report:device_security:integrity_failures", label: "Integrity Failures" },
+    { id: "report:device_security:disabled", label: "Disabled Devices" },
+    { id: "report:device_security:command_history", label: "Security Command History" },
+    { id: "report:device_security:maintenance", label: "Maintenance Sessions" },
+    { id: "back", label: "Back" },
+  ]),
   management_reports: {
     title: "REPORTS",
     menuKey: "management_reports",
-    lines: ["Choose a report."],
-    options: [
-      { id: "today", label: "Today Summary" },
-      { id: "yesterday", label: "Yesterday Summary" },
-      { id: "week", label: "This Week Summary" },
-      { id: "problems", label: "Problems Only" },
-      { id: "back", label: "Back" },
-    ],
+    lines: ["Please choose a report category:"],
+    options: reportRootOptions({ platformRole: "owner" } as Identity),
   },
 };
 
@@ -934,6 +1071,16 @@ export const WA_MENU_PARENTS: Record<string, string> = {
   management_patrol_config: MANAGEMENT_HOME_KEY,
   management_reports: MANAGEMENT_HOME_KEY,
   management_whatsapp: MANAGEMENT_HOME_KEY,
+  reports_checkpoint_scans: "report_period",
+  reports_patrols: "report_period",
+  reports_sos: "report_period",
+  reports_incidents: "report_period",
+  reports_data_logs: "report_period",
+  reports_devices: "report_period",
+  reports_checkpoint_performance: "report_period",
+  reports_schedules: "report_period",
+  reports_routes: "report_period",
+  reports_device_security: "report_period",
   report_period: USER_HOME_KEY,
   [MANAGEMENT_HOME_KEY]: MANAGEMENT_HOME_KEY,
   [USER_HOME_KEY]: USER_HOME_KEY,
@@ -961,3 +1108,8 @@ export function backTarget(session: SessionRow): string {
   }
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }
+
+
+
+
+

@@ -26,25 +26,38 @@ async function resolveActor(req: Request) {
   const userId = userData.user.id;
 
   const { data: profile } = await service.from("profiles").select("company_id").eq("id", userId).maybeSingle();
-  if (!profile?.company_id) throw new ManagementActionError("Company profile required", 403);
 
-  const { data: roleRow } = await service.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
-  const role = String(roleRow?.role ?? "guard");
-
-  const { data: guard } = await service
-    .from("guards")
-    .select("id")
-    .eq("company_id", profile.company_id)
+  const { data: platformAdmin } = await service
+    .from("platform_admins")
+    .select("role")
     .eq("user_id", userId)
     .maybeSingle();
+  const platformRole = typeof platformAdmin?.role === "string" ? platformAdmin.role : null;
+  const isPlatformOwner = platformRole === "owner";
+
+  if (!profile?.company_id && !isPlatformOwner) throw new ManagementActionError("Company profile required", 403);
+
+  const { data: roleRow } = await service.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
+  const role = String(roleRow?.role ?? (isPlatformOwner ? "admin" : "guard"));
+
+  const { data: guard } = profile?.company_id
+    ? await service
+        .from("guards")
+        .select("id")
+        .eq("company_id", profile.company_id)
+        .eq("user_id", userId)
+        .maybeSingle()
+    : { data: null };
 
   const actor: ManagementActor = {
-    company_id: profile.company_id,
+    company_id: profile?.company_id ?? null,
     user_id: userId,
     guard_id: guard?.id ?? null,
     role,
-    canManage: role === "admin" || role === "supervisor",
+    canManage: isPlatformOwner || role === "admin" || role === "supervisor",
     allowed_site_ids: [],
+    platformRole,
+    isPlatformOwner,
   };
   return { service, actor };
 }

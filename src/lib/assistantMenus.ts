@@ -1,3 +1,4 @@
+import { REPORT_ROOT_ITEMS, REPORT_SUBMENUS, isDeviceSecurityReportAction, reportMenuItems } from './assistantReportDefinitions';
 export type AssistantMode = 'user' | 'management';
 
 export type MenuItem = { label: string; action: string };
@@ -64,20 +65,14 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     key: 'user_reports',
     title: 'REPORTS',
     parent: USER_HOME,
-    items: [
-      { label: "Today's Report", action: 'report:today' },
-      { label: "Yesterday's Report", action: 'report:yesterday' },
-      { label: 'This Week Report', action: 'report:week' },
-      { label: 'Saved Reports', action: 'saved_reports' },
-      { label: 'Generate Patrol Report', action: 'generate_report' },
-      { label: 'Back', action: 'back' },
-    ],
+    items: REPORT_ROOT_ITEMS,
   },
   [MANAGEMENT_HOME]: {
     key: MANAGEMENT_HOME,
     title: 'MX PATROL - MANAGEMENT',
     parent: null,
     items: [
+      { label: 'Organization Setup', action: 'menu:management_organization' },
       { label: 'Operations', action: 'menu:management_operations' },
       { label: 'Devices', action: 'menu:management_devices' },
       { label: 'Checkpoints', action: 'menu:management_checkpoints' },
@@ -101,6 +96,18 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
       { label: 'Back', action: 'back' },
     ],
 
+  },
+  management_organization: {
+    key: 'management_organization',
+    title: 'ORGANIZATION SETUP',
+    parent: MANAGEMENT_HOME,
+    items: [
+      { label: 'Register Company', action: 'register_company' },
+      { label: 'Register Site', action: 'register_site' },
+      { label: 'View Companies', action: 'view_companies' },
+      { label: 'View Sites', action: 'view_sites' },
+      { label: 'Back', action: 'back' },
+    ],
   },
   management_devices: {
     key: 'management_devices',
@@ -167,15 +174,14 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     key: 'management_reports',
     title: 'REPORTS',
     parent: MANAGEMENT_HOME,
-    items: [
-      { label: 'Today Summary', action: 'report:today' },
-      { label: 'Yesterday Summary', action: 'report:yesterday' },
-      { label: 'This Week Summary', action: 'report:week' },
-      { label: 'Saved Reports', action: 'saved_reports' },
-      { label: 'Generate Patrol Report', action: 'generate_report' },
-      { label: 'Back', action: 'back' },
-    ],
+    items: REPORT_ROOT_ITEMS,
   },
+  ...Object.fromEntries(Object.entries(REPORT_SUBMENUS).map(([key, menu]) => [key, {
+    key,
+    title: menu.title,
+    parent: menu.parent,
+    items: menu.items,
+  }])),
 };
 
 export function homeMenu(mode: AssistantMode): string {
@@ -196,9 +202,20 @@ const MANAGEMENT_ONLY_ACTIONS = new Set([
   'create_schedule',
   'pending_nfc',
   'generate_report',
+  'report:device_security:summary',
+  'report:device_security:kiosk_inactive',
+  'report:device_security:outdated_apps',
+  'report:device_security:integrity_failures',
+  'report:device_security:disabled',
+  'report:device_security:command_history',
+  'report:device_security:maintenance',
   'authorize_whatsapp',
   'view_whatsapp_numbers',
   'revoke_whatsapp_access',
+  'register_company',
+  'register_site',
+  'view_companies',
+  'view_sites',
   
   'routes',
   'schedules',
@@ -215,13 +232,24 @@ const NL_INTENTS: Array<[RegExp, string]> = [
   [/(offline\s+device|device.*offline)/, 'devices_offline'],
   [/(whatsapp|authorize.*number|link code|revoke.*whatsapp)/, 'menu:management_whatsapp'],
   [/(whatsapp|authorize.*number|link code|revoke.*whatsapp)/, 'menu:management_whatsapp'],
-  [/(secure device|device security|lock device|disable device|enable device|revoke device|maintenance mode)/, 'secure_devices'],
-  [/device/, 'devices'],
-  [/incident/, 'incidents'],
+  [/(organization|organisation|company|companies|site registration|register site|register company|view sites)/, 'menu:management_organization'],
   [/(yesterday.*report|report.*yesterday)/, 'report:yesterday'],
   [/(week.*report|report.*week)/, 'report:week'],
   [/(today.*report|report.*today|daily report)/, 'report:today'],
   [/generate.*report/, 'generate_report'],
+  [/checkpoint.*matrix/, 'report:checkpoint_scans:matrix'],
+  [/checkpoint.*scan.*report|scan.*checkpoint.*report/, 'menu:reports_checkpoint_scans'],
+  [/patrol.*report/, 'menu:reports_patrols'],
+  [/sos.*report/, 'menu:reports_sos'],
+  [/incident.*report/, 'menu:reports_incidents'],
+  [/data log.*report/, 'menu:reports_data_logs'],
+  [/device security.*report/, 'menu:reports_device_security'],
+  [/device.*report/, 'menu:reports_devices'],
+  [/schedule.*report/, 'menu:reports_schedules'],
+  [/route.*report/, 'menu:reports_routes'],
+  [/(secure device|device security|lock device|disable device|enable device|revoke device|maintenance mode)/, 'secure_devices'],
+  [/device/, 'devices'],
+  [/incident/, 'incidents'],
   [/(saved|available)\s+report/, 'saved_reports'],
   [/report/, 'menu:reports'],
   [/(live now|live|what.*happening)/, 'live'],
@@ -234,9 +262,10 @@ function normalize(input: string): string {
   return input.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function applyAction(state: RouterState, action: string, canManage: boolean): Resolution {
+function applyAction(state: RouterState, action: string, canManage: boolean, isPlatformOwner = false): Resolution {
   if (action === 'back') {
-    const parent = menuNode(state.activeMenu).parent ?? homeMenu(state.mode);
+    const configuredParent = menuNode(state.activeMenu).parent ?? homeMenu(state.mode);
+    const parent = configuredParent === 'reports_root' ? (state.mode === 'management' ? 'management_reports' : 'user_reports') : configuredParent;
     const next = { ...state, activeMenu: parent };
     return { kind: 'menu', state: next, menuKey: parent };
   }
@@ -258,11 +287,15 @@ function applyAction(state: RouterState, action: string, canManage: boolean): Re
     if (key === 'patrol_status') key = state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status';
     if (!ASSISTANT_MENUS[key]) return { kind: 'unknown', state };
     if (key.startsWith('management_') && !canManage) return { kind: 'denied', state, action: key };
+    if (isDeviceSecurityReportAction(action) && !isPlatformOwner) return { kind: 'denied', state, action };
     const next = { ...state, activeMenu: key };
     return { kind: 'menu', state: next, menuKey: key };
   }
 
   if (MANAGEMENT_ONLY_ACTIONS.has(action) && !canManage) {
+    return { kind: 'denied', state, action };
+  }
+  if (isDeviceSecurityReportAction(action) && !isPlatformOwner) {
     return { kind: 'denied', state, action };
   }
 
@@ -276,7 +309,7 @@ function applyAction(state: RouterState, action: string, canManage: boolean): Re
 export function resolveAssistantInput(
   state: RouterState,
   rawInput: string,
-  opts: { canManage: boolean },
+  opts: { canManage: boolean; isPlatformOwner?: boolean },
 ): Resolution {
   const input = normalize(rawInput);
   if (!input) return { kind: 'unknown', state };
@@ -286,33 +319,39 @@ export function resolveAssistantInput(
     return { kind: 'menu', state: { ...state, activeMenu: key }, menuKey: key };
   }
 
-  if (input === 'back') return applyAction(state, 'back', opts.canManage);
+  if (input === 'back') return applyAction(state, 'back', opts.canManage, opts.isPlatformOwner);
 
   if (input === 'cancel' || input === 'exit' || input === 'stop') {
     const key = homeMenu(state.mode);
     return { kind: 'menu', state: { ...state, activeMenu: key }, menuKey: key };
   }
 
-  if (input === 'user' || input === 'user assistant') return applyAction(state, 'switch_user', opts.canManage);
+  if (input === 'user' || input === 'user assistant') return applyAction(state, 'switch_user', opts.canManage, opts.isPlatformOwner);
   if (input === 'management' || input === 'management assistant' || input === 'admin') {
-    return applyAction(state, 'switch_management', opts.canManage);
+    return applyAction(state, 'switch_management', opts.canManage, opts.isPlatformOwner);
   }
 
   const node = menuNode(state.activeMenu);
+  const visibleReportItems = reportMenuItems(state.activeMenu, !!opts.isPlatformOwner);
+  const menuItems = visibleReportItems.length ? visibleReportItems : node.items;
 
   if (/^\d+$/.test(input)) {
     const index = Number(input);
-    const item = node.items[index - 1];
+    const item = menuItems[index - 1];
     if (!item) return { kind: 'unknown', state };
-    return applyAction(state, item.action, opts.canManage);
+    return applyAction(state, item.action, opts.canManage, opts.isPlatformOwner);
   }
 
-  const labelMatch = node.items.find((item) => normalize(item.label).replace(/[^a-z0-9 ]/g, '').trim() === input.replace(/[^a-z0-9 ]/g, '').trim());
-  if (labelMatch) return applyAction(state, labelMatch.action, opts.canManage);
+  const labelMatch = menuItems.find((item) => normalize(item.label).replace(/[^a-z0-9 ]/g, '').trim() === input.replace(/[^a-z0-9 ]/g, '').trim());
+  if (labelMatch) return applyAction(state, labelMatch.action, opts.canManage, opts.isPlatformOwner);
 
   for (const [pattern, action] of NL_INTENTS) {
-    if (pattern.test(input)) return applyAction(state, action, opts.canManage);
+    if (pattern.test(input)) return applyAction(state, action, opts.canManage, opts.isPlatformOwner);
   }
 
   return { kind: 'unknown', state };
 }
+
+
+
+

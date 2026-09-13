@@ -44,7 +44,7 @@ export function SocPageShell({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <SocStatusPill icon={Wifi} label={realtimeStatusLabel(realtime.status)} tone={connected ? "green" : "amber"} />
+          <SocStatusPill icon={Wifi} label={realtimeStatusLabel(status)} tone={connected ? "green" : "amber"} />
           <SocIconButton icon={Bell} label="Notifications" badge />
           <SocIconButton icon={Sun} label="Display" />
           <div className="flex h-10 items-center gap-3 rounded-lg border border-white/10 bg-slate-950/80 px-3 text-sm text-slate-200">

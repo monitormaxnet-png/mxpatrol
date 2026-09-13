@@ -67,6 +67,19 @@ describe("WhatsApp assistant role menus", () => {
     expect(menu.options?.map((option) => option.id)).toContain("management_devices");
     expect(menu.options?.map((option) => option.id)).toContain("management_checkpoints");
     expect(menu.options?.map((option) => option.id)).toContain("management_incidents");
+    expect(menu.options?.map((option) => option.id)).not.toContain("secure_devices");
+  });
+
+  it("exposes secure device mode only to platform owners", () => {
+    const owner: Identity = {
+      ...baseIdentity,
+      role: "admin",
+      canManage: true,
+      canAcknowledge: true,
+      canManageSecureDevices: true,
+      platformRole: "owner",
+    };
+    const menu = managementMenu(owner, { ...baseSession, last_menu: "management" });
     expect(menu.options?.map((option) => option.id)).toContain("secure_devices");
   });
 });

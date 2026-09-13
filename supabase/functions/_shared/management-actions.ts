@@ -369,7 +369,7 @@ function devicePairedResult(row: Record<string, any>, site: { id: string; name: 
 
 /** Back-compat alias: both assistants and older callers hit the same canonical binding path. */
 export async function attachDeviceByCode(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
-  return await registerDevice(client, effectiveActor, input);
+  return await registerDevice(client, actor, input);
 }
 
 

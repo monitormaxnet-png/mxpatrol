@@ -174,7 +174,7 @@ function emptyDeviceSecurityCounts() {
   };
 }
 
-function applyDeviceSecurityCounts(counts: ReturnType<typeof emptyDeviceSecurityCounts>, row: SecureDeviceRow) {
+function applyDeviceSecurityCounts(counts: ReturnType<typeof emptyDeviceSecurityCounts> | Record<string, any>, row: SecureDeviceRow) {
   counts.total += 1;
   if (deviceSecurityState(row) === "Secure") counts.secure += 1;
   if (isDeviceAttention(row)) counts.attention += 1;

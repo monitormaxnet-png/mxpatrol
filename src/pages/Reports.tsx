@@ -20,6 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -281,6 +282,13 @@ const Reports = () => {
   return (
     <SocPageShell title="Reports" subtitle="Generate and manage patrol, incident and activity reports" realtime={realtime}>
       <div className="space-y-5 text-white">
+        <section className="grid gap-2 rounded-xl border border-white/10 bg-slate-950/72 p-3 md:grid-cols-5">
+          <CategoryLink to="/reports" label="Patrol Reports" />
+          <CategoryLink to="/reports/checkpoint-activity" label="Checkpoint Reports" />
+          <CategoryLink to="/scan-investigations" label="Scan Investigations" />
+          <CategoryLink to="/sos-alerts" label="Incidents" />
+          <CategoryLink to="/reports" label="Custom Reports" muted />
+        </section>
         <section className="grid gap-3 xl:grid-cols-4">
           <div className="grid gap-3 md:grid-cols-5 xl:col-span-3">
             <FilterBox label="Company"><span className="font-semibold text-white">{companyName}</span></FilterBox>
@@ -692,6 +700,10 @@ function ReportDetails({ report, companyName, siteLabel, scanCount, incidents, s
       </div>
     </aside>
   );
+}
+
+function CategoryLink({ to, label, muted }: { to: string; label: string; muted?: boolean }) {
+  return <Link to={to} className={`rounded-lg border px-3 py-2 text-center text-xs font-black uppercase transition ${muted ? "border-white/10 text-slate-500" : "border-emerald-400/20 bg-emerald-400/10 text-emerald-300 hover:border-emerald-300/40"}`}>{label}</Link>;
 }
 
 function Detail({ label, value }: { label: string; value: string }) {

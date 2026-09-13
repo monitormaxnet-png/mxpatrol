@@ -49,52 +49,61 @@ describe("formatProgress", () => {
 });
 
 describe("describeScanResult", () => {
-  it("reports patrol completion for a one-checkpoint patrol", () => {
+  it("keeps patrol completion hidden from device-level feedback", () => {
     const feedback = describeScanResult({ ...base, code: "PATROL_COMPLETED" });
-    expect(feedback.uiState).toBe("patrol_completed");
+    expect(feedback.uiState).toBe("success");
     expect(feedback.tone).toBe("good");
-    expect(feedback.detail).toContain("Tlokweng Gate Patrol");
+    expect(feedback.title).toBe("Scan successful");
+    expect(feedback.detail).toContain("Registered checkpoint");
+    expect(feedback.detail).not.toContain("Tlokweng Gate Patrol");
   });
 
-  it("reports automatic patrol start", () => {
+  it("reports automatic patrol start as a simple successful scan", () => {
     const feedback = describeScanResult({ ...base, code: "PATROL_STARTED" });
-    expect(feedback.uiState).toBe("patrol_started");
+    expect(feedback.uiState).toBe("success");
+    expect(feedback.title).toBe("Scan successful");
   });
 
   it("reports duplicate scans without implying progress changed", () => {
     const feedback = describeScanResult({ ...base, code: "CHECKPOINT_ALREADY_SCANNED", duplicate: true });
     expect(feedback.uiState).toBe("duplicate");
-    expect(feedback.detail).toContain("Progress unchanged");
+    expect(feedback.detail).toBe("Gate");
   });
 
   it("records a checkpoint scan with no matching patrol", () => {
     const feedback = describeScanResult({ ...base, code: "NO_ACTIVE_PATROL", patrol: null });
     expect(feedback.uiState).toBe("no_active_patrol");
-    expect(feedback.detail).toContain("No active patrol matched");
+    expect(feedback.detail).toContain("Not part of an active patrol");
   });
 
   it("flags unregistered tags for supervisor review", () => {
     const feedback = describeScanResult({ ...base, code: "UNREGISTERED_CHECKPOINT", patrol: null, checkpoint: null });
     expect(feedback.uiState).toBe("unregistered");
-    expect(feedback.detail).toContain("supervisor review");
+    expect(feedback.title).toBe("Scan not successful");
+    expect(feedback.detail).toContain("Scan recorded for review");
   });
 
-  it("flags out-of-order scans with the expected checkpoint", () => {
+  it("records out-of-order scans for review without exposing patrol state", () => {
     const feedback = describeScanResult({
       ...base,
       code: "CHECKPOINT_OUT_OF_ORDER",
       next_checkpoint: { id: "cp-2", name: "Back Gate" },
     });
-    expect(feedback.uiState).toBe("out_of_order");
-    expect(feedback.detail).toContain("Back Gate");
+    expect(feedback.uiState).toBe("no_active_patrol");
+    expect(feedback.title).toBe("Scan recorded");
+    expect(feedback.detail).toContain("Scan recorded for review");
+    expect(feedback.detail).not.toContain("Back Gate");
   });
 
   it("shows offline saved and synced states", () => {
     expect(describeScanResult({ ...base, code: "OFFLINE_SAVED" }).uiState).toBe("success_offline");
     expect(describeScanResult({ ...base, code: "SYNCED" }).sound).toBe("sync-complete");
+    expect(describeScanResult({ ...base, code: "SYNCED" }).title).toBe("Scan recorded");
   });
 
   it("shows a non-enrolled device state", () => {
-    expect(describeScanResult({ ...base, code: "DEVICE_NOT_ENROLLED" }).uiState).toBe("device_unassigned");
+    const feedback = describeScanResult({ ...base, code: "DEVICE_NOT_ENROLLED" });
+    expect(feedback.uiState).toBe("device_unassigned");
+    expect(feedback.title).toBe("Scan not successful");
   });
 });

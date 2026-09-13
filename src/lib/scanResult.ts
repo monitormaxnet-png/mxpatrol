@@ -80,135 +80,32 @@ export const formatProgress = (patrol: ScanPatrolInfo | null | undefined) => {
 
 export const describeScanResult = (result: StructuredScanResult): ScanFeedback => {
   const checkpointName = result.checkpoint?.name ?? "Checkpoint";
-  const patrolName = result.patrol?.name ?? "Scheduled patrol";
-  const progress = formatProgress(result.patrol);
-  const next = result.next_checkpoint?.name ? `Next: ${result.next_checkpoint.name}` : null;
+  const scanTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const registeredDetail = [checkpointName, "Registered checkpoint", scanTime].join(" | ");
 
   switch (result.code) {
     case "PATROL_STARTED":
-      return {
-        uiState: "patrol_started",
-        tone: "good",
-        title: "Patrol started",
-        detail: [patrolName, checkpointName, progress, next].filter(Boolean).join(" · "),
-        holdMs: 2600,
-        sound: "scan-success",
-      };
     case "CHECKPOINT_ACCEPTED":
-      return {
-        uiState: "success",
-        tone: "good",
-        title: "Checkpoint accepted",
-        detail: [checkpointName, patrolName, progress, next].filter(Boolean).join(" · "),
-        holdMs: 2200,
-        sound: "scan-success",
-      };
     case "PATROL_COMPLETED":
-      return {
-        uiState: "patrol_completed",
-        tone: "good",
-        title: "Patrol completed",
-        detail: [patrolName, progress, new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })]
-          .filter(Boolean)
-          .join(" · "),
-        holdMs: 3000,
-        sound: "scan-success",
-      };
+      return { uiState: "success", tone: "good", title: "Scan successful", detail: registeredDetail, holdMs: 2200, sound: "scan-success" };
     case "NO_ACTIVE_PATROL":
-      return {
-        uiState: "no_active_patrol",
-        tone: "info",
-        title: "Checkpoint recorded",
-        detail: `${checkpointName} · No active patrol matched`,
-        holdMs: 2600,
-        sound: "scan-success",
-      };
+      return { uiState: "no_active_patrol", tone: "info", title: "Scan recorded", detail: [checkpointName, "Registered checkpoint", "Not part of an active patrol"].join(" | "), holdMs: 2600, sound: "scan-success" };
     case "CHECKPOINT_ALREADY_SCANNED":
-      return {
-        uiState: "duplicate",
-        tone: "warning",
-        title: "Already scanned",
-        detail: [`${checkpointName} already counted`, progress ? `Progress unchanged ${progress}` : null]
-          .filter(Boolean)
-          .join(" · "),
-        holdMs: 2400,
-        sound: "error",
-      };
+      return { uiState: "duplicate", tone: "warning", title: "Already scanned", detail: checkpointName, holdMs: 2400, sound: "error" };
     case "CHECKPOINT_OUT_OF_ORDER":
-      return {
-        uiState: "out_of_order",
-        tone: "warning",
-        title: "Out of order",
-        detail: [`Scanned ${checkpointName}`, result.next_checkpoint?.name ? `Expected ${result.next_checkpoint.name}` : null]
-          .filter(Boolean)
-          .join(" · "),
-        holdMs: 3000,
-        sound: "error",
-      };
-    case "CHECKPOINT_REQUIRES_DATA":
-      return {
-        uiState: "awaiting_data",
-        tone: "info",
-        title: "Data log required",
-        detail: [checkpointName, result.data_log_form?.name ?? "Complete the form to finish this checkpoint", progress]
-          .filter(Boolean)
-          .join(" · "),
-        holdMs: 600000,
-        sound: "scan-success",
-      };
     case "CHECKPOINT_NOT_IN_ROUTE":
-      return {
-        uiState: "no_active_patrol",
-        tone: "info",
-        title: "Checkpoint recorded",
-        detail: `${checkpointName} is not part of the active route`,
-        holdMs: 2600,
-        sound: "scan-success",
-      };
+      return { uiState: "no_active_patrol", tone: "info", title: "Scan recorded", detail: [checkpointName, "Registered checkpoint", "Scan recorded for review"].join(" | "), holdMs: 2600, sound: "scan-success" };
+    case "CHECKPOINT_REQUIRES_DATA":
+      return { uiState: "awaiting_data", tone: "info", title: "Scan recorded", detail: [checkpointName, result.data_log_form?.name ?? "Data log required"].join(" | "), holdMs: 600000, sound: "scan-success" };
     case "UNREGISTERED_CHECKPOINT":
-      return {
-        uiState: "unregistered",
-        tone: "danger",
-        title: "Unregistered checkpoint",
-        detail: "Submitted for supervisor review",
-        holdMs: 3000,
-        sound: "error",
-      };
+      return { uiState: "unregistered", tone: "danger", title: "Scan not successful", detail: "Checkpoint not registered | Scan recorded for review", holdMs: 3000, sound: "error" };
     case "OFFLINE_SAVED":
-      return {
-        uiState: "success_offline",
-        tone: "warning",
-        title: "Saved offline",
-        detail: "Automatic synchronization pending",
-        holdMs: 2600,
-        sound: "offline-queued",
-      };
+      return { uiState: "success_offline", tone: "warning", title: "Scan recorded", detail: "Saved offline | Sync pending", holdMs: 2600, sound: "offline-queued" };
     case "SYNCED":
-      return {
-        uiState: "success",
-        tone: "good",
-        title: "Synced",
-        detail: "Queued scan synchronized successfully",
-        holdMs: 2000,
-        sound: "sync-complete",
-      };
+      return { uiState: "success", tone: "good", title: "Scan recorded", detail: "Queued scan synchronized", holdMs: 2000, sound: "sync-complete" };
     case "DEVICE_NOT_ENROLLED":
-      return {
-        uiState: "device_unassigned",
-        tone: "warning",
-        title: "Device not enrolled",
-        detail: "Contact a supervisor to enroll this device",
-        holdMs: 3000,
-        sound: "error",
-      };
+      return { uiState: "device_unassigned", tone: "warning", title: "Scan not successful", detail: "Device not enrolled", holdMs: 3000, sound: "error" };
     default:
-      return {
-        uiState: "save_failed",
-        tone: "danger",
-        title: "Scan failed",
-        detail: result.message || "MX Patrol will retry automatically where possible",
-        holdMs: 3000,
-        sound: "error",
-      };
+      return { uiState: "save_failed", tone: "danger", title: "Scan not successful", detail: result.message || "Scan could not be recorded", holdMs: 3000, sound: "error" };
   }
 };

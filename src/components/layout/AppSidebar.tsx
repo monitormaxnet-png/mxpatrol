@@ -73,7 +73,10 @@ const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
 
   const unreadSos = alerts.filter((alert) => alert.type === "panic_button" && !alert.is_read).length;
   const platformItems: NavItem[] = isPlatformAdmin
-    ? [{ to: "/companies", icon: Building2, label: "Companies" }]
+    ? [
+        { to: "/companies", icon: Building2, label: "Companies" },
+        { to: "/device-security-reports", icon: Shield, label: "Device Security Reports" },
+      ]
     : [];
 
   const visibleItems = [

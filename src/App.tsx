@@ -24,6 +24,7 @@ const Checkpoints = lazy(() => import("./pages/Checkpoints"));
 const Incidents = lazy(() => import("./pages/Incidents"));
 const AIInsights = lazy(() => import("./pages/AIInsights"));
 const Reports = lazy(() => import("./pages/Reports"));
+const DeviceSecurityReports = lazy(() => import("./pages/DeviceSecurityReports"));
 const Devices = lazy(() => import("./pages/Devices"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const Login = lazy(() => import("./pages/Login"));
@@ -132,6 +133,7 @@ const App = () => (
               <Route path="/scan" element={lazyRoute(<ScanRecord />)} />
               <Route path="/ai-insights" element={lazyRoute(<AIInsights />)} />
               <Route path="/reports" element={lazyRoute(<Reports />)} />
+              <Route path="/device-security-reports" element={lazyRoute(<DeviceSecurityReports />)} />
               <Route path="/cameras" element={lazyRoute(<Cameras />)} />
               <Route path="/cameras/live" element={lazyRoute(<CameraLive />)} />
               <Route path="/cameras/events" element={lazyRoute(<CameraEvents />)} />

@@ -4,6 +4,7 @@ type SupabaseClient = any;
 
 export type SecureDeviceAction =
   | "get_secure_device_summary"
+  | "get_device_security_reports"
   | "get_device_security_status"
   | "get_device_security_details"
   | "get_device_security_events"
@@ -160,6 +161,126 @@ export async function getSecureDeviceSummary(client: SupabaseClient, actor: Secu
   };
 }
 
+function emptyDeviceSecurityCounts() {
+  return {
+    total: 0,
+    secure: 0,
+    attention: 0,
+    disabled: 0,
+    offline: 0,
+    outdated: 0,
+    kiosk_disabled: 0,
+    integrity_failures: 0,
+  };
+}
+
+function applyDeviceSecurityCounts(counts: ReturnType<typeof emptyDeviceSecurityCounts>, row: SecureDeviceRow) {
+  counts.total += 1;
+  if (deviceSecurityState(row) === "Secure") counts.secure += 1;
+  if (isDeviceAttention(row)) counts.attention += 1;
+  if (row.secure_mode_status === "disabled" || row.pairing_status === "revoked") counts.disabled += 1;
+  if (row.status === "offline") counts.offline += 1;
+  if (row.minimum_app_version && row.app_version && compareVersions(row.app_version, row.minimum_app_version) < 0) counts.outdated += 1;
+  if (row.secure_mode_enabled && !row.kiosk_active) counts.kiosk_disabled += 1;
+  if (row.secure_mode_status === "integrity_failed") counts.integrity_failures += 1;
+}
+
+function patrolLabel(session: Record<string, any> | null | undefined): string {
+  if (!session) return "No linked patrol";
+  const route = Array.isArray(session.patrol_routes) ? session.patrol_routes[0] : session.patrol_routes;
+  const template = Array.isArray(session.patrol_templates) ? session.patrol_templates[0] : session.patrol_templates;
+  return String(route?.name ?? template?.name ?? session.id ?? "Patrol");
+}
+
+export async function getDeviceSecurityReports(client: SupabaseClient, actor: SecureDeviceActor, siteId: string | null) {
+  assertCanManageSecureDevices(actor);
+  const { data, error } = await scopedDeviceQuery(client, actor, siteId).limit(500);
+  if (error) throw new Error("Secure device database query failed" + (error.code ? " (" + error.code + ")" : "") + ": " + (error.message ?? "Unknown Supabase error"));
+
+  const rows = (data ?? []).map(normalizeDevice);
+  const deviceIdentifiers = Array.from(new Set(rows.map((row) => String(row.device_identifier ?? "")).filter(Boolean)));
+  let sessions: Array<Record<string, any>> = [];
+
+  if (deviceIdentifiers.length) {
+    let query = client
+      .from("patrol_sessions")
+      .select("id, site_id, device_identifier, status, scheduled_start, scheduled_end, actual_start, actual_end, patrol_routes(name), patrol_templates(name), sites(name)")
+      .eq("company_id", actor.company_id)
+      .in("device_identifier", deviceIdentifiers)
+      .order("scheduled_start", { ascending: false })
+      .limit(750);
+    if (siteId) query = query.eq("site_id", siteId);
+    else if (actor.allowed_site_ids?.length) query = query.in("site_id", actor.allowed_site_ids);
+    const result = await query;
+    if (result.error) throw new Error("Secure device patrol query failed" + (result.error.code ? " (" + result.error.code + ")" : "") + ": " + (result.error.message ?? "Unknown Supabase error"));
+    sessions = result.data ?? [];
+  }
+
+  const latestSessionByDevice = new Map<string, Record<string, any>>();
+  sessions.forEach((session) => {
+    const identifier = String(session.device_identifier ?? "");
+    if (identifier && !latestSessionByDevice.has(identifier)) latestSessionByDevice.set(identifier, session);
+  });
+
+  const summary = emptyDeviceSecurityCounts();
+  const enrichedRows = rows.map((row) => {
+    applyDeviceSecurityCounts(summary, row);
+    const session = latestSessionByDevice.get(String(row.device_identifier ?? "")) ?? null;
+    return {
+      ...row,
+      security_state: deviceSecurityState(row),
+      needs_attention: isDeviceAttention(row),
+      patrol_session: session ? {
+        id: session.id,
+        name: patrolLabel(session),
+        status: session.status ?? null,
+        scheduled_start: session.scheduled_start ?? null,
+        scheduled_end: session.scheduled_end ?? null,
+        actual_start: session.actual_start ?? null,
+        actual_end: session.actual_end ?? null,
+      } : null,
+    };
+  });
+
+  const siteGroups = new Map<string, Record<string, any>>();
+  enrichedRows.forEach((row) => {
+    const siteKey = String(row.site_id ?? "unassigned");
+    if (!siteGroups.has(siteKey)) {
+      siteGroups.set(siteKey, {
+        site_id: row.site_id ?? null,
+        site_name: row.site ?? "Unassigned",
+        ...emptyDeviceSecurityCounts(),
+        patrols: [],
+      });
+    }
+    const siteGroup = siteGroups.get(siteKey)!;
+    applyDeviceSecurityCounts(siteGroup, row);
+
+    const session = row.patrol_session;
+    const patrolKey = String(session?.id ?? "unassigned");
+    let patrol = siteGroup.patrols.find((item: Record<string, any>) => item.patrol_id === patrolKey);
+    if (!patrol) {
+      patrol = {
+        patrol_id: patrolKey,
+        patrol_name: session?.name ?? "No linked patrol",
+        patrol_status: session?.status ?? "unassigned",
+        scheduled_start: session?.scheduled_start ?? null,
+        ...emptyDeviceSecurityCounts(),
+        rows: [],
+      };
+      siteGroup.patrols.push(patrol);
+    }
+    applyDeviceSecurityCounts(patrol, row);
+    patrol.rows.push(row);
+  });
+
+  return {
+    generated_at: new Date().toISOString(),
+    summary,
+    rows: enrichedRows,
+    sites: Array.from(siteGroups.values()),
+  };
+}
 export async function getSecureDeviceByIdentifier(
   client: SupabaseClient,
   actor: SecureDeviceActor,

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const panel = readFileSync('src/components/command-center/LiveSecureDeviceManagementPanel.tsx', 'utf8');
 const edge = readFileSync('supabase/functions/secure-device-management/index.ts', 'utf8');
 const shared = readFileSync('supabase/functions/_shared/secure-device-management.ts', 'utf8');
+const deviceSecurityReports = readFileSync('src/pages/DeviceSecurityReports.tsx', 'utf8');
 const whatsappViews = readFileSync('supabase/functions/whatsapp-webhook/lib/views.ts', 'utf8');
 const whatsappFlows = readFileSync('supabase/functions/whatsapp-webhook/lib/flows.ts', 'utf8');
 const whatsappIdentity = readFileSync('supabase/functions/whatsapp-webhook/lib/identity.ts', 'utf8');
@@ -85,5 +86,14 @@ describe('secure patrol device management', () => {
   it('renames unverifiable guarantees to factual controls', () => {
     expect(panel).toContain('Security controls');
     expect(panel).not.toContain('Security guarantees');
+  });
+  it('adds the owner Device Security Reports dashboard through the secure device Edge Function', () => {
+    expect(shared).toContain('getDeviceSecurityReports');
+    expect(shared).toContain('.from("patrol_sessions")');
+    expect(edge).toContain('get_device_security_reports');
+    expect(deviceSecurityReports).toContain('Device Security Reports');
+    expect(deviceSecurityReports).toContain('get_device_security_reports');
+    expect(deviceSecurityReports).toContain('isPlatformOwner');
+    expect(deviceSecurityReports).toContain('All secure patrol devices grouped by site and patrol');
   });
 });

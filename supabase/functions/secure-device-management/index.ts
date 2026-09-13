@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import {
+  getDeviceSecurityReports,
   getSecureDeviceByIdentifier,
   getSecureDeviceEvents,
   getSecureDeviceSummary,
@@ -104,6 +105,10 @@ serve(async (req) => {
 
     if (action === "get_secure_device_summary" || action === "get_device_security_status") {
       return json({ success: true, summary: await getSecureDeviceSummary(service, actor, siteId) });
+    }
+
+    if (action === "get_device_security_reports") {
+      return json({ success: true, report: await getDeviceSecurityReports(service, actor, siteId) });
     }
 
     if (action === "get_device_security_details") {

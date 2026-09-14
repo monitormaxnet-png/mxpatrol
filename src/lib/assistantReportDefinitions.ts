@@ -6,7 +6,8 @@ export type ReportCategory = {
 
 export type ReportMenu = {
   title: string;
-  parent: string;
+  subtitle?: string;
+  parent?: string;
   items: ReportCategory[];
 };
 

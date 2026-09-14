@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.apply_patrol_session_event_count_trigger() FROM PUBLIC, anon, authenticated;

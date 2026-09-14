@@ -444,15 +444,17 @@ export async function createCheckpoint(client: SupabaseClient, actor: Management
   const name = text(input.name, "Checkpoint name", { max: 80 });
   const locationNote = text(input.location_note, "Zone / location", { required: false, max: 120 });
   const nfcTagId = normalizeNfcTag(input.nfc_tag_id);
+  const dataLogEnabled = input.data_log_enabled === true || String(input.enable_datalog ?? "").toLowerCase() === "yes" || String(input.data_log ?? "").toLowerCase() === "yes";
+  const dataLogLabel = dataLogEnabled ? text(input.data_log_label ?? input.datalog_label, "Datalog Label", { required: false, max: 80 }) || "Datalog" : null;
 
   const { data: existing } = await client
     .from("checkpoints")
-    .select("id, name, nfc_tag_id, data_log_form_id, site_id, created_at")
+    .select("id, name, nfc_tag_id, data_log_form_id, data_log_enabled, data_log_label, site_id, created_at")
     .eq("company_id", actor.company_id)
     .eq("site_id", site.id)
     .eq("name", name)
     .maybeSingle();
-  if (existing) return checkpointResult(existing, site, null, true);
+  if (existing) return checkpointResult(existing, site, true);
 
   if (nfcTagId) {
     const { data: clash } = await client
@@ -464,36 +466,6 @@ export async function createCheckpoint(client: SupabaseClient, actor: Management
     if (clash) throw new ManagementActionError(`That NFC tag is already assigned to ${clash.name}`, 409);
   }
 
-  let form: { id: string; name: string; field_count: number } | null = null;
-  let createdFormId: string | null = null;
-  let formId = typeof input.data_log_form_id === "string" && input.data_log_form_id ? input.data_log_form_id : null;
-
-  if (input.new_form) {
-    if (formId) throw new ManagementActionError("Choose either an existing Data Log Form or a new one, not both");
-    form = await createDataLogForm(client, actor, site.id, input.new_form as PendingFormInput);
-    createdFormId = form.id;
-    formId = form.id;
-  } else if (formId) {
-    // Tenant + site scope: company must match and the form must be global or
-    // belong to the active site. Never allow attaching another tenant's form.
-    const { data: existingForm, error: formError } = await client
-      .from("data_log_forms")
-      .select("id, name, site_id, is_active, data_log_form_fields(id)")
-      .eq("company_id", actor.company_id)
-      .eq("id", formId)
-      .maybeSingle();
-    if (formError) throw new ManagementActionError(formError.message, 500);
-    if (!existingForm || existingForm.is_active === false) {
-      throw new ManagementActionError("Selected Data Log Form was not found", 404);
-    }
-    if (existingForm.site_id && existingForm.site_id !== site.id) {
-      throw new ManagementActionError("That Data Log Form belongs to another site", 403);
-    }
-    const fieldCount = Array.isArray(existingForm.data_log_form_fields) ? existingForm.data_log_form_fields.length : 0;
-    if (!fieldCount) throw new ManagementActionError("That Data Log Form has no fields yet, so it cannot be attached", 400);
-    form = { id: existingForm.id, name: existingForm.name, field_count: fieldCount };
-  }
-
   const { data, error } = await client
     .from("checkpoints")
     .insert({
@@ -502,37 +474,29 @@ export async function createCheckpoint(client: SupabaseClient, actor: Management
       name,
       location_note: locationNote || null,
       nfc_tag_id: nfcTagId,
-      data_log_form_id: formId,
+      data_log_form_id: null,
+      data_log_enabled: dataLogEnabled,
+      data_log_label: dataLogLabel,
       location_lat: typeof input.location_lat === "number" ? input.location_lat : null,
       location_lng: typeof input.location_lng === "number" ? input.location_lng : null,
       sort_order: 0,
     })
-    .select("id, name, nfc_tag_id, data_log_form_id, site_id")
+    .select("id, name, nfc_tag_id, data_log_form_id, data_log_enabled, data_log_label, site_id")
     .maybeSingle();
 
-  if (error || !data) {
-    if (createdFormId) await rollbackForm(client, actor, createdFormId);
-    throw new ManagementActionError(error?.message ?? "Checkpoint could not be created", 500);
-  }
+  if (error || !data) throw new ManagementActionError(error?.message ?? "Checkpoint could not be created", 500);
 
-  // The checkpoint must never be reported as created without its form relation.
-  if (formId && data.data_log_form_id !== formId) {
-    await client.from("checkpoints").delete().eq("id", data.id).eq("company_id", actor.company_id);
-    if (createdFormId) await rollbackForm(client, actor, createdFormId);
-    throw new ManagementActionError("Data Log Form could not be attached to the checkpoint", 500);
-  }
-
-  return checkpointResult(data, site, form, false);
+  return checkpointResult(data, site, false);
 }
 
 
 function checkpointResult(
   row: Record<string, any>,
   site: { id: string; name: string },
-  form: { id: string; name: string; field_count?: number } | null,
   duplicate: boolean,
 ): ManagementResult {
   const nfcStatus = row.nfc_tag_id ? "assigned" : "pending_assignment";
+  const datalogEnabled = row.data_log_enabled === true;
   return {
     ok: true,
     action: "create_checkpoint",
@@ -542,13 +506,15 @@ function checkpointResult(
       name: row.name,
       nfc_tag_id: row.nfc_tag_id || null,
       nfc_status: nfcStatus,
-      data_log_form_id: row.data_log_form_id ?? null,
-      data_log_form_name: form?.name ?? null,
-      data_log_field_count: form?.field_count ?? null,
+      data_log_form_id: null,
+      data_log_enabled: datalogEnabled,
+      data_log_label: row.data_log_label ?? null,
+      data_log_form_name: null,
+      data_log_field_count: null,
       site_id: site.id,
       site_name: site.name,
     },
-    summary: `${row.name} saved at ${site.name} (NFC ${nfcStatus === "assigned" ? "assigned" : "awaiting assignment"}${form ? `, form: ${form.name}` : ""})`,
+    summary: `${row.name} saved at ${site.name} (NFC ${nfcStatus === "assigned" ? "assigned" : "awaiting assignment"}${datalogEnabled ? `, datalog: ${row.data_log_label || "Datalog"}` : ""})`,
   };
 }
 
@@ -1191,3 +1157,5 @@ export async function runManagementAction(
       throw new ManagementActionError(`Unsupported management action: ${action}`, 400);
   }
 }
+
+

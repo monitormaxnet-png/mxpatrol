@@ -154,37 +154,26 @@ async function loadDataLogForm(client: any, checkpointId: string | null) {
   if (!checkpointId) return null;
   const { data: checkpoint } = await client
     .from("checkpoints")
-    .select("data_log_form_id")
+    .select("data_log_enabled, data_log_label")
     .eq("id", checkpointId)
     .maybeSingle();
-  const formId = stringOrNull(checkpoint?.data_log_form_id);
-  if (!formId) return null;
 
-  const { data: form } = await client
-    .from("data_log_forms")
-    .select("id, name, form_type, is_active")
-    .eq("id", formId)
-    .maybeSingle();
-  if (!form || form.is_active === false) return null;
+  if (checkpoint?.data_log_enabled !== true) return null;
+  const label = String(checkpoint?.data_log_label || "Datalog").trim() || "Datalog";
 
-  const { data: fields } = await client
-    .from("data_log_form_fields")
-    .select("id, label, field_type, required, options_json, sequence_order, is_active")
-    .eq("form_id", formId)
-    .eq("is_active", true)
-    .order("sequence_order", { ascending: true });
-
-  const usable = (fields ?? []).map((field: any) => ({
-    id: String(field.id),
-    label: String(field.label ?? ""),
-    field_type: String(field.field_type ?? "text"),
-    required: field.required === true,
-    options: Array.isArray(field.options_json) ? field.options_json.map((value: unknown) => String(value)) : [],
-    sequence_order: Number(field.sequence_order ?? 0),
-  }));
-  if (!usable.length) return null;
-
-  return { id: String(form.id), name: String(form.name ?? "Data Log"), form_type: String(form.form_type ?? "checklist"), fields: usable };
+  return {
+    id: `simple-${checkpointId}`,
+    name: label,
+    form_type: "simple",
+    fields: [{
+      id: "datalog_value",
+      label,
+      field_type: "text",
+      required: true,
+      options: [],
+      sequence_order: 1,
+    }],
+  };
 }
 
 async function buildStructuredResult(
@@ -205,12 +194,12 @@ async function buildStructuredResult(
   const nextCheckpointId = stringOrNull(patrolMatch?.next_checkpoint_id);
   const nextCheckpointName = stringOrNull(patrolMatch?.next_checkpoint_name);
 
-  const dataLogRequired = code === "CHECKPOINT_REQUIRES_DATA";
-  const dataLogForm = dataLogRequired ? await loadDataLogForm(client, checkpoint?.id ?? null) : null;
+  const dataLogForm = code === "CHECKPOINT_ALREADY_SCANNED" ? null : await loadDataLogForm(client, checkpoint?.id ?? null);
+  const dataLogRequired = Boolean(dataLogForm);
 
   const message = (() => {
     switch (code) {
-      case "CHECKPOINT_REQUIRES_DATA": return `${checkpoint?.name ?? "Checkpoint"} needs ${dataLogForm?.name ?? "a data log"} completed`;
+      case "CHECKPOINT_REQUIRES_DATA": return `${checkpoint?.name ?? "Checkpoint"} accepted`;
       case "PATROL_COMPLETED": return `${patrol?.name ?? "Patrol"} completed`;
       case "PATROL_STARTED": return `${patrol?.name ?? "Patrol"} started`;
       case "CHECKPOINT_ACCEPTED": return `${checkpoint?.name ?? "Checkpoint"} accepted`;
@@ -725,3 +714,5 @@ Deno.serve(async (req) => {
     });
   }
 });
+
+

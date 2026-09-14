@@ -76,7 +76,7 @@ type WorkflowDef = {
   id: WorkflowId;
   title: string;
   action: string;
-  /** Dynamic so flows (like the inline Data Log Form builder) can grow steps. */
+  /** Dynamic so flows can add follow-up steps from prior answers. */
   steps: (data: Record<string, unknown>, ctx: WorkflowContext) => StepDef[];
   summary: (data: Record<string, unknown>, ctx: WorkflowContext) => string[];
   payload: (data: Record<string, unknown>, ctx: WorkflowContext) => Record<string, unknown>;
@@ -208,7 +208,7 @@ function choiceStep(key: string, title: string, prompt: string, options: Workflo
   };
 }
 
-/* ---------------------- checkpoint + data log form flow -------------------- */
+/* ---------------------- checkpoint + simple Datalog flow ------------------- */
 
 export type DraftFormField = { label: string; field_type: string; required: boolean; options_json: string[]; sequence_order: number };
 
@@ -302,11 +302,10 @@ function fieldMoreStep(index: number): StepDef {
   };
 }
 
-function dataLogChoiceOptions(ctx: WorkflowContext): WorkflowOption[] {
+function dataLogChoiceOptions(_ctx: WorkflowContext): WorkflowOption[] {
   return [
-    { id: 'none', label: 'No Data Log Form' },
-    ...(ctx.forms.length ? [{ id: 'existing', label: 'Choose an existing form' }] : []),
-    { id: 'new_form', label: 'Create a new Data Log Form' },
+    { id: 'no', label: 'No' },
+    { id: 'yes', label: 'Yes' },
   ];
 }
 
@@ -328,61 +327,19 @@ function checkpointSteps(data: Record<string, unknown>, ctx: WorkflowContext): S
     },
     {
       key: 'data_log_choice',
-      title: 'Data Log Form',
-      prompt: () => ['Should this checkpoint collect data when scanned?'],
+      title: 'Enable Datalog?',
+      prompt: () => ['Enable Datalog for this checkpoint?'],
       options: (context) => dataLogChoiceOptions(context),
       parse: (input, context) => {
         const option = pickOption(input, dataLogChoiceOptions(context));
-        if (!option) return { ok: false, error: 'Reply with one of the numbers listed.' };
-        return { ok: true, patch: { data_log_choice: option.id, data_log_label: option.label } };
+        if (!option) return { ok: false, error: 'Reply 1 for No or 2 for Yes.' };
+        return { ok: true, patch: { data_log_choice: option.id } };
       },
     },
   ];
 
-  const choice = data.data_log_choice;
-
-  if (choice === 'existing') {
-    steps.push({
-      key: 'data_log_form_id',
-      title: 'Select form',
-      prompt: (context) => ['Which Data Log Form should be attached?', ...context.forms.map((form, index) => `${index + 1}. ${form.name}`)],
-      options: (context) => context.forms.map((form) => ({ id: form.id, label: form.name })),
-      parse: (input, context) => {
-        if (!context.forms.length) return { ok: false, error: 'No Data Log Forms exist for this site yet.' };
-        const option = pickOption(input, context.forms.map((form) => ({ id: form.id, label: form.name })));
-        if (!option) return { ok: false, error: 'Reply with one of the form numbers listed.' };
-        const selected = context.forms.find((form) => form.id === option.id);
-        return {
-          ok: true,
-          patch: {
-            data_log_form_id: option.id,
-            data_log_form_name: option.label,
-            data_log_form_field_count: (selected as { field_count?: number } | undefined)?.field_count ?? null,
-          },
-        };
-      },
-    });
-  }
-
-  if (choice === 'new_form') {
-    steps.push(textStep('form_name', 'Form name', 'What should the new Data Log Form be called?', { min: 2, max: 120 }));
-    if (typeof data.form_name === 'string') {
-      for (let index = 0; ; index += 1) {
-        steps.push(fieldLabelStep(index));
-        if (typeof data[`f${index}_label`] !== 'string') break;
-        steps.push(fieldTypeStep(index));
-        const type = data[`f${index}_type`];
-        if (typeof type !== 'string') break;
-        if (fieldTypeNeedsOptions(type)) {
-          steps.push(fieldOptionsStep(index));
-          if (!Array.isArray(data[`f${index}_options`])) break;
-        }
-        steps.push(fieldRequiredStep(index));
-        if (typeof data[`f${index}_required`] !== 'string') break;
-        steps.push(fieldMoreStep(index));
-        if (data[`f${index}_more`] !== 'yes') break;
-      }
-    }
+  if (data.data_log_choice === 'yes') {
+    steps.push(textStep('data_log_label', 'Datalog Label', 'What label should the device show for the single Datalog field?', { required: false, max: 80 }));
   }
 
   return steps;
@@ -440,16 +397,13 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
       gpsStep(),
       choiceStep('status', 'Status', 'Site status?', STATUS_OPTIONS),
     ],
-    summary: (data, ctx) => {
-      const companyName = String(data.company_name ?? ctx.selectedCompanyName ?? 'Your company');
-      return [
-        `Company: ${companyName}`,
-        `Site: ${data.name}`,
-        ...(data.address ? [`Address: ${data.address}`] : []),
-        `GPS: ${data.gps_label ?? 'Not set'}`,
-        `Status: ${data.status_label}`,
-      ];
-    },
+    summary: (data, ctx) => [
+      ...(ctx.isPlatformOwner ? [`Company: ${ctx.selectedCompanyName ?? data.company_name ?? data.company_id ?? 'Selected company'}`] : []),
+      `Site: ${data.name}`,
+      ...(data.address ? [`Address: ${data.address}`] : []),
+      data.gps_lat && data.gps_lng ? `GPS: ${data.gps_lat}, ${data.gps_lng}` : 'GPS: Not set',
+      `Status: ${data.status_label}`,
+    ],
     payload: (data, ctx) => ({
       company_id: data.company_id ?? ctx.selectedCompanyId ?? null,
       name: data.name,
@@ -529,27 +483,13 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
     action: 'create_checkpoint',
     steps: (data, ctx) => checkpointSteps(data, ctx),
     summary: (data, ctx) => {
-      const fields = collectDraftFields(data);
-      const formLabel = data.data_log_choice === 'new_form'
-        ? `${data.form_name} (new)`
-        : String(data.data_log_form_name ?? 'None');
+      const datalogEnabled = data.data_log_choice === 'yes';
       return [
         `Checkpoint: ${data.name}`,
         `Zone / Location: ${data.location_note}`,
         `Site: ${ctx.siteName}`,
         `NFC: ${data.nfc_tag_id ? `assigned (${data.nfc_tag_id})` : 'pending'}`,
-        `Data Log Form: ${formLabel}`,
-        ...(data.data_log_choice === 'new_form'
-          ? [
-            `Fields: ${fields.length}`,
-            ...fields.map((field, index) =>
-              `  ${index + 1}. ${field.label} — ${fieldTypeById(field.field_type)?.label ?? field.field_type}` +
-              `${field.required ? ' (required)' : ' (optional)'}` +
-              `${field.options_json.length ? ` [${field.options_json.join(', ')}]` : ''}`),
-          ]
-          : data.data_log_form_id
-            ? [`Fields: ${data.data_log_form_field_count ?? '—'}`]
-            : []),
+        `Datalog: ${datalogEnabled ? (data.data_log_label || 'Datalog') : 'No'}`,
       ];
     },
     payload: (data, ctx) => {
@@ -559,11 +499,11 @@ const WORKFLOWS: Record<WorkflowId, WorkflowDef> = {
         location_note: data.location_note,
         nfc_tag_id: data.nfc_tag_id ?? '',
       };
-      if (data.data_log_choice === 'existing' && data.data_log_form_id) {
-        input.data_log_form_id = data.data_log_form_id;
-      }
-      if (data.data_log_choice === 'new_form') {
-        input.new_form = { name: data.form_name, fields: collectDraftFields(data) };
+      if (data.data_log_choice === 'yes') {
+        input.data_log_enabled = true;
+        input.data_log_label = data.data_log_label || 'Datalog';
+      } else {
+        input.data_log_enabled = false;
       }
       return input;
     },
@@ -887,3 +827,6 @@ export function advanceWorkflow(state: WorkflowState, rawInput: string, ctx: Wor
   if (next.stepIndex >= def.steps(next.data, ctx).length) return confirmFor(def, next, ctx);
   return promptFor(def, next, ctx);
 }
+
+
+

@@ -1,6 +1,5 @@
-import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { Capacitor } from "@capacitor/core";
-import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
@@ -13,13 +12,13 @@ import type { ScanLogEntry } from "@/components/scanner/ScanLog";
 import type { FaceVerifyResult } from "@/components/scanner/FaceVerification";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { motion, AnimatePresence } from "framer-motion";
-import { ShieldCheck } from "lucide-react";
+import { AlertTriangle, Battery, Check, CloudOff, CloudUpload, Loader2, Lock, MapPin, Radio, ShieldAlert, Smartphone, Wifi, WifiOff, Wrench, X } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
 import { ensureLocationPermission, getCachedDeviceLocation, getDeviceLocation } from "@/lib/deviceGeolocation";
 import { updatePatrolDevicePresence } from "@/lib/devicePresence";
 import { backfillNfcScanGps } from "@/lib/nfcWorkflow";
 import { getLocalDeviceIdentifier, resolveDeviceCompany } from "@/lib/deviceCompany";
+import { getSecureDeviceBlockedReason, getSecureDeviceState, type SecureDeviceNativeState } from "@/lib/secureDevice";
 import { batteryMetadata } from "@/lib/deviceBattery";
 import { playFeedbackSound } from "@/lib/feedbackSound";
 import { describeScanResult, formatProgress, type StructuredScanResult } from "@/lib/scanResult";
@@ -53,10 +52,49 @@ const scheduleLowPriority = (work: () => void) => {
 };
 
 type ScanGps = { lat: number; lng: number; accuracy?: number | null } | null;
+type CurrentPatrolRow = {
+  id: string;
+  status: string | null;
+  checkpoint_completed: number | null;
+  checkpoint_total: number | null;
+  scheduled_start: string | null;
+  site_id: string | null;
+  device_identifier: string | null;
+  patrol_routes?: { name: string | null } | Array<{ name: string | null }> | null;
+  patrol_templates?: { name: string | null } | Array<{ name: string | null }> | null;
+  patrol_session_checkpoints?: Array<{
+    id: string;
+    status: string | null;
+    scheduled_order: number | null;
+    scheduled_at: string | null;
+    scanned_at: string | null;
+    checkpoints?: { name: string | null; nfc_tag_id: string | null } | Array<{ name: string | null; nfc_tag_id: string | null }> | null;
+  }> | null;
+};
+
+type ActivePatrolDisplay = {
+  name: string;
+  completed: number;
+  required: number;
+  progressPercent: number;
+  nextCheckpoint: string | null;
+  status?: string | null;
+} | null;
+
+type ScannerRestrictedKind = "active" | "startup_check" | "unpaired" | "locked" | "maintenance" | "disabled" | "update_required" | "security_failed";
+type ScannerRestrictedState = {
+  kind: ScannerRestrictedKind;
+  title: string;
+  detail: string;
+  action?: string;
+  expiresAt?: string | null;
+  tone: "info" | "warning" | "danger";
+};
+
+type PairingCodeResponse = { ok?: boolean; display_code?: string; pairing_code?: string; expires_at?: string; error?: string };
 
 const NFCScanner = () => {
   const queryClient = useQueryClient();
-  const videoRef = useRef<HTMLVideoElement>(null);
   const { syncQueue, syncing, pendingCount } = useOfflineScanQueue();
 
   const [gps, setGps] = useState<ScanGps>(null);
@@ -70,6 +108,7 @@ const NFCScanner = () => {
   const [lastStructuredResult, setLastStructuredResult] = useState<StructuredScanResult | null>(null);
   const [lastScanAt, setLastScanAt] = useState<string | null>(null);
   const [pendingDataLog, setPendingDataLog] = useState<{ result: StructuredScanResult; checkpointName: string } | null>(null);
+  const [dataLogOpen, setDataLogOpen] = useState(false);
   const [submittingDataLog, setSubmittingDataLog] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const { battery } = useDeviceBattery();
@@ -81,23 +120,6 @@ const NFCScanner = () => {
     scanData: FaceScanData;
   } | null>(null);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const syncVideoPlayback = () => {
-      if (document.visibilityState === "visible") {
-        void video.play().catch(() => undefined);
-        return;
-      }
-
-      video.pause();
-    };
-
-    syncVideoPlayback();
-    document.addEventListener("visibilitychange", syncVideoPlayback);
-    return () => document.removeEventListener("visibilitychange", syncVideoPlayback);
-  }, []);
   // Online/offline tracking
   useEffect(() => {
     const on = () => setIsOnline(true);
@@ -115,6 +137,45 @@ const NFCScanner = () => {
   });
   const devicePaired = deviceCompany?.pairingStatus === "paired";
   const companyId = devicePaired ? deviceCompany.companyId : null;
+  const isNativeScanner = Capacitor.isNativePlatform();
+  const { data: secureNativeState = null } = useQuery({
+    queryKey: ["secure-device-state", localDeviceIdentifier],
+    queryFn: getSecureDeviceState,
+    enabled: isNativeScanner,
+    refetchInterval: isNativeScanner ? 30000 : false,
+  });
+  const restrictedState = getRestrictedScannerState({
+    deviceCompany,
+    deviceCompanyLoading,
+    deviceCompanyError,
+    secureNativeState,
+    isNativeScanner,
+  });
+  const scannerBlocked = restrictedState.kind !== "active";
+  const scannerBlockedStatus = restrictedStateToScannerStatus(restrictedState.kind);
+
+  const { data: pairingRequest = null } = useQuery({
+    queryKey: ["device-pairing-code", localDeviceIdentifier, restrictedState.kind],
+    enabled: restrictedState.kind === "unpaired" && isOnline && !deviceCompanyLoading,
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("device-pair", {
+        body: {
+          mode: "request_code",
+          device_metadata: {
+            device_identifier: localDeviceIdentifier,
+            device_name: "RG360",
+            device_type: "pda",
+            model: "RG360",
+            platform: Capacitor.getPlatform(),
+          },
+        },
+      });
+      const payload = data as PairingCodeResponse | null;
+      if (error || !payload?.ok) throw new Error(payload?.error ?? error?.message ?? "Could not issue pairing code");
+      return payload;
+    },
+  });
 
   useEffect(() => {
     console.info(`[NFCScanner] device company ${JSON.stringify({
@@ -145,7 +206,10 @@ const NFCScanner = () => {
           setLastError("Scan synchronized successfully.");
           setLastStructuredResult(null);
           setLastScanAt(syncedAt);
-          window.setTimeout(() => setScannerStatus("scanning"), 1800);
+          window.setTimeout(() => {
+          setLastError(null);
+          setScannerStatus("scanning");
+        }, 1200);
         }
         console.info("[Device] Offline scans synchronized", { company_id: companyId, pending_count: pendingCount });
         queryClient.invalidateQueries({ queryKey: ["recent_scans"] });
@@ -208,7 +272,24 @@ const NFCScanner = () => {
     enabled: !!companyId,
   });
 
-  // Scan processor
+
+  const { data: currentPatrol = null } = useQuery({
+    queryKey: ["scanner-current-patrol", companyId, deviceCompany?.siteId, deviceCompany?.deviceIdentifier],
+    enabled: !!companyId && !scannerBlocked,
+    queryFn: async () => {
+      let query = supabase
+        .from("patrol_sessions")
+        .select("id, status, checkpoint_completed, checkpoint_total, scheduled_start, site_id, device_identifier, patrol_routes(name), patrol_templates(name), patrol_session_checkpoints(id, status, scheduled_order, scheduled_at, scanned_at, checkpoints(name, nfc_tag_id))")
+        .eq("company_id", companyId!)
+        .in("status", ["scheduled", "awaiting_start", "active", "in_progress", "late_start", "late", "delayed", "incomplete"])
+        .order("scheduled_start", { ascending: false })
+        .limit(1);
+      if (deviceCompany?.siteId) query = query.eq("site_id", deviceCompany.siteId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return ((data ?? [])[0] ?? null) as CurrentPatrolRow | null;
+    },
+  });  // Scan processor
   const { processScan } = useNfcScanProcessor({
     checkpoints,
     patrols,
@@ -266,6 +347,8 @@ const NFCScanner = () => {
       });
       if (structured?.data_log_required && structured.data_log_form && structured.scan_id) {
         setPendingDataLog({ result: structured, checkpointName: getScanDisplayName(result) });
+        setDataLogOpen(true);
+        setScannerStatus("awaiting_data");
       }
       signalScannerHaptic(registeredCheckpoint ? "success" : "unregistered");
       console.info("[ScannerState]", {
@@ -319,13 +402,17 @@ const NFCScanner = () => {
         if (error || !payload?.ok) throw new Error(payload?.error ?? error?.message ?? "Data log submission failed");
 
         playFeedbackSound("scan-success");
-        toast.success("Data log submitted");
+        toast.success("Saved successfully");
         setPendingDataLog(null);
+        setDataLogOpen(false);
         setScannerStatus("success");
-        setLastError(null);
+        setLastError("SAVED SUCCESSFULLY");
         queryClient.invalidateQueries({ queryKey: ["patrol_sessions"] });
         queryClient.invalidateQueries({ queryKey: ["scheduled-patrols"] });
-        setTimeout(() => setScannerStatus("scanning"), 1800);
+        setTimeout(() => {
+          setLastError(null);
+          setScannerStatus("scanning");
+        }, 1200);
       } catch (submitError) {
         playFeedbackSound("error");
         toast.error(submitError instanceof Error ? submitError.message : "Data log submission failed");
@@ -408,6 +495,23 @@ const NFCScanner = () => {
   // NFC Reader
   const nfcReader = useNfcReader({
     onScan: async ({ serialNumber }) => {
+      if (scannerBlocked) {
+        setScannerStatus(scannerBlockedStatus);
+        setLastCheckpoint(null);
+        setLastStructuredResult(null);
+        setLastError(restrictedState.detail);
+        playFeedbackSound("error");
+        signalScannerHaptic("device_unassigned");
+        return;
+      }
+
+      if (pendingDataLog) {
+        setScannerStatus("awaiting_data");
+        setLastError("Complete the checkpoint data log before scanning the next tag.");
+        signalScannerHaptic("duplicate");
+        return;
+      }
+
       if (!companyId) {
         const message = deviceCompanyLoading ? "Device enrollment is loading. Please wait." : "This device is not enrolled for patrol scanning.";
         console.warn(`[Scan] Ignored NFC tag without company ${JSON.stringify({
@@ -454,7 +558,7 @@ const NFCScanner = () => {
     debounceMs: 3000,
   });
 
-  const { errorMessage: nfcErrorMessage, startScanning: startNfcScanning, status: nfcStatus, supported: nfcSupported } = nfcReader;
+  const { errorMessage: nfcErrorMessage, startScanning: startNfcScanning, stopScanning: stopNfcScanning, status: nfcStatus, supported: nfcSupported } = nfcReader;
 
   useEffect(() => {
     void ensureLocationPermission().catch(() => {
@@ -526,6 +630,19 @@ const NFCScanner = () => {
   }, [localDeviceIdentifier, nfcSupported]);
 
   useEffect(() => {
+    if (scannerBlocked) {
+      void stopNfcScanning();
+      setScannerStatus(scannerBlockedStatus);
+      setLastError(restrictedState.detail);
+      return;
+    }
+
+    if (pendingDataLog) {
+      void stopNfcScanning();
+      setScannerStatus("awaiting_data");
+      return;
+    }
+
     if (!nfcSupported || pendingFaceScan) return;
 
     startNfcScanning();
@@ -545,7 +662,7 @@ const NFCScanner = () => {
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("focus", handleVisibility);
     };
-  }, [nfcSupported, pendingFaceScan, startNfcScanning]);
+  }, [nfcSupported, pendingDataLog, pendingFaceScan, restrictedState.detail, scannerBlocked, scannerBlockedStatus, startNfcScanning, stopNfcScanning]);
 
   // Sync NFC reader status with scanner status
   useEffect(() => {
@@ -634,243 +751,277 @@ const NFCScanner = () => {
     })();
   };
 
-  const scannerShellState = getScannerShellState(scannerStatus);
-  const isNativeScanner = Capacitor.isNativePlatform();
+  const scannerStatusForDisplay = scannerBlocked ? scannerBlockedStatus : scannerStatus;
+  const scannerShellState = getScannerShellState(scannerStatusForDisplay);
   const gpsLabel = getScannerGpsLabel(gpsStatus);
-  const nfcLabel = getScannerNfcLabel(nfcSupported, scannerStatus);
-  const assignmentLabel = companyId ? "Assigned" : deviceCompanyLoading ? "Checking" : "Not enrolled";
-  const assignmentTone = companyId ? "is-good" : deviceCompanyLoading ? "is-info" : "is-warning";
-  const latestFeedback = getScannerFeedback(scannerStatus, lastCheckpoint, lastError, pendingCount, deviceCompanyLoading, Boolean(companyId));
-  const activityTime = formatScannerTime(lastScanAt ?? lastSyncAt);
+  const nfcLabel = getScannerNfcLabel(nfcSupported, scannerStatusForDisplay);
+  const latestFeedback = getScannerFeedback(scannerStatusForDisplay, lastCheckpoint, lastError, pendingCount, deviceCompanyLoading, Boolean(companyId));
+  const activePatrol = getActivePatrolDisplay(lastStructuredResult, currentPatrol);
+  const deviceLabel = deviceCompany?.deviceName || deviceCompany?.deviceIdentifier || localDeviceIdentifier;
+  const siteLabel = deviceCompany?.siteId ? "Assigned Site" : "Unassigned";
+  const batteryLabel = battery?.level != null ? `${battery.level}%` : "--";
+  const kioskLabel = secureNativeState?.kioskActive || deviceCompany?.secureModeEnabled ? "Active" : "Inactive";
+  const pairingCode = pairingRequest?.display_code ?? pairingRequest?.pairing_code ?? localDeviceIdentifier;
 
   return (
-    <div className={"scanner-shell scanner-page scanner-state-" + scannerShellState + (isNativeScanner ? " scanner-native" : " scanner-web") + " relative min-h-[100vh] overflow-hidden bg-[#020711] text-white lg:min-h-[calc(100vh-4rem)]"}>
+    <div className={`rg360-terminal scanner-shell scanner-page scanner-state-${scannerShellState} ${isNativeScanner ? "scanner-native" : "scanner-web"}`}>
       <HardwareSosListener />
-      <div className="scanner-ambient-bg" aria-hidden="true" />
-
-      <header className="web-scanner-header" aria-label="MX Patrol web scanner header">
-        <div className="web-scanner-title-group">
-          <TTechMxPatrolLogo variant="header" priority className="web-scanner-logo" />
-          <div className="web-scanner-title-divider" aria-hidden="true" />
-          <div>
-            <p className="web-scanner-kicker">Web Scanner</p>
-            <p className="web-scanner-subtitle">Secure patrol scan console</p>
-          </div>
-        </div>
-        <div className="web-scanner-header-actions">
-          <span className={"web-scanner-live-pill " + (isOnline ? "is-live" : "is-offline")}>
-            <span aria-hidden="true" />
-            {isOnline ? "LIVE" : "OFFLINE"}
-          </span>
-          <Button asChild size="sm" variant="ghost" className="web-scanner-supervisor-button">
-            <Link to="/login?supervisor=1">Supervisor</Link>
-          </Button>
-        </div>
-      </header>
-
-      <main className="web-scanner-shell">
-        {!companyId && (
-          <section className="web-scanner-enrollment-card web-scanner-sidebar-item" aria-label="Device enrollment status">
-            <div className="web-scanner-enrollment-header">
-              <span className="web-scanner-warning-icon" aria-hidden="true">!</span>
-              <div className="web-scanner-enrollment-copy">
-                <h2>
-                  {deviceCompanyLoading
-                    ? "Checking device enrollment"
-                    : deviceCompanyError
-                      ? "Could not verify this device"
-                      : "Device not enrolled"}
-                </h2>
-                <p>
-                  {deviceCompanyError
-                    ? "Check the network connection and retry. Scanning resumes automatically once the device is verified."
-                    : "Enroll this RG360 with a supervisor QR token before patrol scanning."}
-                </p>
-              </div>
-            </div>
-            <div className="web-scanner-device-code" aria-label={`Device identifier ${localDeviceIdentifier}`}>
-              {localDeviceIdentifier}
-            </div>
-            <div className="web-scanner-enrollment-actions">
-              {deviceCompanyError ? (
-                <Button
-                  size="sm"
-                  className="web-scanner-action-button web-scanner-action-primary"
-                  onClick={() => queryClient.invalidateQueries({ queryKey: ["device-company", localDeviceIdentifier] })}
-                >
-                  Retry
-                </Button>
-              ) : (
-                <Button asChild size="sm" className="web-scanner-action-button web-scanner-action-primary">
-                  <Link to="/enroll">Enroll Device</Link>
-                </Button>
-              )}
-              <Button asChild size="sm" variant="outline" className="web-scanner-action-button web-scanner-action-secondary">
-                <Link to="/login?supervisor=1">Supervisor Login</Link>
-              </Button>
-            </div>
+      {!isNativeScanner ? <div className="rg360-web-float"><WebScannerActions /></div> : null}
+      <main className="rg360-screen" aria-label="RG360 MX Patrol scanner">
+        {scannerBlocked ? (
+          <RestrictedScannerScreen
+            state={restrictedState}
+            deviceLabel={deviceLabel}
+            siteLabel={siteLabel}
+            pairingCode={pairingCode}
+            isOnline={isOnline}
+          showWebFallback={!isNativeScanner}
+          />
+        ) : pendingFaceScan ? (
+          <section className="rg360-face-panel" aria-label="Face verification required">
+            <TTechMxPatrolLogo variant="header" priority className="rg360-logo" />
+            <div className="rg360-state-icon rg360-tone-warning"><ShieldAlert className="h-12 w-12" /></div>
+            <h1>FACE VERIFICATION</h1>
+            <p>{pendingFaceScan.result.checkpoint?.name ?? "Checkpoint"}</p>
+            <Suspense fallback={<div className="rg360-loading"><Loader2 className="h-5 w-5 animate-spin" /> Loading face verification...</div>}>
+              <FaceVerification guardPhotoUrl={null} onResult={handleFaceResult} />
+            </Suspense>
+            <Button
+              type="button"
+              className="rg360-secondary-action"
+              disabled={submittingDataLog}
+              onClick={() => {
+                setPendingFaceScan(null);
+                setScannerStatus(nfcSupported ? "scanning" : "idle");
+                toast.warning("Face verification skipped - scan not recorded");
+              }}
+            >
+              CANCEL VERIFICATION
+            </Button>
           </section>
+        ) : pendingDataLog?.result.data_log_form && dataLogOpen ? (
+          <DataLogFormOverlay
+            form={pendingDataLog.result.data_log_form}
+            checkpointName={pendingDataLog.checkpointName}
+            submitting={submittingDataLog}
+            onSubmit={submitDataLog}
+          />
+        ) : (
+          <>
+            <header className="rg360-header">
+              <span className="rg360-time">{formatScannerTime(null)}</span>
+              <TTechMxPatrolLogo variant="header" priority className="rg360-logo" />
+              <DeviceIdentityCard deviceLabel={deviceLabel} siteLabel={siteLabel} isOnline={isOnline} />
+            </header>
+
+            <ScannerRing
+              status={scannerStatusForDisplay}
+              checkpointName={lastCheckpoint}
+              errorReason={lastError}
+              tagUid={lastTagUid}
+              gpsStatus={gpsStatus}
+              isOnline={isOnline}
+              pendingCount={pendingCount}
+              scannedAt={lastScanAt}
+              structuredResult={lastStructuredResult}
+              deviceIdentifier={deviceCompany?.deviceIdentifier ?? localDeviceIdentifier}
+              activePatrol={activePatrol}
+              feedbackTitle={latestFeedback.title}
+              feedbackDetail={latestFeedback.detail}
+            />
+            <PatrolContextCard patrol={activePatrol} latestFeedback={latestFeedback.detail} />
+
+            <StatusFooter
+              gpsLabel={gpsLabel}
+              nfcLabel={nfcLabel}
+              kioskLabel={kioskLabel}
+              batteryLabel={batteryLabel}
+              isOnline={isOnline}
+              pendingCount={pendingCount}
+            />
+          </>
         )}
-
-        <section className="web-scanner-panel-card web-scanner-sidebar-item web-scanner-patrol-card" aria-label="Patrol scanner status">
-          <div className="web-scanner-section-heading">
-            <p>Patrol scanner</p>
-          </div>
-          <p className="web-scanner-panel-copy">
-            {companyId ? "Scanner is ready. Hold the device near the checkpoint tag." : "Ready for device enrollment before patrol scanning."}
-          </p>
-        </section>
-
-        <section className="web-scanner-panel-card web-scanner-sidebar-item web-scanner-system-card" aria-label="System status">
-          <p className="web-scanner-card-title">System Status</p>
-          <div className="web-scanner-status-list">
-            <div className="web-scanner-status-row"><span>GPS</span><strong className={gpsStatus === "unavailable" ? "is-warning" : "is-good"}>{gpsLabel}</strong></div>
-            <div className="web-scanner-status-row"><span>Network</span><strong className={isOnline ? "is-good" : "is-warning"}>{isOnline ? "Online" : "Offline"}</strong></div>
-            <div className="web-scanner-status-row"><span>Sync Queue</span><strong className={pendingCount > 0 ? "is-warning" : "is-good"}>{pendingCount} Pending</strong></div>
-            <div className="web-scanner-status-row"><span>NFC</span><strong className={nfcSupported ? "is-good" : "is-danger"}>{nfcLabel}</strong></div>
-            <div className="web-scanner-status-row"><span>Device Assignment</span><strong className={assignmentTone}>{assignmentLabel}</strong></div>
-          </div>
-        </section>
-
-        <section className="web-scanner-panel-card web-scanner-sidebar-item web-scanner-feedback-card web-scanner-latest-card" aria-label="Latest scanner activity">
-          <div className="web-scanner-section-heading">
-            <span className={"web-scanner-feedback-dot " + latestFeedback.tone} aria-hidden="true" />
-            <p>Latest Activity</p>
-          </div>
-          <div className="web-scanner-latest-body">
-            <div>
-              <span>{latestFeedback.title}</span>
-              <span>{activityTime}</span>
-            </div>
-            <p>{latestFeedback.detail}</p>
-          </div>
-        </section>
-
-        <section className="web-scanner-visual-panel" aria-label="NFC scanner video">
-          <div className="scanner-stage">
-            <div className="scanner-media-shell web-scanner-media-shell">
-              <video
-                ref={videoRef}
-                className="scanner-background-video"
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="auto"
-                controls={false}
-                poster="/assets/rg360/nfcscanner-poster.jpg"
-                aria-hidden="true"
-              >
-                <source src="/assets/rg360/nfcscanner.mp4" type="video/mp4" />
-              </video>
-              <div className="scanner-dark-overlay" />
-
-              <p className="sr-only" aria-live="polite">
-                {scannerStatus === "idle" || scannerStatus === "scanning" || scannerStatus === "initializing"
-                  ? "NFC scanner ready"
-                  : scannerStatus + (lastCheckpoint ? " " + lastCheckpoint : "")}
-              </p>
-
-              <AnimatePresence>
-                {pendingFaceScan && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    className="scanner-face-panel relative z-10 mx-4 mt-auto mb-4"
-                  >
-                    <div className="space-y-3 rounded-xl border border-primary/30 bg-black/82 p-4 backdrop-blur-sm">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="h-5 w-5 text-primary" />
-                        <div>
-                          <p className="text-sm font-bold text-white">Face Verification Required</p>
-                          <p className="text-xs text-white/70">
-                            Checkpoint: {pendingFaceScan.result.checkpoint?.name ?? "Unknown"} - NFC + GPS + Face ID pending
-                          </p>
-                        </div>
-                      </div>
-                      <Suspense
-                        fallback={(
-                          <div className="rounded-xl border border-white/15 p-6 text-center text-sm text-white/65">
-                            Loading face verification...
-                          </div>
-                        )}
-                      >
-                        <FaceVerification
-                          guardPhotoUrl={null}
-                          onResult={handleFaceResult}
-                        />
-                      </Suspense>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full text-xs text-white/65"
-                        onClick={() => {
-                          setPendingFaceScan(null);
-                          setScannerStatus(nfcSupported ? "scanning" : "idle");
-                          toast.warning("Face verification skipped - scan not recorded");
-                        }}
-                      >
-                        Cancel Verification
-                      </Button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {pendingDataLog?.result.data_log_form && (
-                  <motion.div
-                    key="data-log-form"
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 12 }}
-                    className="absolute inset-x-0 bottom-0 z-20 px-4 pb-6"
-                  >
-                    <DataLogFormOverlay
-                      form={pendingDataLog.result.data_log_form}
-                      checkpointName={pendingDataLog.checkpointName}
-                      submitting={submittingDataLog}
-                      onSubmit={submitDataLog}
-                      onCancel={() => {
-                        setPendingDataLog(null);
-                        setScannerStatus(nfcSupported ? "scanning" : "idle");
-                        toast.warning("Checkpoint stays awaiting data until the form is submitted");
-                      }}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {!pendingFaceScan && !pendingDataLog && (
-                <div className="scanner-feedback-layer pointer-events-none absolute inset-0 z-10 flex items-end justify-center px-4 pb-16">
-                  <ScannerRing
-                    status={scannerStatus}
-                    checkpointName={lastCheckpoint}
-                    errorReason={lastError}
-                    tagUid={lastTagUid}
-                    gpsStatus={gpsStatus}
-                    isOnline={isOnline}
-                    pendingCount={pendingCount}
-                    scannedAt={lastScanAt}
-                    structuredResult={lastStructuredResult}
-                    deviceIdentifier={deviceCompany?.deviceIdentifier ?? localDeviceIdentifier}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
       </main>
-
-      <footer className="web-scanner-footer" aria-label="Scanner footer">
-        <span>MX Patrol Web Scanner</span>
-        <span>Secure Patrol System</span>
-        <span>(c) 2025 TTECH</span>
-      </footer>
     </div>
   );
 };
+
+function WebScannerActions() {
+  return (
+    <div className="rg360-web-actions" aria-label="Web enrollment and login actions">
+      <a className="rg360-primary-action" href="/enroll">OPEN ENROLLMENT</a>
+      <a className="rg360-secondary-action" href="/login?supervisor=1">SUPERVISOR LOGIN</a>
+    </div>
+  );
+}
+function DeviceIdentityCard({ deviceLabel, siteLabel, isOnline }: { deviceLabel: string; siteLabel: string; isOnline: boolean }) {
+  return (
+    <section className="rg360-device-card" aria-label="Device identity">
+      <div><span>Device:</span><strong>{deviceLabel}</strong></div>
+      <div><span>Site:</span><strong>{siteLabel}</strong></div>
+      <span className={isOnline ? "rg360-online" : "rg360-offline"}>{isOnline ? "Online" : "Offline"}</span>
+    </section>
+  );
+}
+
+function PatrolContextCard({ patrol, latestFeedback }: { patrol: ActivePatrolDisplay; latestFeedback: string }) {
+  const completed = patrol?.completed ?? 0;
+  const required = patrol?.required ?? 0;
+  const percent = patrol?.progressPercent ?? 0;
+  return (
+    <section className="rg360-patrol-card" aria-label="Current patrol">
+      <div className="rg360-row"><span>Patrol:</span><strong>{patrol?.name ?? "Awaiting patrol"}</strong></div>
+      <div className="rg360-row"><span>Progress:</span><strong>{required ? `${completed} / ${required} checkpoints` : "Ready"}</strong></div>
+      <div className="rg360-progress"><span style={{ width: `${percent}%` }} /></div>
+      <div className="rg360-row"><span>Next:</span><strong>{patrol?.nextCheckpoint ?? latestFeedback}</strong></div>
+    </section>
+  );
+}
+
+function StatusFooter({ gpsLabel, nfcLabel, kioskLabel, batteryLabel, isOnline, pendingCount }: { gpsLabel: string; nfcLabel: string; kioskLabel: string; batteryLabel: string; isOnline: boolean; pendingCount: number }) {
+  return (
+    <footer className="rg360-status-footer" aria-label="Scanner status">
+      <StatusChip icon={MapPin} label="GPS" value={gpsLabel} tone={gpsLabel === "Unavailable" ? "warning" : "success"} />
+      <StatusChip icon={Smartphone} label="Kiosk" value={kioskLabel} tone={kioskLabel === "Active" ? "success" : "warning"} />
+      <StatusChip icon={Battery} label="Batt." value={batteryLabel} tone="success" />
+      <StatusChip icon={isOnline ? Wifi : WifiOff} label={isOnline ? "Sync" : "Offline"} value={pendingCount ? `${pendingCount} queued` : nfcLabel} tone={isOnline ? "success" : "info"} />
+    </footer>
+  );
+}
+
+function StatusChip({ icon: Icon, label, value, tone }: { icon: typeof Wifi; label: string; value: string; tone: "success" | "warning" | "info" | "danger" }) {
+  return (
+    <div className={`rg360-status-chip rg360-chip-${tone}`}>
+      <Icon className="h-4 w-4" />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function RestrictedScannerScreen({ state, deviceLabel, siteLabel, pairingCode, isOnline, showWebFallback }: { state: ScannerRestrictedState; deviceLabel: string; siteLabel: string; pairingCode: string; isOnline: boolean; showWebFallback: boolean }) {
+  const isPairing = state.kind === "unpaired";
+  const Icon = state.kind === "maintenance" ? Wrench : state.kind === "startup_check" ? Loader2 : state.kind === "update_required" ? CloudUpload : state.kind === "security_failed" ? ShieldAlert : state.kind === "disabled" || state.kind === "locked" ? Lock : AlertTriangle;
+  return (
+    <section className={`rg360-restricted rg360-restricted-${state.tone}`} aria-live="assertive">
+      <span className="rg360-time">{formatScannerTime(null)}</span>
+      <TTechMxPatrolLogo variant="header" priority className="rg360-logo" />
+      <div className={`rg360-state-icon rg360-tone-${state.tone === "danger" ? "error" : state.tone}`}>
+        <Icon className={state.kind === "startup_check" ? "h-14 w-14 animate-spin" : "h-14 w-14"} />
+      </div>
+      <h1>{state.title}</h1>
+      <p>{state.detail}</p>
+      {state.expiresAt ? <strong className="rg360-countdown">Expires in: {formatMaintenanceCountdown(state.expiresAt)}</strong> : null}
+      {isPairing ? (
+        <div className="rg360-pair-code" aria-label="Device pairing code">
+          <span>PAIRING CODE</span>
+          <strong>{isOnline ? pairingCode : "OFFLINE"}</strong>
+        </div>
+      ) : null}
+      <div className="rg360-lock-details">
+        <div><span>Device</span><strong>{deviceLabel}</strong></div>
+        <div><span>Site</span><strong>{siteLabel}</strong></div>
+      </div>
+      <small>{state.action ?? (isPairing ? "Use this code in MX Patrol Management AI to approve this RG360." : "Contact system administration.")}</small>
+    </section>
+  );
+}
+
+function getRestrictedScannerState(input: { deviceCompany: { pairingStatus?: string | null; secureModeEnabled?: boolean | null; secureModeStatus?: string | null; maintenanceExpiresAt?: string | null } | null | undefined; deviceCompanyLoading: boolean; deviceCompanyError: unknown; secureNativeState: SecureDeviceNativeState | null; isNativeScanner: boolean }): ScannerRestrictedState {
+  if (input.deviceCompanyLoading) {
+    return { kind: "startup_check", title: "SECURITY CHECK", detail: "Verifying device enrollment and scanner authorization.", tone: "info" };
+  }
+
+  const status = input.deviceCompany?.secureModeStatus ?? null;
+  const pairingStatus = input.deviceCompany?.pairingStatus ?? null;
+
+  if (!input.deviceCompany || pairingStatus !== "paired") {
+    return {
+      kind: "unpaired",
+      title: input.deviceCompanyError ? "PAIRING CHECK FAILED" : "MX PATROL DEVICE SETUP",
+      detail: input.deviceCompanyError ? "Network verification failed. Pairing code appears when the device can reach MX Patrol." : "This RG360 is not enrolled for patrol scanning.",
+      tone: input.deviceCompanyError ? "warning" : "info",
+    };
+  }
+
+  if (status === "maintenance" || input.deviceCompany.maintenanceExpiresAt) {
+    return { kind: "maintenance", title: "MAINTENANCE MODE", detail: "Authorized maintenance session active. Patrol scanning is temporarily unavailable.", expiresAt: input.deviceCompany.maintenanceExpiresAt, tone: "info" };
+  }
+
+  if (status === "lock_device" || status === "locked") {
+    return { kind: "locked", title: "MX PATROL DEVICE LOCKED", detail: "This device has been restricted by MX Patrol administration.", tone: "danger" };
+  }
+
+  if (status === "disabled" || status === "revoked" || pairingStatus === "revoked") {
+    return { kind: "disabled", title: "DEVICE DISABLED", detail: "This RG360 cannot record patrol scans.", tone: "danger" };
+  }
+
+  if (status === "update_required") {
+    return { kind: "update_required", title: "UPDATE REQUIRED", detail: "Install the approved MX Patrol update before scanning.", tone: "warning" };
+  }
+
+  const blockedReason = getSecureDeviceBlockedReason({
+    nativeState: input.secureNativeState,
+    secureModeEnabled: input.deviceCompany.secureModeEnabled,
+    secureModeStatus: status,
+    pairingStatus,
+    isNative: input.isNativeScanner,
+  });
+
+  if (blockedReason) {
+    return { kind: status === "integrity_failed" ? "security_failed" : "security_failed", title: "DEVICE SECURITY CHECK FAILED", detail: blockedReason, tone: "danger" };
+  }
+
+  return { kind: "active", title: "ACTIVE", detail: "Scanner ready.", tone: "info" };
+}
+
+function restrictedStateToScannerStatus(kind: ScannerRestrictedKind): ScannerUiState {
+  if (kind === "locked") return "locked";
+  if (kind === "maintenance") return "maintenance";
+  if (kind === "disabled") return "disabled_device";
+  if (kind === "update_required") return "update_required";
+  if (kind === "security_failed") return "security_failed";
+  return "device_unassigned";
+}
+
+function getActivePatrolDisplay(structuredResult: StructuredScanResult | null, currentPatrol: CurrentPatrolRow | null): ActivePatrolDisplay {
+  if (structuredResult?.patrol) {
+    return {
+      name: structuredResult.patrol.name ?? "Active patrol",
+      completed: structuredResult.patrol.completed,
+      required: structuredResult.patrol.required,
+      progressPercent: Math.max(0, Math.min(100, structuredResult.patrol.progress_percent ?? 0)),
+      nextCheckpoint: structuredResult.next_checkpoint?.name ?? null,
+      status: structuredResult.patrol.status ?? null,
+    };
+  }
+
+  if (!currentPatrol) return null;
+  const route = Array.isArray(currentPatrol.patrol_routes) ? currentPatrol.patrol_routes[0] : currentPatrol.patrol_routes;
+  const template = Array.isArray(currentPatrol.patrol_templates) ? currentPatrol.patrol_templates[0] : currentPatrol.patrol_templates;
+  const checkpoints = [...(currentPatrol.patrol_session_checkpoints ?? [])].sort((a, b) => (a.scheduled_order ?? 9999) - (b.scheduled_order ?? 9999));
+  const next = checkpoints.find((checkpoint) => !checkpoint.scanned_at && checkpoint.status !== "completed");
+  const nextCheckpoint = next ? (Array.isArray(next.checkpoints) ? next.checkpoints[0]?.name : next.checkpoints?.name) : null;
+  const completed = currentPatrol.checkpoint_completed ?? checkpoints.filter((checkpoint) => checkpoint.scanned_at || checkpoint.status === "completed").length;
+  const required = currentPatrol.checkpoint_total ?? checkpoints.length;
+  return {
+    name: route?.name ?? template?.name ?? "Active patrol",
+    completed,
+    required,
+    progressPercent: required ? Math.round((completed / required) * 100) : 0,
+    nextCheckpoint: nextCheckpoint ?? null,
+    status: currentPatrol.status,
+  };
+}
+
+function formatMaintenanceCountdown(iso: string) {
+  const diffMs = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return "ending";
+  const totalMinutes = Math.ceil(diffMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
 const getScanDisplayName = (result: ScanValidationResult) =>
   result.checkpointName
   ?? result.checkpoint?.name
@@ -1009,6 +1160,9 @@ const formatScannerTime = (iso: string | null) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 };
 export default NFCScanner;
+
+
+
 
 
 

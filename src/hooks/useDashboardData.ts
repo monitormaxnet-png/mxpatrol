@@ -156,6 +156,7 @@ export function useRealtimeSubscriptions() {
         queryClient.invalidateQueries({ queryKey: ["pending_unregistered_checkpoints"] });
         queryClient.invalidateQueries({ queryKey: ["pending_nfc_tags_count"] });
         queryClient.invalidateQueries({ queryKey: ["patrol_scans_today"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard_scan_count_today"] });
         queryClient.invalidateQueries({ queryKey: ["device_trails"] });
         queryClient.invalidateQueries({ queryKey: ["scan_map_events"] });
       })

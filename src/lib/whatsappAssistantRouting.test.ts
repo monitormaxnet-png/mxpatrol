@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   MANAGEMENT_HOME_KEY,
@@ -67,9 +68,9 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
 
   it("user home numbering stays on the user menu", () => {
     const userSession = session({ temporary_data: { last_options: mainMenu(identity, session()).options ?? [], last_menu_key: USER_HOME_KEY } });
-    expect(resolveMenuChoice(userSession, "5")).toBe("reports");
-    expect(resolveMenuChoice(userSession, "6")).toBe("patrol_status");
-    expect(resolveMenuChoice(userSession, "7")).toBe("missed_checkpoints");
+    expect(resolveMenuChoice(userSession, "3")).toBe("patrol_status");
+    expect(resolveMenuChoice(userSession, "6")).toBe("reports");
+    expect(resolveMenuChoice(userSession, "7")).toBe("change_site");
   });
 
   it("back resolves to the parent of the displayed menu", () => {
@@ -192,22 +193,31 @@ describe("WhatsApp reports category menus", () => {
   it("hides Device Security Reports unless the identity is a platform owner", () => {
     const normalOptions = reportPeriodMenu(identity).options ?? [];
     expect(normalOptions.map((option) => option.label)).not.toContain("Device Security Reports");
-    expect(resolveMenuChoice(session({ temporary_data: { last_options: normalOptions, last_menu_key: "report_period" } }), "10")).toBe("back");
+    expect(resolveMenuChoice(session({ temporary_data: { last_options: normalOptions, last_menu_key: "report_period" } }), "7")).toBe("back");
 
     const owner = { ...identity, platformRole: "owner" as const, canManageKiosk: true, canManageSecureDevices: true };
     const ownerOptions = reportPeriodMenu(owner).options ?? [];
-    expect(ownerOptions[9]).toMatchObject({ id: "reports_device_security", label: "Device Security Reports" });
+    expect(ownerOptions[6]).toMatchObject({ id: "reports_device_security", label: "Device Security Reports" });
   });
 
   it("routes report submenus from the last displayed options", () => {
     const reportMenu = reportPeriodMenu(identity);
     const reportSession = session({ temporary_data: { last_options: reportMenu.options ?? [], last_menu_key: "report_period" } });
-    expect(resolveMenuChoice(reportSession, "1")).toBe("reports_checkpoint_scans");
+    expect(resolveMenuChoice(reportSession, "1")).toBe("reports_checkpoint_activity");
     expect(resolveMenuChoice(reportSession, "2")).toBe("reports_patrols");
+    expect(resolveMenuChoice(reportSession, "3")).toBe("reports_scan_investigations");
 
-    const scanSession = session({ temporary_data: { last_options: WA_SUBMENUS.reports_checkpoint_scans.options ?? [], last_menu_key: "reports_checkpoint_scans" } });
-    expect(resolveMenuChoice(scanSession, "3")).toBe("report:checkpoint_scans:matrix");
+    const scanSession = session({ temporary_data: { last_options: WA_SUBMENUS.reports_checkpoint_activity.options ?? [], last_menu_key: "reports_checkpoint_activity" } });
+    expect(resolveMenuChoice(scanSession, "3")).toBe("report:checkpoint_activity:device");
     expect(backTarget(scanSession)).toBe("report_period");
   });
 });
 
+
+
+describe("WhatsApp text encoding guardrails", () => {
+  it("keeps deployed WhatsApp views free of common mojibake markers", () => {
+    const source = readFileSync("supabase/functions/whatsapp-webhook/lib/views.ts", "utf8");
+    expect(source).not.toMatch(/[\u00C3\u00F0\u00E2]/);
+  });
+});

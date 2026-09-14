@@ -43,7 +43,7 @@ const corsHeaders = {
 };
 
 const LOCKOUT: OutMessage = {
-  title: "ðŸ” MX Patrol account required",
+  title: "MX Patrol account required",
   lines: [
     "This WhatsApp number isn't linked to an MX Patrol account.",
     "",
@@ -251,7 +251,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       const message = await deviceList(ctx.client, ctx.identity, siteId);
       if (intent.filter === "offline") {
         message.options = (message.options ?? []).filter((option) => option.label.includes("Offline"));
-        message.lines = message.options.length ? message.lines : ["ðŸŸ¢ All devices are online."];
+        message.lines = message.options.length ? message.lines : ["All devices are online."];
       }
       return message;
     }
@@ -525,7 +525,7 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
     if (error) {
       return optionMenu("COULD NOT ACKNOWLEDGE", [error.message], [{ id: "menu", label: "Main Menu" }]);
     }
-    return optionMenu("âœ… SOS ACKNOWLEDGED", ["All open SOS alerts are marked as acknowledged."], [
+    return optionMenu("SOS ACKNOWLEDGED", ["All open SOS alerts are marked as acknowledged."], [
       { id: "attention", label: "Attention" },
       { id: "menu", label: "Main Menu" },
     ]);
@@ -605,7 +605,7 @@ serve(async (req) => {
 
     if (resolved.kind === "linked") {
       message = {
-        title: "âœ… NUMBER LINKED",
+        title: "NUMBER LINKED",
         lines: [
           `This WhatsApp number is now linked to MX Patrol${identity.display_name ? ` for ${identity.display_name}` : ""}.`,
         ],

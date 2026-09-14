@@ -11,20 +11,37 @@ export type ReportMenu = {
 };
 
 export const REPORT_ROOT_ITEMS: ReportCategory[] = [
-  { label: 'Checkpoint Scan Reports', action: 'menu:reports_checkpoint_scans' },
+  { label: 'Checkpoint Activity', action: 'menu:reports_checkpoint_activity' },
   { label: 'Patrol Reports', action: 'menu:reports_patrols' },
-  { label: 'SOS Reports', action: 'menu:reports_sos' },
+  { label: 'Scan Investigations', action: 'menu:reports_scan_investigations' },
   { label: 'Incident Reports', action: 'menu:reports_incidents' },
-  { label: 'Data Log Reports', action: 'menu:reports_data_logs' },
+  { label: 'SOS Reports', action: 'menu:reports_sos' },
   { label: 'Device Reports', action: 'menu:reports_devices' },
-  { label: 'Checkpoint Performance Reports', action: 'menu:reports_checkpoint_performance' },
-  { label: 'Schedule Reports', action: 'menu:reports_schedules' },
-  { label: 'Route Reports', action: 'menu:reports_routes' },
   { label: 'Device Security Reports', action: 'menu:reports_device_security', ownerOnly: true },
   { label: 'Back', action: 'back' },
 ];
 
 export const REPORT_SUBMENUS: Record<string, ReportMenu> = {
+  reports_checkpoint_activity: {
+    title: 'CHECKPOINT ACTIVITY',
+    parent: 'reports_root',
+    items: [
+      { label: 'Activity Summary', action: 'report:checkpoint_activity:summary' },
+      { label: 'By Checkpoint', action: 'report:checkpoint_activity:checkpoint' },
+      { label: 'By Device', action: 'report:checkpoint_activity:device' },
+      { label: 'Back', action: 'back' },
+    ],
+  },
+  reports_scan_investigations: {
+    title: 'SCAN INVESTIGATIONS',
+    parent: 'reports_root',
+    items: [
+      { label: 'Investigation Summary', action: 'report:scan_investigations:summary' },
+      { label: 'Pending Review', action: 'report:scan_investigations:pending' },
+      { label: 'By Type', action: 'report:scan_investigations:type' },
+      { label: 'Back', action: 'back' },
+    ],
+  },
   reports_checkpoint_scans: {
     title: 'CHECKPOINT SCAN REPORTS',
     parent: 'reports_root',
@@ -79,16 +96,11 @@ export const REPORT_SUBMENUS: Record<string, ReportMenu> = {
     ],
   },
   reports_data_logs: {
-    title: 'DATA LOG REPORTS',
-    parent: 'reports_root',
+    title: 'Datalog Report',
+    subtitle: 'Simple checkpoint Datalog values',
     items: [
-      { label: 'Submission Summary', action: 'report:data_logs:summary' },
-      { label: 'By Checkpoint', action: 'report:data_logs:checkpoint' },
-      { label: 'By Form', action: 'report:data_logs:form' },
-      { label: 'By Device', action: 'report:data_logs:device' },
-      { label: 'Missing/Incomplete Data Logs', action: 'report:data_logs:missing' },
-      { label: 'Offline Synced Data Logs', action: 'report:data_logs:offline_synced' },
-      { label: 'Back', action: 'back' },
+      { label: 'Datalog Values', action: 'report:data_logs:values' },
+      { label: 'Back', action: 'menu:reports' },
     ],
   },
   reports_devices: {
@@ -171,3 +183,4 @@ export function reportMenuItems(key: string, isPlatformOwner: boolean): ReportCa
 export function isDeviceSecurityReportAction(action: string): boolean {
   return action.startsWith('report:device_security:') || action === 'menu:reports_device_security';
 }
+

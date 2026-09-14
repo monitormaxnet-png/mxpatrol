@@ -35,6 +35,9 @@ import { usePatrolSessionReports, usePatrolSessions, usePatrolTemplates } from "
 
 type DateRange = "today" | "7d" | "30d";
 type ReportTab = "all" | "generated" | "scheduled" | "pending" | "failed";
+type DatalogReportRow = { id: string; submitted_at: string | null; datalog_value: string | null; responses_json: any; site_id: string | null; checkpoint_id: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
+type DatalogCheckpointOption = { id: string; name: string; site_id: string | null };
+
 type ReportData = {
   title?: string;
   sections?: Array<{ heading: string; content: string }>;
@@ -136,6 +139,7 @@ const Reports = () => {
   const [dateRange, setDateRange] = useState<DateRange>("7d");
   const [reportType, setReportType] = useState("all");
   const [patrolTemplateId, setPatrolTemplateId] = useState("all");
+  const [datalogCheckpointId, setDatalogCheckpointId] = useState("all");
   const [activeTab, setActiveTab] = useState<ReportTab>("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -146,6 +150,37 @@ const Reports = () => {
   const { data: reportSessions = [] } = usePatrolSessions(250, siteId);
   const { data: sessionReportRows = [], isLoading: sessionReportsLoading, error: sessionReportsError } = usePatrolSessionReports(250, siteId);
   const { data: patrolTemplates = [] } = usePatrolTemplates(siteId);
+
+  const { data: datalogCheckpoints = [] } = useQuery({
+    queryKey: ["reports_datalog_checkpoints", companyId, siteId],
+    enabled: !!companyId,
+    queryFn: async () => {
+      let query = supabase.from("checkpoints").select("id, name, site_id").eq("company_id", companyId!).order("name");
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []) as DatalogCheckpointOption[];
+    },
+  });
+
+  const { data: datalogRows = [], isLoading: datalogLoading, error: datalogError } = useQuery({
+    queryKey: ["reports_datalog_submissions", companyId, siteId, since, datalogCheckpointId],
+    enabled: !!companyId,
+    queryFn: async () => {
+      let query = supabase
+        .from("data_log_submissions")
+        .select("id, submitted_at, datalog_value, responses_json, site_id, checkpoint_id, sites(name), checkpoints(name, data_log_label)")
+        .eq("company_id", companyId!)
+        .gte("submitted_at", since)
+        .order("submitted_at", { ascending: false })
+        .limit(250);
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      if (datalogCheckpointId !== "all") query = query.eq("checkpoint_id", datalogCheckpointId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []) as unknown as DatalogReportRow[];
+    },
+  });
 
   const { data: company } = useQuery({
     queryKey: ["reports_company", companyId],
@@ -345,6 +380,8 @@ const Reports = () => {
 
         <SessionExecutionReportsTable rows={sessionReports as unknown as SessionExecutionReportRow[]} loading={sessionReportsLoading} error={sessionReportsError} templateName={selectedTemplateName} />
 
+        <DatalogReportTable rows={datalogRows} checkpoints={datalogCheckpoints} checkpointId={datalogCheckpointId} onCheckpointChange={setDatalogCheckpointId} loading={datalogLoading} error={datalogError} dateRange={rangeLabel(dateRange)} />
+
         {scansError && <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">Scan report data could not be loaded.</div>}
 
         <section className="grid gap-4 xl:grid-cols-3">
@@ -382,6 +419,44 @@ const Reports = () => {
     </SocPageShell>
   );
 };
+function DatalogReportTable({ rows, checkpoints, checkpointId, onCheckpointChange, loading, error, dateRange }: { rows: DatalogReportRow[]; checkpoints: DatalogCheckpointOption[]; checkpointId: string; onCheckpointChange: (value: string) => void; loading: boolean; error: unknown; dateRange: string }) {
+  return (
+    <section className="rounded-xl border border-white/10 bg-slate-950/72">
+      <div className="flex flex-col gap-3 border-b border-white/10 p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-sm font-black uppercase tracking-[0.12em] text-white">Datalog Report</h2>
+          <p className="mt-1 text-xs text-slate-400">Simple checkpoint values for {dateRange}</p>
+        </div>
+        <div className="w-full lg:w-72">
+          <Select value={checkpointId} onValueChange={onCheckpointChange}>
+            <SelectTrigger className="h-9 border-white/10 bg-slate-950/70 text-white"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Checkpoints</SelectItem>
+              {checkpoints.map((checkpoint) => <SelectItem key={checkpoint.id} value={checkpoint.id}>{checkpoint.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {loading ? <State icon={Loader2} spin message="Loading Datalog submissions..." /> : error ? <State icon={AlertCircle} tone="red" message="Datalog submissions could not be loaded." /> : rows.length === 0 ? <State icon={FileText} message="No Datalog submissions match these filters." /> : (
+        <div className="overflow-x-auto">
+          <table className="min-w-[760px] w-full text-left text-sm">
+            <thead className="border-b border-white/10 text-[10px] uppercase tracking-[0.12em] text-slate-500">
+              <tr><th className="px-4 py-3">Site</th><th className="px-4 py-3">Checkpoint</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Time</th><th className="px-4 py-3">Datalog Label</th><th className="px-4 py-3">Value</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const submittedAt = row.submitted_at ? new Date(row.submitted_at) : null;
+                const label = String(row.checkpoints?.data_log_label ?? row.responses_json?.label ?? 'Datalog');
+                const value = String(row.datalog_value ?? row.responses_json?.datalog_value ?? '-');
+                return <tr key={row.id} className="border-b border-white/5"><td className="px-4 py-3 text-slate-300">{row.sites?.name ?? 'Unassigned'}</td><td className="px-4 py-3 font-semibold text-white">{row.checkpoints?.name ?? 'Checkpoint'}</td><td className="px-4 py-3 text-slate-300">{submittedAt ? format(submittedAt, 'dd MMM yyyy') : '-'}</td><td className="px-4 py-3 font-mono text-slate-300">{submittedAt ? format(submittedAt, 'HH:mm') : '-'}</td><td className="px-4 py-3 text-slate-300">{label}</td><td className="px-4 py-3 font-mono text-emerald-300">{value}</td></tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 function SessionExecutionReportsTable({ rows, loading, error, templateName }: { rows: SessionExecutionReportRow[]; loading: boolean; error: unknown; templateName: string }) {
   if (loading) return <State icon={Loader2} spin message="Loading session execution reports..." />;
   if (error) return <State icon={AlertCircle} tone="red" message="Session execution reports could not be loaded." />;
@@ -825,5 +900,7 @@ function formatDuration(minutes: number) {
 }
 
 export default Reports;
+
+
 
 

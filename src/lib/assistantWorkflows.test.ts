@@ -108,32 +108,21 @@ describe('canonical payloads per workflow', () => {
     expect(JSON.stringify(ok.payload.input)).not.toMatch(/generated/i);
   });
 
-  it('checkpoint registration supports pending NFC assignment and existing data log forms', () => {
-    const reply = run('register_checkpoint', ['Server Room', 'Basement', 'later', '2', '1']);
+  it('checkpoint registration supports pending NFC assignment and simple Datalog labels', () => {
+    const reply = run('register_checkpoint', ['Server Room', 'Basement', 'later', '2', 'Meter Reading']);
     expect(reply.kind).toBe('confirm');
     if (reply.kind !== 'confirm') return;
     expect(reply.payload.action).toBe('create_checkpoint');
-    expect(reply.payload.input).toMatchObject({ site_id: 'site-1', name: 'Server Room', nfc_tag_id: '', data_log_form_id: 'form-1' });
+    expect(reply.payload.input).toMatchObject({ site_id: 'site-1', name: 'Server Room', nfc_tag_id: '', data_log_enabled: true, data_log_label: 'Meter Reading' });
   });
 
-  it('checkpoint registration can attach a new checklist form', () => {
-    const reply = run('register_checkpoint', [
-      'Roof Hatch', 'Roof', '04a2b3c4d5',
-      '3',                 // create a new Data Log Form
-      'Roof Inspection',   // form name
-      'Door locked?',      // field 1 label
-      '3',                 // field type: Yes / No
-      '1',                 // required
-      '2',                 // done adding fields
-    ]);
+  it('checkpoint registration can disable Datalog for V1', () => {
+    const reply = run('register_checkpoint', ['Roof Hatch', 'Roof', '04a2b3c4d5', '1']);
     expect(reply.kind).toBe('confirm');
     if (reply.kind !== 'confirm') return;
-    expect(reply.payload.input.nfc_tag_id).toBe('04a2b3c4d5');
-    const newForm = reply.payload.input.new_form as any;
-    expect(newForm.name).toBe('Roof Inspection');
-    expect(newForm.fields).toHaveLength(1);
-    expect(newForm.fields[0]).toMatchObject({ label: 'Door locked?', required: true, sequence_order: 1 });
-    expect(typeof newForm.fields[0].field_type).toBe('string');
+    expect(reply.payload.input).toMatchObject({ nfc_tag_id: '04a2b3c4d5', data_log_enabled: false });
+    expect(reply.payload.input).not.toHaveProperty('new_form');
+    expect(reply.payload.input).not.toHaveProperty('data_log_form_id');
   });
 
   it('route creation preserves the scanned checkpoint order', () => {
@@ -224,3 +213,5 @@ describe('shared canonical backend service', () => {
     expect(shared).toMatch(/duplicate: true/);
   });
 });
+
+

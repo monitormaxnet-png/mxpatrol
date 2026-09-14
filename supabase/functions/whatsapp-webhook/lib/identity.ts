@@ -18,12 +18,27 @@ function linkCodeCandidates(body: string): string[] {
   return ["MX-WA-" + suffix, suffix];
 }
 
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function roleFromMetadata(metadata: Record<string, unknown>): Role | null {
+  const role = String(metadata.role ?? "").toLowerCase();
+  if (role === "admin" || role === "supervisor") return role;
+  return null;
+}
 async function buildIdentity(
   client: SupabaseClient,
   row: Record<string, any>,
 ): Promise<Identity> {
   let role: Role = "guard";
   let platformRole: string | null = null;
+  const metadata = metadataRecord(row.metadata);
+  const metadataRole = roleFromMetadata(metadata);
+  const metadataAllowsManagement = metadata.access_type === "management" && Boolean(metadataRole);
+  let foundUserRole = false;
 
   if (row.user_id) {
     const { data } = await client
@@ -35,6 +50,7 @@ async function buildIdentity(
       String(entry.role)
     );
 
+    foundUserRole = names.length > 0;
     if (names.includes("admin")) role = "admin";
     else if (names.includes("supervisor")) role = "supervisor";
     else if (names.includes("guard")) role = "guard";
@@ -50,6 +66,10 @@ async function buildIdentity(
     platformRole = platformRows?.[0]?.role
       ? String(platformRows[0].role)
       : null;
+  }
+
+  if (!foundUserRole && metadataAllowsManagement && metadataRole) {
+    role = metadataRole;
   }
 
   return {
@@ -87,7 +107,7 @@ export async function resolveIdentity(
   const { data: existing } = await client
     .from("whatsapp_authorized_numbers")
     .select(
-      "id, company_id, user_id, guard_id, phone, display_name, allowed_site_ids, status",
+      "id, company_id, user_id, guard_id, phone, display_name, allowed_site_ids, status, metadata",
     )
     .eq("phone", phone)
     .maybeSingle();
@@ -110,7 +130,7 @@ export async function resolveIdentity(
     const { data: pending } = await client
       .from("whatsapp_authorized_numbers")
       .select(
-        "id, company_id, user_id, guard_id, phone, display_name, allowed_site_ids, link_code, link_code_expires_at, status",
+        "id, company_id, user_id, guard_id, phone, display_name, allowed_site_ids, link_code, link_code_expires_at, status, metadata",
       )
       .in("link_code", candidates)
       .eq("status", "pending")
@@ -137,7 +157,7 @@ export async function resolveIdentity(
         .eq("status", "pending")
         .eq("link_code", pending.link_code)
         .select(
-          "id, company_id, user_id, guard_id, phone, display_name, allowed_site_ids",
+          "id, company_id, user_id, guard_id, phone, display_name, allowed_site_ids, metadata",
         )
         .maybeSingle();
 

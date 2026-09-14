@@ -320,7 +320,9 @@ export type Database = {
         Row: {
           company_id: string
           created_at: string
+          data_log_enabled: boolean
           data_log_form_id: string | null
+          data_log_label: string | null
           id: string
           location_lat: number | null
           location_lng: number | null
@@ -334,7 +336,9 @@ export type Database = {
         Insert: {
           company_id: string
           created_at?: string
+          data_log_enabled?: boolean
           data_log_form_id?: string | null
+          data_log_label?: string | null
           id?: string
           location_lat?: number | null
           location_lng?: number | null
@@ -348,7 +352,9 @@ export type Database = {
         Update: {
           company_id?: string
           created_at?: string
+          data_log_enabled?: boolean
           data_log_form_id?: string | null
+          data_log_label?: string | null
           id?: string
           location_lat?: number | null
           location_lng?: number | null
@@ -604,7 +610,8 @@ export type Database = {
           company_id: string
           created_at: string
           device_id: string | null
-          form_id: string
+          datalog_value: string | null
+          form_id: string | null
           id: string
           patrol_session_checkpoint_id: string | null
           patrol_session_id: string | null
@@ -621,7 +628,8 @@ export type Database = {
           company_id: string
           created_at?: string
           device_id?: string | null
-          form_id: string
+          datalog_value?: string | null
+          form_id?: string | null
           id?: string
           patrol_session_checkpoint_id?: string | null
           patrol_session_id?: string | null
@@ -638,7 +646,8 @@ export type Database = {
           company_id?: string
           created_at?: string
           device_id?: string | null
-          form_id?: string
+          datalog_value?: string | null
+          form_id?: string | null
           id?: string
           patrol_session_checkpoint_id?: string | null
           patrol_session_id?: string | null
@@ -3448,7 +3457,7 @@ export type Database = {
           progress_percent: number
           schedule_id: string
           selection_reason: string
-          session_checkpoint_id: string
+          session_checkpoint_id: string | null
           session_id: string
           total_count: number
         }[]
@@ -3478,10 +3487,10 @@ export type Database = {
         }
         Returns: {
           completed: number
-          patrol_session_id: string
+          patrol_session_id: string | null
           progress_percent: number
           required: number
-          session_checkpoint_id: string
+          session_checkpoint_id: string | null
           status: string
           submission_id: string
         }[]
@@ -3691,3 +3700,5 @@ export const Constants = {
     },
   },
 } as const
+
+

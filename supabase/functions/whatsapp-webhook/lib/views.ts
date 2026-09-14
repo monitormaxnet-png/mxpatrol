@@ -5,21 +5,34 @@ import { greeting, timeAgo } from "./types.ts";
 import { deviceSecurityState, formatDeviceSecurityLine, formatSecureDeviceLabel, getSecureDeviceByIdentifier, getSecureDeviceEvents, getSecureDeviceRows, getSecureDeviceSummary } from "../../_shared/secure-device-management.ts";
 
 const REPORT_ROOT_OPTIONS = [
-  { id: "reports_checkpoint_scans", label: "Checkpoint Scan Reports" },
-  { id: "reports_patrols", label: "Patrol Reports" },
-  { id: "reports_sos", label: "SOS Reports" },
-  { id: "reports_incidents", label: "Incident Reports" },
-  { id: "reports_data_logs", label: "Data Log Reports" },
-  { id: "reports_devices", label: "Device Reports" },
-  { id: "reports_checkpoint_performance", label: "Checkpoint Performance Reports" },
-  { id: "reports_schedules", label: "Schedule Reports" },
-  { id: "reports_routes", label: "Route Reports" },
-  { id: "reports_device_security", label: "Device Security Reports", ownerOnly: true },
+  { id: "reports_checkpoint_activity", label: "Checkpoint Activity", entitlement: "checkpoint_reports" },
+  { id: "reports_patrols", label: "Patrol Reports", entitlement: "patrol_reports" },
+  { id: "reports_scan_investigations", label: "Scan Investigations", entitlement: "scan_investigations" },
+  { id: "reports_incidents", label: "Incident Reports", entitlement: "incident_reports" },
+  { id: "reports_sos", label: "SOS Reports", entitlement: "incident_reports" },
+  { id: "reports_devices", label: "Device Reports", entitlement: "device_reports" },
+  { id: "reports_device_security", label: "Device Security Reports", ownerOnly: true, entitlement: "device_reports" },
   { id: "back", label: "Back" },
 ];
 
+const REPORT_PACKAGE_ENTITLEMENTS: Record<string, string[]> = {
+  basic: ["checkpoint_reports", "incident_reports"],
+  standard: ["checkpoint_reports", "scan_investigations", "device_reports", "incident_reports"],
+  professional: ["checkpoint_reports", "scan_investigations", "device_reports", "patrol_reports", "incident_reports"],
+  enterprise: ["checkpoint_reports", "scan_investigations", "device_reports", "patrol_reports", "incident_reports"],
+};
+
+function hasReportEntitlement(packageName: string | null | undefined, entitlement: string | undefined): boolean {
+  if (!entitlement) return true;
+  const key = String(packageName ?? "enterprise").toLowerCase();
+  return (REPORT_PACKAGE_ENTITLEMENTS[key] ?? REPORT_PACKAGE_ENTITLEMENTS.enterprise).includes(entitlement);
+}
+
 function reportRootOptions(identity: Identity) {
-  return REPORT_ROOT_OPTIONS.filter((option) => !option.ownerOnly || identity.platformRole === "owner");
+  return REPORT_ROOT_OPTIONS.filter((option) => {
+    if (option.ownerOnly && identity.platformRole !== "owner") return false;
+    return hasReportEntitlement(identity.reportPackage, option.entitlement);
+  });
 }
 
 function reportMenu(title: string, menuKey: string, options: Array<{ id: string; label: string }>): OutMessage {
@@ -33,31 +46,29 @@ function siteFilter<T>(query: any, identity: Identity, siteId: string | null) {
 }
 
 export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
-  const context = session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site to continue.";
+  const context = session.current_site_name ? `Site: ${session.current_site_name}` : "Choose a site to continue.";
   return {
     title: "MX PATROL",
     menuKey: "user_home",
     lines: [
-      `${greeting()} ðŸ‘‹`,
+      greeting(),
       context,
       "What would you like to do?",
     ],
     options: [
       { id: "live", label: "Live Now" },
       { id: "attention", label: "Attention" },
+      { id: "patrol_status", label: "Patrol Status" },
       { id: "devices", label: "Devices" },
       { id: "incidents", label: "Incidents" },
       { id: "reports", label: "Reports" },
-      { id: "patrol_status", label: "Patrol Status" },
-      { id: "missed_checkpoints", label: "Missed Checkpoints" },
       { id: "change_site", label: "Change Site" },
       { id: "management", label: "Management" },
     ],
 
-    footer: "You can also ask me something like:\nWhich devices are offline?",
+    footer: "Or ask me: \"Which devices are offline?\"",
   };
 }
-
 export function managementMenu(identity: Identity, session: SessionRow): OutMessage {
   if (!identity.canManage) {
     return {
@@ -121,10 +132,10 @@ export async function liveNow(
   return {
     title: "LIVE NOW",
     lines: [
-      `ðŸŸ¢ ${active} devices active`,
-      `ðŸš¶ ${(sessions ?? []).length} patrols in progress`,
-      `âš ï¸ ${attention} item${attention === 1 ? "" : "s"} need${attention === 1 ? "s" : ""} attention`,
-      `ðŸ†˜ ${sos} SOS alert${sos === 1 ? "" : "s"}`,
+      `${active} active device${active === 1 ? "" : "s"}`,
+      `${(sessions ?? []).length} patrol${(sessions ?? []).length === 1 ? "" : "s"} in progress`,
+      `${attention} attention item${attention === 1 ? "" : "s"}`,
+      `${sos} SOS alert${sos === 1 ? "" : "s"}`,
     ],
     options: [
       { id: "patrols", label: "View Active Patrols" },
@@ -164,10 +175,10 @@ export async function activePatrols(
     lines.push(
       [
         `*${site?.name ?? route?.name ?? "Patrol"}*`,
-        `ðŸ“± ${row.device_identifier ?? "No device"}`,
-        `ðŸŸ¢ ${String(row.status).replace(/_/g, " ")}`,
-        `âœ… ${row.checkpoint_completed ?? 0} / ${row.checkpoint_total ?? 0} checkpoints`,
-        `â± Last activity: ${timeAgo(row.last_scan_at)}`,
+        `Device: ${row.device_identifier ?? "No device"}`,
+        `Status: ${String(row.status).replace(/_/g, " ")}`,
+        `Checkpoints: ${row.checkpoint_completed ?? 0} / ${row.checkpoint_total ?? 0}`,
+        `Last activity: ${timeAgo(row.last_scan_at)}`,
       ].join("\n"),
     );
   }
@@ -209,7 +220,7 @@ export async function attention(
   const rows = (data ?? []) as any[];
 
   if (!rows.length) {
-    return { title: "ATTENTION", lines: ["âœ… Nothing needs attention right now."], options: [{ id: "menu", label: "Main Menu" }] };
+    return { title: "ATTENTION", lines: ["Nothing needs attention right now."], options: [{ id: "menu", label: "Main Menu" }] };
   }
 
   const counts = {
@@ -221,8 +232,8 @@ export async function attention(
   const detail = rows
     .slice(0, 5)
     .map((row) => {
-      const icon = row.type === "panic_button" ? "ðŸ”´" : row.type === "device_offline" ? "ðŸ“´" : "âš ï¸";
-      return `${icon} ${row.message}\nâ± ${timeAgo(row.created_at)}`;
+      const label = row.type === "panic_button" ? "Critical" : row.type === "device_offline" ? "Offline" : "Attention";
+      return `${label}: ${row.message}\nAge: ${timeAgo(row.created_at)}`;
     })
     .join("\n\n");
 
@@ -234,11 +245,11 @@ export async function attention(
   if (filter === "sos" && identity.canAcknowledge) options.unshift({ id: "ack", label: "Acknowledge All SOS" });
 
   return {
-    title: `âš ï¸ ${rows.length} ITEM${rows.length === 1 ? "" : "S"} NEED ATTENTION`,
+    title: `${rows.length} ITEM${rows.length === 1 ? "" : "S"} NEED ATTENTION`,
     lines: [
-      `ðŸ”´ ${counts.critical} Critical`,
-      `ðŸŸ  ${counts.medium} Medium`,
-      `ðŸ”µ ${counts.low} Low`,
+      `${counts.critical} Critical`,
+      `${counts.medium} Medium`,
+      `${counts.low} Low`,
       "",
       detail,
     ],
@@ -269,14 +280,14 @@ export async function deviceList(
     title: "DEVICES",
     lines: [
       `Total: ${rows.length}`,
-      `ðŸŸ¢ Online: ${online}`,
-      `ðŸ”´ Offline: ${offline}`,
+      `Online: ${online}`,
+      `Offline: ${offline}`,
       "",
       rows.length ? "Choose a device:" : "No devices registered yet.",
     ],
     options: rows.map((row) => ({
       id: `device:${row.device_identifier}`,
-      label: `${row.device_identifier} â€” ${row.status === "online" ? "Online" : "Offline"}`,
+      label: `${row.device_identifier} - ${row.status === "online" ? "Online" : "Offline"}`,
     })),
   };
 }
@@ -300,7 +311,7 @@ export async function deviceDetail(
     return {
       message: {
         title: "DEVICE NOT FOUND",
-        lines: [`I couldn't find a device matching â€œ${needle}â€.`],
+        lines: [`I couldn't find a device matching ${needle}.`],
         options: [{ id: "devices", label: "View Devices" }, { id: "menu", label: "Main Menu" }],
       },
     };
@@ -337,13 +348,13 @@ export async function deviceDetail(
     message: {
       title: device.device_identifier,
       lines: [
-        device.status === "online" ? "ðŸŸ¢ Online" : "ðŸ”´ Offline",
+        device.status === "online" ? "Online" : "Offline",
         "",
         `Site: ${site?.name ?? "Unassigned"}`,
         `Last seen: ${timeAgo(device.last_seen_at)}`,
         `Last checkpoint: ${lastCheckpoint ?? "None yet"}`,
         route?.name ? `Patrol: ${route.name}` : "Patrol: None",
-        session ? `Progress: ${session.checkpoint_completed ?? 0}/${session.checkpoint_total ?? 0}` : "Progress: â€”",
+        session ? `Progress: ${session.checkpoint_completed ?? 0}/${session.checkpoint_total ?? 0}` : "Progress: none",
         `GPS: ${hasGps ? "Available" : "Not available"}`,
       ],
       options: [
@@ -356,7 +367,7 @@ export async function deviceDetail(
       ? {
         lat: Number(device.current_gps_lat),
         lng: Number(device.current_gps_lng),
-        label: `${device.device_identifier} â€” ${site?.name ?? "Unknown site"}`,
+        label: `${device.device_identifier} - ${site?.name ?? "Unknown site"}`,
       }
       : undefined,
   };
@@ -381,7 +392,7 @@ export async function incidentsView(
   return {
     title: "INCIDENTS",
     lines: rows.length
-      ? [rows.map((r) => `${r.resolved ? "âœ…" : "ðŸŸ "} ${r.title}\n${String(r.severity).toUpperCase()} Â· ${timeAgo(r.created_at)}`).join("\n\n")]
+      ? [rows.map((r) => `${r.resolved ? "" : " "} ${r.title}\n${String(r.severity).toUpperCase()}  ${timeAgo(r.created_at)}`).join("\n\n")]
       : ["No incidents recorded."],
     options: [
       { id: "report_incident", label: "Report Incident" },
@@ -463,7 +474,7 @@ export async function reportSummary(
   if (problemsOnly) {
     const problems: string[] = [];
     for (const device of (devices ?? []) as any[]) {
-      if (device.status === "offline") problems.push(`â€¢ ${device.device_identifier} offline`);
+      if (device.status === "offline") problems.push(`- ${device.device_identifier} offline`);
     }
     for (const session of sessionRows) {
       const done = session.checkpoint_completed ?? 0;
@@ -471,15 +482,15 @@ export async function reportSummary(
       if (total > 0 && done < total) {
         const site = Array.isArray(session.sites) ? session.sites[0] : session.sites;
         const route = Array.isArray(session.patrol_routes) ? session.patrol_routes[0] : session.patrol_routes;
-        problems.push(`â€¢ ${site?.name ?? route?.name ?? "Patrol"} completed ${done}/${total} checkpoints`);
+        problems.push(`- ${site?.name ?? route?.name ?? "Patrol"} completed ${done}/${total} checkpoints`);
       }
     }
     for (const alert of (alerts ?? []) as any[]) {
-      if (alert.type === "missed_checkpoint") problems.push(`â€¢ ${alert.message}`);
+      if (alert.type === "missed_checkpoint") problems.push(`- ${alert.message}`);
     }
 
     return {
-      title: problems.length ? `âš ï¸ ${problems.length} things need attention` : "âœ… Nothing went wrong",
+      title: problems.length ? `${problems.length} things need attention` : "Nothing went wrong",
       lines: problems.length ? [problems.slice(0, 12).join("\n")] : ["Everything completed normally."],
       options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
     };
@@ -488,12 +499,12 @@ export async function reportSummary(
   return {
     title: `${label}'S SECURITY SUMMARY`,
     lines: [
-      `ðŸ“± Devices active: ${((devices ?? []) as any[]).filter((d) => d.status === "online").length}`,
-      `ðŸš¶ Patrols completed: ${completed}`,
-      `âœ… Checkpoints scanned: ${(scans ?? []).length}`,
-      `âš ï¸ Missed checkpoints: ${missedCheckpoints}`,
-      `ðŸš¨ Incidents: ${(incidents ?? []).length}`,
-      `ðŸ†˜ SOS alerts: ${sos}`,
+      `Devices active: ${((devices ?? []) as any[]).filter((d) => d.status === "online").length}`,
+      `Patrols completed: ${completed}`,
+      `Checkpoints scanned: ${(scans ?? []).length}`,
+      `Missed checkpoints: ${missedCheckpoints}`,
+      `Incidents: ${(incidents ?? []).length}`,
+      `SOS alerts: ${sos}`,
     ],
     options: [
       { id: "problems", label: "Problems Only" },
@@ -587,7 +598,7 @@ export async function patrolStatusOverview(
     rows.filter((row) => (PATROL_STATUS_GROUPS[group] as readonly string[]).includes(String(row.status))).length;
 
   return {
-    title: siteName ? `PATROL STATUS — ${siteName}` : "PATROL STATUS",
+    title: siteName ? `PATROL STATUS - ${siteName}` : "PATROL STATUS",
     menuKey: "patrol_status",
     lines: [
       `Completed: ${count("completed")}`,
@@ -876,6 +887,53 @@ export async function reportCategorySummary(client: SupabaseClient, identity: Id
   const unregistered = scanRows.filter((row: any) => String(row.tag_status ?? "").includes("unregistered") || String(row.tag_status ?? "").includes("unknown")).length;
   const duplicate = scanRows.filter((row: any) => String(row.tag_status ?? "").includes("duplicate")).length;
   const offlineSynced = scanRows.filter((row: any) => String(row.tag_status ?? "").includes("offline")).length;
+  if (category === "checkpoint_activity") {
+    const registered = scanRows.filter((row: any) => String(row.tag_status ?? "registered").includes("registered")).length;
+    const latest = scanRows.slice(0, 5).map((row: any, index: number) => {
+      const checkpoint = Array.isArray(row.checkpoints) ? row.checkpoints[0] : row.checkpoints;
+      return `${index + 1}. ${checkpoint?.name ?? "Unknown checkpoint"} - ${row.device_identifier ?? "Unknown device"} - ${waTime(row.scanned_at) ?? "unknown"}`;
+    });
+    return {
+      title: "CHECKPOINT ACTIVITY",
+      lines: [
+        `Site: ${siteId ? "selected site" : "allowed sites"}`,
+        `Total scans: ${scanRows.length}`,
+        `Registered scans: ${registered}`,
+        `Exceptions: ${scanRows.length - registered}`,
+        "",
+        latest.length ? latest.join("\n") : "No checkpoint activity found.",
+      ],
+      options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
+    };
+  }
+
+  if (category === "scan_investigations") {
+    const { data: investigations } = await siteFilter<any>(client.from("scan_investigations").select("id, investigation_type, registered_status, status, reason, scanned_at, device_identifier").order("scanned_at", { ascending: false }).limit(100), identity, siteId);
+    const investigationRows = (investigations ?? []) as any[];
+    const pending = investigationRows.filter((row: any) => row.status === "pending").length;
+    const resolved = investigationRows.filter((row: any) => row.status === "resolved").length;
+    const byType = investigationRows.reduce((acc: Record<string, number>, row: any) => {
+      const key = String(row.investigation_type ?? "other").replace(/_/g, " ");
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    const typeSummary = Object.entries(byType).map(([key, value]) => String(key) + " " + String(value)).join(", ") || "none";
+    const latest = investigationRows.slice(0, 5).map((row: any, index: number) => `${index + 1}. ${String(row.investigation_type ?? "other").replace(/_/g, " ")} - ${row.device_identifier ?? "Unknown device"} - ${row.status}`);
+    return {
+      title: "SCAN INVESTIGATIONS",
+      lines: [
+        `Site: ${siteId ? "selected site" : "allowed sites"}`,
+        `Total investigations: ${investigationRows.length}`,
+        `Pending review: ${pending}`,
+        `Resolved: ${resolved}`,
+        `By type: ${typeSummary}`,
+        "",
+        latest.length ? latest.join("\n") : "No scan investigations found.",
+      ],
+      options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
+    };
+  }
+
   const lines = [
     `Site: ${siteId ? "selected site" : "allowed sites"}`,
     `Checkpoint scans: ${scanRows.length} (${unregistered} unregistered, ${duplicate} duplicate, ${offlineSynced} offline synced)`,
@@ -965,6 +1023,18 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
       { id: "back", label: "Back" },
     ],
   },
+  reports_checkpoint_activity: reportMenu("CHECKPOINT ACTIVITY", "reports_checkpoint_activity", [
+    { id: "report:checkpoint_activity:summary", label: "Activity Summary" },
+    { id: "report:checkpoint_activity:checkpoint", label: "By Checkpoint" },
+    { id: "report:checkpoint_activity:device", label: "By Device" },
+    { id: "back", label: "Back" },
+  ]),
+  reports_scan_investigations: reportMenu("SCAN INVESTIGATIONS", "reports_scan_investigations", [
+    { id: "report:scan_investigations:summary", label: "Investigation Summary" },
+    { id: "report:scan_investigations:pending", label: "Pending Review" },
+    { id: "report:scan_investigations:type", label: "By Type" },
+    { id: "back", label: "Back" },
+  ]),
   reports_checkpoint_scans: reportMenu("CHECKPOINT SCAN REPORTS", "reports_checkpoint_scans", [
     { id: "report:checkpoint_scans:site_time", label: "Scans by Site / Date / Time" },
     { id: "report:checkpoint_scans:checkpoint", label: "Scans by Checkpoint" },
@@ -1002,14 +1072,9 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     { id: "report:incidents:device", label: "Incidents by Device" },
     { id: "back", label: "Back" },
   ]),
-  reports_data_logs: reportMenu("DATA LOG REPORTS", "reports_data_logs", [
-    { id: "report:data_logs:summary", label: "Submission Summary" },
-    { id: "report:data_logs:checkpoint", label: "By Checkpoint" },
-    { id: "report:data_logs:form", label: "By Form" },
-    { id: "report:data_logs:device", label: "By Device" },
-    { id: "report:data_logs:missing", label: "Missing/Incomplete Data Logs" },
-    { id: "report:data_logs:offline_synced", label: "Offline Synced Data Logs" },
-    { id: "back", label: "Back" },
+  reports_data_logs: reportMenu("DATALOG REPORT", "reports_data_logs", [
+    { id: "report:data_logs:values", label: "Datalog Values" },
+    { id: "menu:reports", label: "Back" },
   ]),
   reports_devices: reportMenu("DEVICE REPORTS", "reports_devices", [
     { id: "report:devices:summary", label: "Device Summary" },
@@ -1073,6 +1138,8 @@ export const WA_MENU_PARENTS: Record<string, string> = {
   management_patrol_config: MANAGEMENT_HOME_KEY,
   management_reports: MANAGEMENT_HOME_KEY,
   management_whatsapp: MANAGEMENT_HOME_KEY,
+  reports_checkpoint_activity: "report_period",
+  reports_scan_investigations: "report_period",
   reports_checkpoint_scans: "report_period",
   reports_patrols: "report_period",
   reports_sos: "report_period",
@@ -1110,6 +1177,7 @@ export function backTarget(session: SessionRow): string {
   }
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }
+
 
 
 

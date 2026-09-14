@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { AlertTriangle, CheckCircle2, Cloud, HelpCircle, Loader2, Radio, ShieldAlert, WifiOff, XCircle } from "lucide-react";
+import { AlertTriangle, Check, Cloud, HelpCircle, Loader2, Lock, Radio, ShieldAlert, WifiOff, Wrench, X } from "lucide-react";
 import type { NfcStatus } from "@/hooks/useNfcReader";
 import type { StructuredScanResult } from "@/lib/scanResult";
 
@@ -20,77 +20,54 @@ export type ScannerUiState =
   | "no_active_patrol"
   | "out_of_order"
   | "awaiting_data"
+  | "locked"
+  | "maintenance"
+  | "disabled_device"
+  | "update_required"
+  | "security_failed"
   | "sos";
 
 type GpsStatus = "idle" | "capturing" | "available" | "pending" | "unavailable";
-type Tone = "ready" | "progress" | "success" | "offline" | "error" | "sos";
+type Tone = "ready" | "progress" | "success" | "warning" | "offline" | "error" | "sos";
 
-const statusConfig: Record<ScannerUiState, {
-  label: string;
-  sublabel: string;
-  tone: Tone;
-  icon: typeof Radio;
-}> = {
-  initializing: { label: "READY TO SCAN", sublabel: "Preparing scanner", tone: "ready", icon: Radio },
-  idle: { label: "READY TO SCAN", sublabel: "Waiting for NFC tag", tone: "ready", icon: Radio },
-  scanning: { label: "READY TO SCAN", sublabel: "Waiting for NFC tag", tone: "ready", icon: Radio },
-  tag_detected: { label: "SCANNING", sublabel: "Reading NFC tag", tone: "success", icon: Radio },
-  verifying: { label: "PROCESSING", sublabel: "Verifying checkpoint", tone: "progress", icon: Loader2 },
-  acquiring_gps: { label: "PROCESSING", sublabel: "Capturing GPS", tone: "progress", icon: Loader2 },
-  saving: { label: "PROCESSING", sublabel: "Saving scan record", tone: "progress", icon: Loader2 },
-  success: { label: "CHECKPOINT VERIFIED", sublabel: "Scan saved", tone: "success", icon: CheckCircle2 },
-  success_offline: { label: "SAVED OFFLINE", sublabel: "Sync pending", tone: "offline", icon: Cloud },
-  offline_saved: { label: "SAVED OFFLINE", sublabel: "Stored locally", tone: "offline", icon: Cloud },
-  duplicate: { label: "ALREADY SCANNED", sublabel: "Checkpoint already recorded", tone: "progress", icon: CheckCircle2 },
-  unregistered: { label: "UNREGISTERED CHECKPOINT", sublabel: "Supervisor review required", tone: "error", icon: HelpCircle },
-  save_failed: { label: "SCAN FAILED", sublabel: "Something went wrong", tone: "error", icon: XCircle },
-  error: { label: "SCAN FAILED", sublabel: "Something went wrong", tone: "error", icon: XCircle },
-  unsupported: { label: "NFC HARDWARE ERROR", sublabel: "Use the RG360 native app", tone: "offline", icon: WifiOff },
-  disabled: { label: "NFC DISABLED", sublabel: "Enable NFC in device settings", tone: "offline", icon: WifiOff },
-  device_unassigned: { label: "DEVICE NOT ASSIGNED", sublabel: "Contact supervisor", tone: "offline", icon: AlertTriangle },
-  patrol_started: { label: "PATROL STARTED", sublabel: "Checkpoint accepted", tone: "success", icon: CheckCircle2 },
-  patrol_completed: { label: "PATROL COMPLETED", sublabel: "All required checkpoints scanned", tone: "success", icon: CheckCircle2 },
-  no_active_patrol: { label: "CHECKPOINT RECORDED", sublabel: "No active patrol matched", tone: "progress", icon: CheckCircle2 },
-  out_of_order: { label: "OUT OF ORDER", sublabel: "Follow the route order", tone: "offline", icon: AlertTriangle },
-  awaiting_data: { label: "DATA LOG REQUIRED", sublabel: "Complete the form to finish this checkpoint", tone: "progress", icon: Loader2 },
-  sos: { label: "SOS ACTIVATED", sublabel: "Alert sent to control room", tone: "sos", icon: ShieldAlert },
+type ActivePatrolSummary = {
+  name: string;
+  completed: number;
+  required: number;
+  progressPercent: number;
+  nextCheckpoint: string | null;
+  status?: string | null;
 };
 
-const toneClasses: Record<Tone, {
-  panel: string;
-  icon: string;
-  title: string;
-}> = {
-  ready: {
-    panel: "border-emerald-300/28 bg-black/64 shadow-[0_0_34px_rgba(34,197,94,0.22)]",
-    icon: "bg-emerald-400/12 text-emerald-100 ring-emerald-300/45",
-    title: "text-emerald-100",
-  },
-  progress: {
-    panel: "border-sky-300/35 bg-black/68 shadow-[0_0_30px_rgba(14,165,233,0.24)]",
-    icon: "bg-sky-400/14 text-sky-100 ring-sky-300/45",
-    title: "text-sky-100",
-  },
-  success: {
-    panel: "border-emerald-300/40 bg-black/68 shadow-[0_0_30px_rgba(34,197,94,0.26)]",
-    icon: "bg-emerald-400/16 text-emerald-100 ring-emerald-300/50",
-    title: "text-emerald-100",
-  },
-  offline: {
-    panel: "border-amber-300/42 bg-black/70 shadow-[0_0_30px_rgba(245,158,11,0.24)]",
-    icon: "bg-amber-400/16 text-amber-100 ring-amber-300/50",
-    title: "text-amber-100",
-  },
-  error: {
-    panel: "border-red-300/45 bg-black/72 shadow-[0_0_32px_rgba(239,68,68,0.28)]",
-    icon: "bg-red-500/16 text-red-100 ring-red-300/50",
-    title: "text-red-100",
-  },
-  sos: {
-    panel: "border-red-300/70 bg-red-950/86 shadow-[0_0_58px_rgba(239,68,68,0.55)]",
-    icon: "bg-red-500/24 text-red-50 ring-red-200/70",
-    title: "text-red-50",
-  },
+const statusConfig: Record<ScannerUiState, { label: string; sublabel: string; tone: Tone; icon: typeof Radio }> = {
+  initializing: { label: "NFC", sublabel: "PREPARING SCANNER", tone: "ready", icon: Radio },
+  idle: { label: "NFC", sublabel: "HOLD DEVICE NEAR CHECKPOINT TAG", tone: "ready", icon: Radio },
+  scanning: { label: "NFC", sublabel: "HOLD DEVICE NEAR CHECKPOINT TAG", tone: "ready", icon: Radio },
+  tag_detected: { label: "READING TAG...", sublabel: "PLEASE HOLD STEADY", tone: "progress", icon: Radio },
+  verifying: { label: "READING TAG...", sublabel: "VERIFYING CHECKPOINT", tone: "progress", icon: Loader2 },
+  acquiring_gps: { label: "READING TAG...", sublabel: "CHECKING GPS", tone: "progress", icon: Loader2 },
+  saving: { label: "READING TAG...", sublabel: "RECORDING SCAN", tone: "progress", icon: Loader2 },
+  success: { label: "CHECKPOINT VERIFIED", sublabel: "SCAN RECORDED", tone: "success", icon: Check },
+  patrol_started: { label: "CHECKPOINT VERIFIED", sublabel: "PATROL STARTED", tone: "success", icon: Check },
+  patrol_completed: { label: "CHECKPOINT COMPLETE", sublabel: "PATROL COMPLETE", tone: "success", icon: Check },
+  no_active_patrol: { label: "CHECKPOINT VERIFIED", sublabel: "NO ACTIVE PATROL MATCHED", tone: "success", icon: Check },
+  awaiting_data: { label: "CHECKPOINT VERIFIED", sublabel: "DATA LOG REQUIRED", tone: "success", icon: Check },
+  success_offline: { label: "OFFLINE MODE", sublabel: "SCAN SAVED SECURELY", tone: "offline", icon: Cloud },
+  offline_saved: { label: "OFFLINE MODE", sublabel: "SYNC WHEN CONNECTION RETURNS", tone: "offline", icon: Cloud },
+  duplicate: { label: "ALREADY SCANNED", sublabel: "CHECKPOINT ALREADY RECORDED", tone: "warning", icon: AlertTriangle },
+  out_of_order: { label: "WRONG CHECKPOINT", sublabel: "FOLLOW ROUTE ORDER", tone: "error", icon: X },
+  unregistered: { label: "UNREGISTERED TAG", sublabel: "NOT ASSIGNED TO A CHECKPOINT", tone: "error", icon: X },
+  save_failed: { label: "GPS CHECK FAILED", sublabel: "SCAN NOT COMPLETED", tone: "warning", icon: AlertTriangle },
+  error: { label: "ERROR / ALERT", sublabel: "SCAN NOT COMPLETED", tone: "error", icon: X },
+  unsupported: { label: "NFC UNAVAILABLE", sublabel: "USE APPROVED RG360 APP", tone: "offline", icon: WifiOff },
+  disabled: { label: "NFC DISABLED", sublabel: "ENABLE NFC TO SCAN", tone: "offline", icon: WifiOff },
+  device_unassigned: { label: "DEVICE SETUP", sublabel: "PAIRING REQUIRED", tone: "warning", icon: HelpCircle },
+  locked: { label: "DEVICE LOCKED", sublabel: "SCANNING BLOCKED", tone: "error", icon: Lock },
+  maintenance: { label: "MAINTENANCE MODE", sublabel: "SCANNING TEMPORARILY UNAVAILABLE", tone: "progress", icon: Wrench },
+  disabled_device: { label: "DEVICE DISABLED", sublabel: "CONTACT ADMINISTRATION", tone: "error", icon: Lock },
+  update_required: { label: "UPDATE REQUIRED", sublabel: "INSTALL APPROVED APP UPDATE", tone: "warning", icon: AlertTriangle },
+  security_failed: { label: "SECURITY CHECK FAILED", sublabel: "ADMINISTRATOR ATTENTION REQUIRED", tone: "error", icon: ShieldAlert },
+  sos: { label: "SOS ACTIVATED", sublabel: "EMERGENCY ALERT SENT", tone: "sos", icon: ShieldAlert },
 };
 
 interface ScannerRingProps {
@@ -104,6 +81,9 @@ interface ScannerRingProps {
   scannedAt?: string | null;
   structuredResult?: StructuredScanResult | null;
   deviceIdentifier?: string | null;
+  activePatrol?: ActivePatrolSummary | null;
+  feedbackTitle?: string;
+  feedbackDetail?: string;
 }
 
 const ScannerRing = ({
@@ -117,102 +97,86 @@ const ScannerRing = ({
   scannedAt,
   structuredResult,
   deviceIdentifier,
+  activePatrol,
+  feedbackTitle,
+  feedbackDetail,
 }: ScannerRingProps) => {
   const unknownTag = status === "unregistered" || (status === "error" && /not registered|unregistered/i.test(errorReason ?? ""));
-  const effectiveStatus: ScannerUiState = unknownTag ? "unregistered" : status === "error" ? "save_failed" : status;
+  const gpsFailure = status === "save_failed" && /gps|location/i.test(errorReason ?? "");
+  const effectiveStatus: ScannerUiState = unknownTag ? "unregistered" : status === "error" ? "save_failed" : gpsFailure ? "save_failed" : status;
   const config = statusConfig[effectiveStatus];
-  const tone = toneClasses[config.tone];
   const Icon = config.icon;
-  const message = getEventMessage(effectiveStatus, checkpointName, errorReason, gpsStatus, pendingCount);
-  const scanTime = scannedAt ? new Date(scannedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
-  const isBusy = effectiveStatus === "saving" || effectiveStatus === "verifying" || effectiveStatus === "acquiring_gps";
+  const isBusy = ["tag_detected", "verifying", "acquiring_gps", "saving"].includes(effectiveStatus);
   const isSos = effectiveStatus === "sos";
-  const progress = structuredResult?.patrol ?? null;
-  const progressPercent = Math.max(0, Math.min(100, progress?.progress_percent ?? 0));
+  const progress = activePatrol ?? getStructuredPatrol(structuredResult);
+  const progressPercent = Math.max(0, Math.min(100, progress?.progressPercent ?? 0));
   const checkpointLabel = checkpointName ?? structuredResult?.checkpoint?.name ?? structuredResult?.next_checkpoint?.name ?? null;
-  const routeHint = effectiveStatus === "out_of_order" && structuredResult?.next_checkpoint?.name
-    ? `Expected ${structuredResult.next_checkpoint.name}`
-    : null;
+  const nextCheckpoint = structuredResult?.next_checkpoint?.name ?? progress?.nextCheckpoint ?? null;
+  const scanTime = scannedAt ? new Date(scannedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
 
   return (
-    <section
-      className={`scanner-feedback-card pointer-events-auto w-full max-w-[19rem] rounded-2xl border px-4 py-4 text-center text-white backdrop-blur-[3px] ${tone.panel} ${isSos ? "scanner-sos-overlay" : ""}`}
-      aria-live={isSos ? "assertive" : "polite"}
-    >
-      <div className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full ring-1 ${tone.icon} ${isSos ? "scanner-sos-pulse" : ""}`}>
-        <Icon className={`h-8 w-8 ${isBusy ? "animate-spin" : effectiveStatus === "tag_detected" || effectiveStatus === "scanning" ? "animate-pulse" : ""}`} />
+    <section className={`rg360-ring-stage rg360-tone-${config.tone}`} aria-live={isSos ? "assertive" : "polite"}>
+      <div className={`rg360-ring ${isBusy ? "is-reading" : ""} ${isSos ? "is-sos" : ""}`}>
+        <div className="rg360-ring-core">
+          <div className="rg360-ring-icon">
+            <Icon className={isBusy ? "h-12 w-12 animate-pulse" : "h-12 w-12"} />
+          </div>
+          <h1>{config.label}</h1>
+          <p>{config.sublabel}</p>
+          {checkpointLabel ? <strong>{checkpointLabel}</strong> : null}
+        </div>
       </div>
-      <p className={`mt-3 text-lg font-black uppercase leading-tight tracking-[0.08em] ${tone.title}`}>{config.label}</p>
-      <p className="mt-1 text-sm font-semibold text-white/88">{config.sublabel}</p>
-      <p className="mt-2 text-xs font-medium text-white/68">{routeHint ?? message}</p>
 
-      {progress && (
-        <div className="mt-3 rounded-xl border border-white/10 bg-slate-950/72 p-3 text-left">
-          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-200">{progress.name ?? "Active patrol"}</p>
-          <div className="mt-2 flex items-center justify-between gap-3 border-t border-white/10 pt-2">
-            <span className="text-xs text-white/60">Checkpoint</span>
-            <span className="min-w-0 truncate text-right text-sm font-bold text-white">{checkpointLabel ?? "Checkpoint"}</span>
+      <div className="rg360-result-card">
+        <p>{feedbackTitle ?? getEventTitle(effectiveStatus)}</p>
+        <span>{getEventMessage(effectiveStatus, checkpointLabel, errorReason, gpsStatus, pendingCount, feedbackDetail)}</span>
+        {effectiveStatus === "out_of_order" && nextCheckpoint ? <em>Expected: {nextCheckpoint}</em> : null}
+        {effectiveStatus === "unregistered" && tagUid ? <em>Tag: {tagUid}</em> : null}
+        {progress ? (
+          <div className="rg360-result-progress">
+            <div><span>Progress</span><strong>{progress.completed} / {progress.required}</strong></div>
+            <div className="rg360-progress"><span style={{ width: `${progressPercent}%` }} /></div>
           </div>
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <span className="text-xs text-white/60">Progress</span>
-            <span className="text-sm font-bold text-white">
-              {progress.completed} / {progress.required} ({Math.round(progressPercent)}%)
-            </span>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-emerald-400" style={{ width: `${progressPercent}%` }} />
-          </div>
-        </div>
-      )}
-
-      {(checkpointLabel || tagUid || scanTime || deviceIdentifier) && (
-        <div className="mt-3 flex flex-wrap justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/60">
-          {checkpointLabel && <span>{checkpointLabel}</span>}
-          {tagUid && !checkpointLabel && <span>{tagUid}</span>}
-          {scanTime && <span>{scanTime}</span>}
-          {deviceIdentifier && <span>{deviceIdentifier}</span>}
-        </div>
-      )}
-      {isOnline === false && <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.1em] text-amber-200">Offline</p>}
+        ) : null}
+        {(scanTime || deviceIdentifier || isOnline === false) ? (
+          <small>{scanTime ?? "--:--"} {deviceIdentifier ? `- ${deviceIdentifier}` : ""} {isOnline === false ? "- OFFLINE" : ""}</small>
+        ) : null}
+      </div>
     </section>
   );
 };
 
-const getEventMessage = (
-  status: ScannerUiState,
-  checkpointName: string | null | undefined,
-  errorReason: string | null | undefined,
-  gpsStatus: GpsStatus,
-  pendingCount: number,
-) => {
-  if (status === "success") {
-    const gps = gpsStatus === "available" ? "GPS verified" : "GPS will update if available";
-    return `${checkpointName || "Checkpoint"} - ${gps}`;
-  }
-  if (status === "success_offline" || status === "offline_saved") return `${pendingCount} pending - will sync automatically`;
-  if (status === "duplicate") return checkpointName ? `${checkpointName} already recorded` : "Previous scan already exists";
-  if (status === "unregistered") return "Supervisor registration required";
-  if (status === "device_unassigned") return "This RG360 must be assigned before scanning";
-  if (status === "sos") return "Location transmitting";
-  if (status === "tag_detected") return "Reading tag...";
-  if (status === "verifying" || status === "acquiring_gps") return "Matching checkpoint to patrol";
-  if (status === "saving") return "Writing scan log";
-  if (status === "scanning" || status === "idle" || status === "initializing") return "Hold your device near the checkpoint tag";
-  if (status === "patrol_started") return "Patrol auto-started by first checkpoint";
-  if (status === "patrol_completed") return "All required checkpoints completed";
-  if (status === "no_active_patrol") return "Checkpoint recorded, no active patrol matched";
-  if (status === "out_of_order") return "Please scan the expected checkpoint first";
-  if ((status === "save_failed" || status === "error") && errorReason) return guardSafeReason(errorReason);
-  return "Retrying automatically";
-};
+function getStructuredPatrol(result: StructuredScanResult | null): ActivePatrolSummary | null {
+  if (!result?.patrol) return null;
+  return {
+    name: result.patrol.name ?? "Active patrol",
+    completed: result.patrol.completed,
+    required: result.patrol.required,
+    progressPercent: result.patrol.progress_percent ?? 0,
+    nextCheckpoint: result.next_checkpoint?.name ?? null,
+    status: result.patrol.status ?? null,
+  };
+}
 
-const guardSafeReason = (reason: string) => {
-  if (/saved locally|sync is queued/i.test(reason)) return "Saved offline. Will sync automatically.";
-  if (/duplicate/i.test(reason)) return "This checkpoint was already scanned recently.";
-  if (/not registered|unregistered/i.test(reason)) return "Supervisor registration required.";
-  if (/company|enroll|assigned|paired/i.test(reason)) return "Device is not assigned for patrol scanning.";
-  if (/gps/i.test(reason)) return "GPS unavailable, scan saved without GPS.";
-  return "Retrying automatically.";
-};
+function getEventTitle(status: ScannerUiState) {
+  if (status === "awaiting_data") return "Scan recorded";
+  if (status === "duplicate") return "Already scanned";
+  if (status === "success_offline" || status === "offline_saved") return "Offline scan saved";
+  if (status === "sos") return "SOS active";
+  return statusConfig[status].label;
+}
+
+function getEventMessage(status: ScannerUiState, checkpointName: string | null, errorReason: string | null, gpsStatus: GpsStatus, pendingCount: number, fallback?: string) {
+  if (fallback) return fallback;
+  if (status === "success" || status === "patrol_started" || status === "patrol_completed" || status === "no_active_patrol") return checkpointName ? `${checkpointName} recorded.` : "Checkpoint scan recorded.";
+  if (status === "awaiting_data") return "Open the data log and complete all required fields.";
+  if (status === "duplicate") return checkpointName ? `${checkpointName} was already recorded for this patrol.` : "This checkpoint was already recorded for the current patrol.";
+  if (status === "out_of_order") return errorReason ?? "This route must be scanned in sequence.";
+  if (status === "unregistered") return errorReason ?? "This NFC tag is not assigned to a checkpoint.";
+  if (status === "save_failed") return errorReason ?? (gpsStatus === "unavailable" ? "Location could not be verified." : "Checkpoint scan could not be completed.");
+  if (status === "success_offline" || status === "offline_saved") return pendingCount ? `${pendingCount} scan${pendingCount === 1 ? "" : "s"} waiting to sync.` : "Will sync automatically when connection returns.";
+  if (status === "sos") return "Emergency alert sent to command center.";
+  return checkpointName ?? "Hold device near checkpoint tag.";
+}
 
 export default memo(ScannerRing);

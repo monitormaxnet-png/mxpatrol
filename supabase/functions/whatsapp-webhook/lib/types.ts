@@ -26,7 +26,7 @@ export type Identity = {
   platformRole: string | null;
   canSetup: boolean;
   canAcknowledge: boolean;
-
+  reportPackage?: string | null;
 
 };
 

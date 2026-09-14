@@ -59,6 +59,7 @@ type DashboardDevice = { id: string; status?: string | null; device_identifier?:
 type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | null; title?: string | null; message?: string | null; created_at?: string | null; site_id?: string | null };
 type DashboardIncident = { id: string; resolved?: boolean | null; severity?: string | null; title?: string | null; incident_type?: string | null; created_at?: string | null; site_id?: string | null };
 type DashboardScan = { id: string; scanned_at?: string | null; tag_status?: string | null; device_identifier?: string | null; checkpoints?: { name?: string | null } | null; guards?: { full_name?: string | null } | null };
+type DatalogSubmission = { id: string; submitted_at?: string | null; datalog_value?: string | null; responses_json?: any; site_id?: string | null; checkpoint_id?: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
 type AssistantCompany = { id: string; name: string; status?: string | null; site_count?: number; reference?: string | null };
 type AssistantSite = { id: string; company_id: string; company_name?: string | null; name: string; address?: string | null; gps_lat?: number | null; gps_lng?: number | null; status?: string | null; created_at?: string | null };
 
@@ -214,6 +215,20 @@ export default function CommandCenter() {
       return (data ?? []) as unknown as MissedCheckpointRow[];
     },
   });
+  const dataLogSubmissions = useQuery({
+    queryKey: ['assistant_data_log_submissions', selectedSiteId],
+    enabled: !!selectedSiteId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('data_log_submissions')
+        .select('id, submitted_at, datalog_value, responses_json, site_id, checkpoint_id, sites(name), checkpoints(name, data_log_label)')
+        .eq('site_id', selectedSiteId!)
+        .order('submitted_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []) as unknown as DatalogSubmission[];
+    },
+  });
 
   const siteDevices = (devices.data ?? []) as DashboardDevice[];
   const siteAlerts = ((alerts.data ?? []) as DashboardAlert[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
@@ -221,6 +236,7 @@ export default function CommandCenter() {
   const sitePatrols = patrols.data ?? [];
   const siteScans = (scans.data ?? []) as DashboardScan[];
   const siteReportJobs = (reportJobs.data ?? []).filter((job) => !selectedSiteId || job.site_id === selectedSiteId || job.site_id === null);
+  const siteDataLogs = dataLogSubmissions.data ?? [];
 
   const addAssistant = (title: string, body: ReactNode) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'assistant', title, body }]);
   const addUser = (body: string) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'user', body }]);
@@ -367,7 +383,7 @@ export default function CommandCenter() {
       const period = action.slice(7) as keyof typeof PERIODS;
       if (PERIODS[period]) return runReportPeriod(period);
       if (action.startsWith('report:device_security:') && !isPlatformOwner) return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can access Device Security Reports.</p>);
-      return addAssistant(reportTitle(action) + ' - ' + selectedSite, <AssistantReportPanel action={action} site={selectedSite} scans={siteScans} patrols={sitePatrols} alerts={siteAlerts} incidents={siteIncidents} devices={siteDevices} checkpoints={(checkpoints.data ?? []) as any[]} routes={configOptions.data?.routes ?? []} forms={configOptions.data?.forms ?? []} loading={scans.isLoading || patrols.isLoading || devices.isLoading || alerts.isLoading || incidents.isLoading} />);
+      return addAssistant(reportTitle(action) + ' - ' + selectedSite, <AssistantReportPanel action={action} site={selectedSite} scans={siteScans} patrols={sitePatrols} alerts={siteAlerts} incidents={siteIncidents} devices={siteDevices} checkpoints={(checkpoints.data ?? []) as any[]} routes={configOptions.data?.routes ?? []} forms={configOptions.data?.forms ?? []} dataLogs={siteDataLogs} loading={scans.isLoading || patrols.isLoading || devices.isLoading || alerts.isLoading || incidents.isLoading || dataLogSubmissions.isLoading} />);
     }
     if (action === 'saved_reports') return addAssistant('SAVED REPORTS - ' + selectedSite, <SavedReports jobs={siteReportJobs} loading={reportJobs.isLoading} />);
     if (action === 'generate_report') {
@@ -757,7 +773,7 @@ function countBy<T>(rows: T[], getKey: (row: T) => string) {
   return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
 }
 
-function AssistantReportPanel({ action, site, scans, patrols, alerts, incidents, devices, checkpoints, routes, forms, loading }: { action: string; site: string; scans: DashboardScan[]; patrols: AssistantPatrolRow[]; alerts: DashboardAlert[]; incidents: DashboardIncident[]; devices: DashboardDevice[]; checkpoints: any[]; routes: any[]; forms: any[]; loading: boolean }) {
+function AssistantReportPanel({ action, site, scans, patrols, alerts, incidents, devices, checkpoints, routes, forms, dataLogs, loading }: { action: string; site: string; scans: DashboardScan[]; patrols: AssistantPatrolRow[]; alerts: DashboardAlert[]; incidents: DashboardIncident[]; devices: DashboardDevice[]; checkpoints: any[]; routes: any[]; forms: any[]; dataLogs: DatalogSubmission[]; loading: boolean }) {
   if (loading) return <p>Loading report data for {site}...</p>;
   const [, category, report] = action.split(':');
   const sos = alerts.filter((row) => row.type === 'panic_button');
@@ -804,7 +820,13 @@ function AssistantReportPanel({ action, site, scans, patrols, alerts, incidents,
   }
 
   if (category === 'data_logs') {
-    return <div><MetricGrid items={[['Forms available', forms.length], ['Submissions', 0], ['Incomplete', 0], ['Offline synced', 0]]} /><ReportRows rows={forms.map((form: any) => ({ label: String(form.name ?? 'Data log form'), value: 'Available form' }))} empty='No data log forms are configured for this site.' /></div>;
+    const rows = dataLogs.map((entry) => {
+      const label = String(entry.checkpoints?.data_log_label ?? entry.responses_json?.label ?? 'Datalog');
+      const value = String(entry.datalog_value ?? entry.responses_json?.datalog_value ?? '-');
+      const when = [assistantDate(entry.submitted_at), assistantTime(entry.submitted_at)].filter(Boolean).join(' ');
+      return { label: `${entry.checkpoints?.name ?? 'Checkpoint'} - ${when}`, value: `${label}: ${value}` };
+    });
+    return <div><MetricGrid items={[['Submissions', dataLogs.length], ['Checkpoints', new Set(dataLogs.map((row) => row.checkpoint_id).filter(Boolean)).size], ['Site', site], ['Latest', dataLogs[0] ? assistantTime(dataLogs[0].submitted_at) : '-']]} /><ReportRows rows={rows} empty='No Datalog submissions match this site yet.' /></div>;
   }
 
   if (category === 'schedules') {
@@ -924,6 +946,7 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` · ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` · ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
 
 
 

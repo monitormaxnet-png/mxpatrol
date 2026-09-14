@@ -33,7 +33,7 @@ export async function sendWhatsApp(to: string, message: OutMessage, forcePlainTe
   const twilioKey = Deno.env.get("TWILIO_API_KEY");
   const from = Deno.env.get("TWILIO_WHATSAPP_NUMBER");
   if (!lovableKey || !twilioKey || !from) {
-    console.warn("[WA] outbound skipped — Twilio not fully configured");
+    console.warn("[WA] outbound skipped - Twilio not fully configured");
     return false;
   }
 
@@ -63,7 +63,7 @@ export async function sendWhatsApp(to: string, message: OutMessage, forcePlainTe
     headers: {
       Authorization: `Bearer ${lovableKey}`,
       "X-Connection-Api-Key": twilioKey,
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     },
     body: new URLSearchParams(body),
   });
@@ -72,7 +72,7 @@ export async function sendWhatsApp(to: string, message: OutMessage, forcePlainTe
     const text = await response.text();
     console.error(`[WA] send failed [${response.status}]: ${text}`);
     if (contentSid) {
-      // Template rejected/not approved — retry as plain text so the user still gets a reply.
+      // Template rejected/not approved - retry as plain text so the user still gets a reply.
       return await sendWhatsApp(to, message, true);
     }
     return false;
@@ -92,13 +92,13 @@ export async function sendLocation(to: string, lat: number, lng: number, label: 
     headers: {
       Authorization: `Bearer ${lovableKey}`,
       "X-Connection-Api-Key": twilioKey,
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     },
     body: new URLSearchParams({
       To: `whatsapp:${to.replace(/^whatsapp:/i, "")}`,
       From: `whatsapp:${from}`,
       PersistentAction: `geo:${lat},${lng}|${label}`,
-      Body: `📍 ${label}\nhttps://maps.google.com/?q=${lat},${lng}`,
+      Body: `Location: ${label}\nhttps://maps.google.com/?q=${lat},${lng}`,
     }),
   });
   if (!response.ok) console.error("[WA] location send failed:", await response.text());

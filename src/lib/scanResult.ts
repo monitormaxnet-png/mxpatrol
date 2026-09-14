@@ -96,7 +96,7 @@ export const describeScanResult = (result: StructuredScanResult): ScanFeedback =
     case "CHECKPOINT_NOT_IN_ROUTE":
       return { uiState: "no_active_patrol", tone: "info", title: "Scan recorded", detail: [checkpointName, "Registered checkpoint", "Scan recorded for review"].join(" | "), holdMs: 2600, sound: "scan-success" };
     case "CHECKPOINT_REQUIRES_DATA":
-      return { uiState: "awaiting_data", tone: "info", title: "Scan recorded", detail: [checkpointName, result.data_log_form?.name ?? "Data log required"].join(" | "), holdMs: 600000, sound: "scan-success" };
+      return { uiState: "awaiting_data", tone: "info", title: "Scan recorded", detail: result.data_log_form?.name ?? "Datalog", holdMs: 600000, sound: "scan-success" };
     case "UNREGISTERED_CHECKPOINT":
       return { uiState: "unregistered", tone: "danger", title: "Scan not successful", detail: "Checkpoint not registered | Scan recorded for review", holdMs: 3000, sound: "error" };
     case "OFFLINE_SAVED":

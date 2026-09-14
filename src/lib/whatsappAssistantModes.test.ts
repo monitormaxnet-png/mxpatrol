@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { keywordIntent } from "../../supabase/functions/whatsapp-webhook/lib/askmx";
 import { mainMenu, managementMenu, secureDeviceMenu } from "../../supabase/functions/whatsapp-webhook/lib/views";
 import { startFlow, startSecureDeviceAction } from "../../supabase/functions/whatsapp-webhook/lib/flows";
+import { resolveIdentity } from "../../supabase/functions/whatsapp-webhook/lib/identity";
 import type { Identity, SessionRow } from "../../supabase/functions/whatsapp-webhook/lib/types";
 
 const baseIdentity: Identity = {
@@ -40,15 +41,14 @@ describe("WhatsApp assistant role menus", () => {
   it("renders the USER menu with site-scoped operational choices", () => {
     const menu = mainMenu(baseIdentity, baseSession);
     expect(menu.title).toBe("MX PATROL");
-    expect(menu.lines.join("\n")).toContain("Viewing: Airport Junction");
+    expect(menu.lines.join("\n")).toContain("Site: Airport Junction");
     expect(menu.options?.map((option) => option.id)).toEqual([
       "live",
       "attention",
+      "patrol_status",
       "devices",
       "incidents",
       "reports",
-      "patrol_status",
-      "missed_checkpoints",
       "change_site",
       "management",
     ]);
@@ -75,8 +75,9 @@ describe("WhatsApp assistant role menus", () => {
       ...baseIdentity,
       role: "admin",
       canManage: true,
-      canAcknowledge: true,
+      canManageKiosk: true,
       canManageSecureDevices: true,
+      canAcknowledge: true,
       platformRole: "owner",
     };
     const menu = managementMenu(owner, { ...baseSession, last_menu: "management" });
@@ -133,5 +134,67 @@ describe("WhatsApp assistant management write protection", () => {
     const result = await startFlow({} as never, baseIdentity, baseSession, "REGISTER_DEVICE");
     expect(result.message.title).toBe("MANAGEMENT ACCESS UNAVAILABLE");
     expect(result.session).toBe(baseSession);
+  });
+});
+
+describe("WhatsApp assistant management identity resolution", () => {
+  function clientFor(row: Record<string, unknown>, userRoles: Array<{ role: string }> = []) {
+    return {
+      from(table: string) {
+        if (table === "whatsapp_authorized_numbers") {
+          return {
+            select() { return this; },
+            eq() { return this; },
+            maybeSingle: async () => ({ data: row }),
+            update() { return { eq: () => ({}) }; },
+          };
+        }
+        if (table === "user_roles") {
+          return { select() { return this; }, eq() { return this; }, then: (resolve: (value: unknown) => unknown) => resolve({ data: userRoles }) };
+        }
+        if (table === "platform_admins") {
+          return { select() { return this; }, eq() { return this; }, limit: async () => ({ data: [] }) };
+        }
+        throw new Error(`Unexpected table ${table}`);
+      },
+    };
+  }
+
+  it("preserves management access from canonical WhatsApp authorization metadata when no live role row is available", async () => {
+    const result = await resolveIdentity(clientFor({
+      id: "auth-1",
+      phone: "+27820000000",
+      company_id: "company-1",
+      user_id: "user-1",
+      guard_id: null,
+      display_name: "Ops Admin",
+      allowed_site_ids: ["site-1"],
+      status: "active",
+      metadata: { access_type: "management", role: "admin" },
+    }) as never, "+27820000000", "management");
+
+    expect(result.kind).toBe("authorized");
+    if (result.kind !== "authorized") return;
+    expect(result.identity.role).toBe("admin");
+    expect(result.identity.canManage).toBe(true);
+  });
+
+  it("does not elevate user-only WhatsApp authorizations from metadata", async () => {
+    const result = await resolveIdentity(clientFor({
+      id: "auth-2",
+      phone: "+27820000001",
+      company_id: "company-1",
+      user_id: null,
+      guard_id: "guard-1",
+      display_name: "Guard User",
+      allowed_site_ids: ["site-1"],
+      status: "active",
+      metadata: { access_type: "user", role: "admin" },
+    }) as never, "+27820000001", "management");
+
+    expect(result.kind).toBe("authorized");
+    if (result.kind !== "authorized") return;
+    expect(result.identity.role).toBe("guard");
+    expect(result.identity.canManage).toBe(false);
   });
 });

@@ -320,7 +320,9 @@ export type Database = {
         Row: {
           company_id: string
           created_at: string
+          data_log_enabled: boolean
           data_log_form_id: string | null
+          data_log_label: string | null
           id: string
           location_lat: number | null
           location_lng: number | null
@@ -334,7 +336,9 @@ export type Database = {
         Insert: {
           company_id: string
           created_at?: string
+          data_log_enabled?: boolean
           data_log_form_id?: string | null
+          data_log_label?: string | null
           id?: string
           location_lat?: number | null
           location_lng?: number | null
@@ -348,7 +352,9 @@ export type Database = {
         Update: {
           company_id?: string
           created_at?: string
+          data_log_enabled?: boolean
           data_log_form_id?: string | null
+          data_log_label?: string | null
           id?: string
           location_lat?: number | null
           location_lng?: number | null
@@ -603,8 +609,9 @@ export type Database = {
           checkpoint_id: string
           company_id: string
           created_at: string
+          datalog_value: string | null
           device_id: string | null
-          form_id: string
+          form_id: string | null
           id: string
           patrol_session_checkpoint_id: string | null
           patrol_session_id: string | null
@@ -620,8 +627,9 @@ export type Database = {
           checkpoint_id: string
           company_id: string
           created_at?: string
+          datalog_value?: string | null
           device_id?: string | null
-          form_id: string
+          form_id?: string | null
           id?: string
           patrol_session_checkpoint_id?: string | null
           patrol_session_id?: string | null
@@ -637,8 +645,9 @@ export type Database = {
           checkpoint_id?: string
           company_id?: string
           created_at?: string
+          datalog_value?: string | null
           device_id?: string | null
-          form_id?: string
+          form_id?: string | null
           id?: string
           patrol_session_checkpoint_id?: string | null
           patrol_session_id?: string | null

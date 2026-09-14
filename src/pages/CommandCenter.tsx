@@ -120,10 +120,13 @@ export default function CommandCenter() {
     },
   });
 
-  const availableSites = (isPlatformOwner ? (platformSites.data ?? []) : sites) as AssistantSite[];
+  const ownerCompanySites = (platformSites.data ?? []) as AssistantSite[];
+  const availableSites = (isPlatformOwner && selectedCompanyId && ownerCompanySites.length
+    ? ownerCompanySites
+    : sites) as AssistantSite[];
   const activeSite = availableSites.find((site) => site.id === state.activeSiteId) ?? availableSites[0] ?? null;
   const selectedSiteId = activeSite?.id ?? null;
-  const selectedSite = activeSite?.name ?? (isPlatformOwner && !selectedCompanyId ? 'Select company first' : 'No site assigned');
+  const selectedSite = activeSite?.name ?? 'No site assigned';
   const mode: AssistantMode = state.mode;
 
   const devices = useDevices(selectedSiteId ?? 'all');

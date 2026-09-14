@@ -5,6 +5,7 @@ import { greeting, timeAgo } from "./types.ts";
 import { deviceSecurityState, formatDeviceSecurityLine, formatSecureDeviceLabel, getSecureDeviceByIdentifier, getSecureDeviceEvents, getSecureDeviceRows, getSecureDeviceSummary } from "../../_shared/secure-device-management.ts";
 
 const REPORT_ROOT_OPTIONS = [
+  { id: "reports_period", label: "Daily / Weekly Summary" },
   { id: "reports_checkpoint_activity", label: "Checkpoint Activity", entitlement: "checkpoint_reports" },
   { id: "reports_patrols", label: "Patrol Reports", entitlement: "patrol_reports" },
   { id: "reports_scan_investigations", label: "Scan Investigations", entitlement: "scan_investigations" },

@@ -936,19 +936,69 @@ export async function reportCategorySummary(client: SupabaseClient, identity: Id
     };
   }
 
+  const groupCount = (rows: any[], key: string) => {
+    const grouped = rows.reduce((acc: Record<string, number>, row: any) => {
+      const value = String(row[key] ?? "unknown");
+      acc[value] = (acc[value] ?? 0) + 1;
+      return acc;
+    }, {});
+    const entries = Object.entries(grouped).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 5);
+    return entries.length ? entries.map(([name, count], index) => `${index + 1}. ${name} - ${count}`) : ["No records found."];
+  };
+
   const lines = [
+    `Period: last 7 days`,
     `Site: ${siteId ? "selected site" : "allowed sites"}`,
-    `Checkpoint scans: ${scanRows.length} (${unregistered} unregistered, ${duplicate} duplicate, ${offlineSynced} offline synced)`,
-    `Patrol sessions: ${patrolRows.length} (${completed} completed, ${late} late/delayed, ${missed} missed)`,
-    `SOS alerts: ${sosRows.length} (${sosRows.filter((row: any) => !row.is_read).length} active)`,
-    `Incidents: ${incidentRows.length} (${incidentRows.filter((row: any) => !row.resolved).length} open)`,
-    `Devices: ${deviceRows.length} (${deviceRows.filter((row: any) => row.status === "online").length} online, ${deviceRows.filter((row: any) => row.status === "offline").length} offline)`,
   ];
-  if (category === "device_security") {
-    lines.push(`Kiosk inactive: ${deviceRows.filter((row: any) => row.device_owner_active && !row.kiosk_active).length}`);
-    lines.push(`Integrity failures: ${deviceRows.filter((row: any) => String(row.secure_mode_status ?? "").includes("fail") || row.developer_mode_detected || row.adb_detected).length}`);
+
+  if (category === "sos") {
+    const active = sosRows.filter((row: any) => !row.is_read);
+    lines.push(`SOS alerts: ${sosRows.length} (${active.length} active, ${sosRows.length - active.length} handled)`);
+    if (report === "active") lines.push("", ...(active.slice(0, 5).map((row: any, index: number) => `${index + 1}. ${row.device_identifier ?? "Unknown device"} - ${waTime(row.created_at) ?? "unknown"}`)));
+    else if (report === "resolved") lines.push("", ...(sosRows.filter((row: any) => row.is_read).slice(0, 5).map((row: any, index: number) => `${index + 1}. ${row.device_identifier ?? "Unknown device"} - ${waTime(row.created_at) ?? "unknown"}`)));
+    else lines.push("", "By device:", ...groupCount(sosRows, "device_identifier"));
+  } else if (category === "incidents") {
+    const open = incidentRows.filter((row: any) => !row.resolved);
+    lines.push(`Incidents: ${incidentRows.length} (${open.length} open, ${incidentRows.length - open.length} resolved)`);
+    if (report === "high") lines.push("", ...(incidentRows.filter((row: any) => ["high", "critical"].includes(String(row.severity))).slice(0, 5).map((row: any, index: number) => `${index + 1}. ${row.severity} - ${row.device_identifier ?? "Unknown device"} - ${waTime(row.created_at) ?? "unknown"}`)));
+    else if (report === "resolved") lines.push("", ...(incidentRows.filter((row: any) => row.resolved).slice(0, 5).map((row: any, index: number) => `${index + 1}. ${row.severity ?? "unknown"} - ${waTime(row.created_at) ?? "unknown"}`)));
+    else lines.push("", "By severity:", ...groupCount(incidentRows, "severity"));
+  } else if (category === "patrols" || category === "checkpoint_performance" || category === "schedules" || category === "routes") {
+    lines.push(`Patrol sessions: ${patrolRows.length} (${completed} completed, ${late} late/delayed, ${missed} missed)`);
+    lines.push("", "Latest sessions:", ...(patrolRows.slice(0, 5).map((row: any, index: number) => {
+      const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
+      return `${index + 1}. ${route?.name ?? "Patrol"} - ${row.status} - ${row.checkpoint_completed ?? 0}/${row.checkpoint_total ?? 0}`;
+    })));
+  } else if (category === "checkpoint_scans") {
+    lines.push(`Checkpoint scans: ${scanRows.length} (${unregistered} unregistered, ${duplicate} duplicate, ${offlineSynced} offline synced)`);
+    const selected = report === "unregistered"
+      ? scanRows.filter((row: any) => String(row.tag_status ?? "").includes("unregistered") || String(row.tag_status ?? "").includes("unknown"))
+      : report === "duplicate"
+        ? scanRows.filter((row: any) => String(row.tag_status ?? "").includes("duplicate"))
+        : report === "offline_synced"
+          ? scanRows.filter((row: any) => String(row.tag_status ?? "").includes("offline"))
+          : scanRows;
+    if (report === "device") lines.push("", "By device:", ...groupCount(selected, "device_identifier"));
+    else lines.push("", ...(selected.slice(0, 5).map((row: any, index: number) => {
+      const checkpoint = Array.isArray(row.checkpoints) ? row.checkpoints[0] : row.checkpoints;
+      return `${index + 1}. ${checkpoint?.name ?? "Unknown checkpoint"} - ${row.device_identifier ?? "Unknown device"} - ${waTime(row.scanned_at) ?? "unknown"}`;
+    })));
+  } else {
+    lines.push(`Devices: ${deviceRows.length} (${deviceRows.filter((row: any) => row.status === "online").length} online, ${deviceRows.filter((row: any) => row.status === "offline").length} offline)`);
+    if (report === "online") lines.push("", ...(deviceRows.filter((row: any) => row.status === "online").slice(0, 5).map((row: any, index: number) => `${index + 1}. ${row.device_identifier ?? "Unknown device"}`)));
+    else if (report === "app_versions") lines.push("", "App versions:", ...groupCount(deviceRows, "app_version"));
+    else lines.push("", "By status:", ...groupCount(deviceRows, "status"));
+    if (category === "device_security") {
+      lines.push(`Kiosk inactive: ${deviceRows.filter((row: any) => row.device_owner_active && !row.kiosk_active).length}`);
+      lines.push(`Integrity failures: ${deviceRows.filter((row: any) => String(row.secure_mode_status ?? "").includes("fail") || row.developer_mode_detected || row.adb_detected).length}`);
+    }
   }
-  return { title: title.toUpperCase(), lines, options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }] };
+
+  return {
+    title: title.toUpperCase(),
+    lines,
+    options: [{ id: "reports_period", label: "Daily / Weekly Summary" }, { id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
+  };
 }
 // ===== Context-aware menu state (kept here so it deploys with the function bundle) =====
 

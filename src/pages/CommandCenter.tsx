@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, AlertTriangle, ArrowRight, Bell, Bot, CheckCircle2, ChevronDown, Clock3, Cpu, Lock, MapPin, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
@@ -94,6 +94,10 @@ export default function CommandCenter() {
   const [pendingConfirm, setPendingConfirm] = useState<null | { label: string; run: () => Promise<void> }>(null);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const conversationRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const forceNextScrollRef = useRef(false);
 
   const platformCompanies = useQuery({
     queryKey: ['assistant_platform_companies', isPlatformOwner],
@@ -240,6 +244,19 @@ export default function CommandCenter() {
   const siteScans = (scans.data ?? []) as DashboardScan[];
   const siteReportJobs = (reportJobs.data ?? []).filter((job) => !selectedSiteId || job.site_id === selectedSiteId || job.site_id === null);
   const siteDataLogs = dataLogSubmissions.data ?? [];
+
+  useEffect(() => {
+    if (!shouldAutoScrollRef.current && !forceNextScrollRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ block: 'end', behavior: forceNextScrollRef.current ? 'smooth' : 'auto' });
+    forceNextScrollRef.current = false;
+  }, [messages.length, pendingConfirm, inlinePanel, mode, selectedSite]);
+
+  const handleConversationScroll = () => {
+    const node = conversationRef.current;
+    if (!node) return;
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom < 96;
+  };
 
   const addAssistant = (title: string, body: ReactNode) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'assistant', title, body }]);
   const addUser = (body: string) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'user', body }]);
@@ -424,6 +441,8 @@ export default function CommandCenter() {
     const text = (raw ?? input).trim();
     if (!text) return;
     if (!raw) setInput('');
+    forceNextScrollRef.current = true;
+    shouldAutoScrollRef.current = true;
     addUser(text);
 
     if (pendingConfirm && /^(yes|confirm|y)$/i.test(text)) {
@@ -541,31 +560,38 @@ export default function CommandCenter() {
             </Suspense>
           </DashboardPanel>
 
-          <section className='flex min-h-[34rem] flex-col overflow-hidden rounded-lg border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_35px_rgba(14,165,233,0.08)]'>
-            <div className='flex items-center justify-between border-b border-white/10 px-4 py-3'>
-              <h2 className='flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-100'><Bot className='h-4 w-4 text-cyan-300' /> Web AI Assistant</h2>
-              <span className='rounded-md border border-cyan-400/25 px-2 py-1 text-xs font-bold text-cyan-200'>{mode === 'management' ? 'Management AI' : 'User AI'}</span>
+          <section className='flex h-[calc(100vh-15rem)] min-h-[34rem] max-h-[52rem] flex-col overflow-hidden rounded-lg border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_35px_rgba(14,165,233,0.08)]'>
+            <div className='shrink-0 border-b border-white/10 px-4 py-3'>
+              <div className='flex items-start justify-between gap-3'>
+                <div>
+                  <h2 className='flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-100'><Bot className='h-4 w-4 text-cyan-300' /> Web AI Assistant</h2>
+                  <p className='mt-1 text-xs font-black uppercase tracking-[0.12em] text-emerald-300'>MX Patrol</p>
+                  <p className='text-xs text-slate-400'>Viewing: {selectedSite}</p>
+                </div>
+                <span className='rounded-md border border-cyan-400/25 px-2 py-1 text-xs font-bold text-cyan-200'>{mode === 'management' ? 'Management AI' : 'User AI'}</span>
+              </div>
             </div>
-            <div className='flex min-h-0 flex-1 flex-col'>
-              <div className='flex-1 space-y-3 overflow-y-auto p-4'>
+            <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
+              <div ref={conversationRef} onScroll={handleConversationScroll} className='min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4'>
                 <AssistantBubble title={homeNode.title}><MenuView site={selectedSite} node={homeNode} isPlatformOwner={isPlatformOwner} /></AssistantBubble>
+                <div className='grid gap-2 sm:grid-cols-2'>
+                  {mode === 'management' || canManage ? <Shortcut onClick={switchMode} icon={mode === 'management' ? Bot : Lock} label={mode === 'management' ? 'User Assistant' : 'Management'} /> : null}
+                  <Shortcut onClick={() => submit('live now')} icon={ShieldCheck} label='Live Now' />
+                  <Shortcut onClick={() => submit('which devices are offline')} icon={Smartphone} label='Offline Devices' />
+                  <Shortcut onClick={() => { setInlinePanel(null); submit('menu'); }} icon={X} label='Close Inline Panel' />
+                </div>
                 {messages.map((message) => message.from === 'user' ? <UserBubble key={message.id}>{message.body}</UserBubble> : <AssistantBubble key={message.id} title={message.title ?? 'MX PATROL'}>{message.body}</AssistantBubble>)}
                 {pendingConfirm ? <div className='rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-100'><p className='font-bold'>{pendingConfirm.label}</p><div className='mt-2 flex gap-2'><button type='button' onClick={() => submit('confirm')} className='rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 font-semibold text-emerald-200'>Confirm</button><button type='button' onClick={() => submit('cancel')} className='rounded-xl border border-white/10 px-3 py-2 font-semibold text-slate-300'>Cancel</button></div></div> : null}
                 {inlinePanel ? <div className='rounded-2xl border border-emerald-400/25'>{inlinePanel}</div> : null}
+                <div ref={messagesEndRef} aria-hidden='true' />
               </div>
-              <div className='border-t border-white/10 p-3'>
+              <form className='relative z-20 shrink-0 border-t border-white/10 bg-slate-950/95 p-3 pointer-events-auto' onSubmit={(event) => { event.preventDefault(); submit(); }}>
                 <div className='flex items-center gap-3'>
-                  <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit(); }} className='h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-4 text-sm text-white outline-none placeholder:text-slate-500' placeholder={mode === 'management' ? 'Type a number or management command...' : 'Type a number or ask MX Patrol...'} />
-                  <button onClick={() => submit()} className='flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]' aria-label='Send'><Send className='h-5 w-5' /></button>
+                  <input type='text' autoComplete='off' value={input} onChange={(event) => setInput(event.target.value)} className='relative z-20 h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-4 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20' placeholder={mode === 'management' ? 'Type a number or management command...' : 'Type a number or ask MX Patrol...'} />
+                  <button type='submit' className='relative z-20 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]' aria-label='Send'><Send className='h-5 w-5' /></button>
                 </div>
                 <p className='mt-2 text-center text-[11px] text-slate-500'>Reply with the number shown in the current menu. Type back, menu or cancel any time.</p>
-              </div>
-              <div className='grid gap-2 border-t border-white/10 p-3 sm:grid-cols-2'>
-                {mode === 'management' || canManage ? <Shortcut onClick={switchMode} icon={mode === 'management' ? Bot : Lock} label={mode === 'management' ? 'User Assistant' : 'Management'} /> : null}
-                <Shortcut onClick={() => submit('live now')} icon={ShieldCheck} label='Live Now' />
-                <Shortcut onClick={() => submit('which devices are offline')} icon={Smartphone} label='Offline Devices' />
-                <Shortcut onClick={() => { setInlinePanel(null); submit('menu'); }} icon={X} label='Close Inline Panel' />
-              </div>
+              </form>
             </div>
           </section>
         </main>
@@ -949,6 +975,9 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` · ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` · ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
+
+
 
 
 

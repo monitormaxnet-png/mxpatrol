@@ -193,19 +193,20 @@ describe("WhatsApp reports category menus", () => {
   it("hides Device Security Reports unless the identity is a platform owner", () => {
     const normalOptions = reportPeriodMenu(identity).options ?? [];
     expect(normalOptions.map((option) => option.label)).not.toContain("Device Security Reports");
-    expect(resolveMenuChoice(session({ temporary_data: { last_options: normalOptions, last_menu_key: "report_period" } }), "7")).toBe("back");
+    expect(resolveMenuChoice(session({ temporary_data: { last_options: normalOptions, last_menu_key: "report_period" } }), "8")).toBe("back");
 
     const owner = { ...identity, platformRole: "owner" as const, canManageKiosk: true, canManageSecureDevices: true };
     const ownerOptions = reportPeriodMenu(owner).options ?? [];
-    expect(ownerOptions[6]).toMatchObject({ id: "reports_device_security", label: "Device Security Reports" });
+    expect(ownerOptions[7]).toMatchObject({ id: "reports_device_security", label: "Device Security Reports" });
   });
 
   it("routes report submenus from the last displayed options", () => {
     const reportMenu = reportPeriodMenu(identity);
     const reportSession = session({ temporary_data: { last_options: reportMenu.options ?? [], last_menu_key: "report_period" } });
-    expect(resolveMenuChoice(reportSession, "1")).toBe("reports_checkpoint_activity");
-    expect(resolveMenuChoice(reportSession, "2")).toBe("reports_patrols");
-    expect(resolveMenuChoice(reportSession, "3")).toBe("reports_scan_investigations");
+    expect(resolveMenuChoice(reportSession, "1")).toBe("reports_period");
+    expect(resolveMenuChoice(reportSession, "2")).toBe("reports_checkpoint_activity");
+    expect(resolveMenuChoice(reportSession, "3")).toBe("reports_patrols");
+    expect(resolveMenuChoice(reportSession, "4")).toBe("reports_scan_investigations");
 
     const scanSession = session({ temporary_data: { last_options: WA_SUBMENUS.reports_checkpoint_activity.options ?? [], last_menu_key: "reports_checkpoint_activity" } });
     expect(resolveMenuChoice(scanSession, "3")).toBe("report:checkpoint_activity:device");

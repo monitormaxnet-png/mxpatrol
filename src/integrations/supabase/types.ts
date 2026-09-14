@@ -316,6 +316,80 @@ export type Database = {
           },
         ]
       }
+      checkpoint_audit_logs: {
+        Row: {
+          action: string
+          checkpoint_id: string | null
+          company_id: string
+          created_at: string
+          device_id: string | null
+          device_identifier: string | null
+          id: string
+          metadata: Json
+          new_values: Json
+          previous_values: Json
+          site_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          checkpoint_id?: string | null
+          company_id: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          id?: string
+          metadata?: Json
+          new_values?: Json
+          previous_values?: Json
+          site_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          checkpoint_id?: string | null
+          company_id?: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string | null
+          id?: string
+          metadata?: Json
+          new_values?: Json
+          previous_values?: Json
+          site_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkpoint_audit_logs_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkpoint_audit_logs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkpoint_audit_logs_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkpoint_audit_logs_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checkpoints: {
         Row: {
           company_id: string
@@ -332,6 +406,7 @@ export type Database = {
           patrol_id: string | null
           site_id: string | null
           sort_order: number | null
+          status: string
         }
         Insert: {
           company_id: string
@@ -348,6 +423,7 @@ export type Database = {
           patrol_id?: string | null
           site_id?: string | null
           sort_order?: number | null
+          status?: string
         }
         Update: {
           company_id?: string
@@ -364,6 +440,7 @@ export type Database = {
           patrol_id?: string | null
           site_id?: string | null
           sort_order?: number | null
+          status?: string
         }
         Relationships: [
           {
@@ -3113,16 +3190,21 @@ export type Database = {
       whatsapp_nfc_capture_requests: {
         Row: {
           captured_at: string | null
+          checkpoint_id: string | null
           checkpoint_name: string | null
           company_id: string
+          completed_at: string | null
           created_at: string
           device_identifier: string | null
+          expected_device_id: string | null
+          expected_device_identifier: string | null
           expires_at: string
           gps_lat: number | null
           gps_lng: number | null
           id: string
           metadata: Json
           nfc_tag_id: string | null
+          operation_type: string
           phone: string
           purpose: string
           requested_by: string | null
@@ -3133,16 +3215,21 @@ export type Database = {
         }
         Insert: {
           captured_at?: string | null
+          checkpoint_id?: string | null
           checkpoint_name?: string | null
           company_id: string
+          completed_at?: string | null
           created_at?: string
           device_identifier?: string | null
+          expected_device_id?: string | null
+          expected_device_identifier?: string | null
           expires_at?: string
           gps_lat?: number | null
           gps_lng?: number | null
           id?: string
           metadata?: Json
           nfc_tag_id?: string | null
+          operation_type?: string
           phone: string
           purpose?: string
           requested_by?: string | null
@@ -3153,16 +3240,21 @@ export type Database = {
         }
         Update: {
           captured_at?: string | null
+          checkpoint_id?: string | null
           checkpoint_name?: string | null
           company_id?: string
+          completed_at?: string | null
           created_at?: string
           device_identifier?: string | null
+          expected_device_id?: string | null
+          expected_device_identifier?: string | null
           expires_at?: string
           gps_lat?: number | null
           gps_lng?: number | null
           id?: string
           metadata?: Json
           nfc_tag_id?: string | null
+          operation_type?: string
           phone?: string
           purpose?: string
           requested_by?: string | null
@@ -3173,10 +3265,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "whatsapp_nfc_capture_requests_checkpoint_id_fkey"
+            columns: ["checkpoint_id"]
+            isOneToOne: false
+            referencedRelation: "checkpoints"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "whatsapp_nfc_capture_requests_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_nfc_capture_requests_expected_device_id_fkey"
+            columns: ["expected_device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
             referencedColumns: ["id"]
           },
           {

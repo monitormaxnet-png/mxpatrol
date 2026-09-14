@@ -1,4 +1,4 @@
-// deno-lint-ignore no-explicit-any
+﻿// deno-lint-ignore no-explicit-any
 type SupabaseClient = any;
 import type { Identity, OutMessage, SessionRow, SiteRow } from "./types.ts";
 import { allowedSites } from "./identity.ts";
@@ -280,7 +280,7 @@ async function registerDevice(
     return {
       session: next,
       message: {
-        title: "REGISTER DEVICE — CONFIRM",
+        title: "REGISTER DEVICE â€” CONFIRM",
         lines: [
           `Device Name: ${data.device_name}`,
           `Device Type: ${data.device_type_label}`,
@@ -318,7 +318,7 @@ async function registerDevice(
     return {
       session: await clearFlow(client, session),
       message: {
-        title: outcome.result.duplicate ? "DEVICE ALREADY REGISTERED" : "✅ DEVICE REGISTERED",
+        title: outcome.result.duplicate ? "DEVICE ALREADY REGISTERED" : "âœ… DEVICE REGISTERED",
         lines: [outcome.result.summary],
         options: [{ id: "devices", label: "View Devices" }, { id: "menu", label: "Main Menu" }],
       },
@@ -339,6 +339,24 @@ const DATA_LOG_OPTIONS = [
 
 function dataLogOptionSummary(data: Record<string, any>) {
   return data.data_log_enabled ? String(data.data_log_label || "Datalog") : "No";
+}
+
+async function loadScanningDevices(client: SupabaseClient, identity: Identity, siteId: string) {
+  let query = client
+    .from("devices")
+    .select("id, device_identifier, device_name, status, pairing_status, site_id")
+    .eq("company_id", identity.company_id)
+    .in("pairing_status", ["paired", "active"])
+    .order("device_name", { ascending: true })
+    .limit(9);
+  if (siteId) query = query.or(`site_id.eq.${siteId},site_id.is.null`);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []).filter((device: Record<string, any>) => String(device.status ?? "online") !== "revoked");
+}
+
+function scanningDeviceLabel(device: Record<string, any>) {
+  return String(device.device_name ?? device.device_identifier ?? device.id);
 }
 
 async function createCheckpoint(
@@ -369,48 +387,8 @@ async function createCheckpoint(
     if (!site) return { session, message: { title: "SELECT SITE", lines: ["I didn't catch that site."], options: siteOptions(sites) } };
     data.site_id = site.id;
     data.site_name = site.name;
-
-    await client.from("whatsapp_nfc_capture_requests").update({ status: "cancelled" }).eq("phone", identity.phone).eq("status", "waiting");
-    const { data: request, error } = await client
-      .from("whatsapp_nfc_capture_requests")
-      .insert({ company_id: identity.company_id, site_id: site.id, session_id: session.id, phone: identity.phone, requested_by: identity.user_id, purpose: "create_checkpoint", checkpoint_name: data.checkpoint_name, status: "waiting" })
-      .select("id")
-      .maybeSingle();
-
-    if (error) {
-      console.error("[WA] nfc capture request failed:", error.message);
-      return { session: await clearFlow(client, session), message: { title: "COULD NOT START", lines: [error.message], options: [{ id: "menu", label: "Main Menu" }] } };
-    }
-
-    data.capture_request_id = request?.id;
-    const next = await patchSession(client, session, { current_step: "WAITING_FOR_NFC", temporary_data: data });
-    return {
-      session: next,
-      message: {
-        title: "4/6 - NFC TAG ASSIGNMENT",
-        lines: [
-          "Use an enrolled MX Patrol device to scan the NFC tag for:",
-          "",
-          "Checkpoint: " + data.checkpoint_name,
-          "Zone: " + data.location_note,
-          "Site: " + site.name,
-          "",
-          "Do not scan through WhatsApp. I will continue once MX Patrol captures the NFC tag.",
-        ],
-        footer: "Type cancel to stop.",
-      },
-    };
-  }
-
-  if (session.current_step === "WAITING_FOR_NFC") {
-    const { data: request } = await client.from("whatsapp_nfc_capture_requests").select("id, status, nfc_tag_id, device_identifier").eq("id", data.capture_request_id).maybeSingle();
-    if (request?.status === "captured" && request.nfc_tag_id) {
-      data.nfc_tag_id = request.nfc_tag_id;
-      data.nfc_device_identifier = request.device_identifier;
-      const next = await patchSession(client, session, { current_step: "WAITING_FOR_DATA_LOG", temporary_data: data });
-      return { session: next, message: { title: "5/6 - ENABLE DATALOG?", lines: ["NFC tag assigned successfully.", "", "Should this checkpoint ask one simple question after scanning?"], options: DATA_LOG_OPTIONS } };
-    }
-    return { session, message: { title: "STILL WAITING", lines: ["No tag has been scanned yet. Tap the NFC tag with an enrolled MX Patrol device."], footer: "Type cancel to stop." } };
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_DATA_LOG", temporary_data: data });
+    return { session: next, message: { title: "4/6 - ENABLE DATALOG?", lines: ["Should this checkpoint ask one simple question after scanning?"], options: DATA_LOG_OPTIONS } };
   }
 
   if (session.current_step === "WAITING_FOR_DATA_LOG") {
@@ -450,42 +428,102 @@ async function createCheckpoint(
             "Checkpoint: " + data.checkpoint_name,
             "Zone / Location: " + data.location_note,
             "Site: " + data.site_name,
-            "NFC: " + (data.nfc_tag_id ? "assigned" : "pending"),
+            "NFC: pending physical scan",
             "Datalog: " + dataLogOptionSummary(data),
             "",
-            "Reply confirm to save, or cancel to discard.",
+            "Reply confirm to create the checkpoint and choose the NFC scanning device, or cancel to discard.",
           ],
-          options: [{ id: "1", label: "Register Checkpoint" }, { id: "2", label: "Cancel" }],
+          options: [{ id: "1", label: "Create Checkpoint" }, { id: "2", label: "Cancel" }],
         },
       };
     }
 
-    if (!/^(1|confirm|yes|y|register|create)/i.test(input.trim())) {
-      await client.from("whatsapp_nfc_capture_requests").update({ status: "cancelled" }).eq("id", data.capture_request_id);
-      return { session: await clearFlow(client, session), message: CANCELLED };
-    }
+    if (!/^(1|confirm|yes|y|register|create)/i.test(input.trim())) return { session: await clearFlow(client, session), message: CANCELLED };
 
     const outcome = await callManagement(client, identity, "create_checkpoint", {
       site_id: data.site_id,
       name: data.checkpoint_name,
       location_note: data.location_note,
-      nfc_tag_id: data.nfc_tag_id,
       data_log_enabled: data.data_log_enabled === true,
       data_log_label: data.data_log_enabled === true ? data.data_log_label || "Datalog" : null,
+      created_via: "whatsapp_management_ai",
     });
 
-    if (!outcome.result) {
-      return { session: await clearFlow(client, session), message: { title: "COULD NOT CREATE", lines: [outcome.message], options: [{ id: "menu", label: "Main Menu" }] } };
-    }
+    if (!outcome.result) return { session: await clearFlow(client, session), message: { title: "COULD NOT CREATE", lines: [outcome.message], options: [{ id: "menu", label: "Main Menu" }] } };
 
-    await client.from("whatsapp_nfc_capture_requests").update({ status: "completed" }).eq("id", data.capture_request_id);
     const record = outcome.result.record as Record<string, any>;
-    return { session: await clearFlow(client, session), message: { title: outcome.result.duplicate ? "CHECKPOINT ALREADY EXISTS" : "OK - " + data.checkpoint_name + " created", lines: [outcome.result.summary, "Zone: " + (data.location_note ?? "-"), "Site: " + data.site_name, "Datalog: " + (record.data_log_label ?? dataLogOptionSummary(data)), "Status: Active"], options: [{ id: "setup", label: "Setup" }, { id: "menu", label: "Main Menu" }] } };
+    data.checkpoint_id = record.id;
+    const devices = await loadScanningDevices(client, identity, data.site_id);
+    if (!devices.length) {
+      return { session: await clearFlow(client, session), message: { title: "NO SCANNING DEVICE", lines: ["Checkpoint was created, but no enrolled active MX Patrol device is available for this site.", "Register or activate a device, then use Replace NFC Tag / assignment to bind the physical tag."], options: [{ id: "devices", label: "Devices" }, { id: "menu", label: "Main Menu" }] } };
+    }
+    data.device_choices = devices;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_DEVICE", temporary_data: data });
+    return { session: next, message: { title: "5/6 - SELECT NFC SCANNING DEVICE", lines: ["Only the selected device can complete this NFC assignment."], options: devices.map((device: Record<string, any>, index: number) => ({ id: String(index + 1), label: scanningDeviceLabel(device) + " - " + String(device.device_identifier ?? device.id) })) } };
+  }
+
+  if (session.current_step === "WAITING_FOR_DEVICE") {
+    const devices = (data.device_choices ?? []) as Array<Record<string, any>>;
+    const device = pickChoice(input, devices, scanningDeviceLabel);
+    if (!device) return { session, message: { title: "SELECT NFC SCANNING DEVICE", lines: ["Reply with one of the listed device numbers."], options: devices.map((row, index) => ({ id: String(index + 1), label: scanningDeviceLabel(row) })) } };
+
+    data.expected_device_id = device.id;
+    data.expected_device_identifier = device.device_identifier;
+    data.expected_device_label = scanningDeviceLabel(device);
+    await client.from("whatsapp_nfc_capture_requests").update({ status: "cancelled" }).eq("phone", identity.phone).eq("status", "waiting");
+    const { data: request, error } = await client
+      .from("whatsapp_nfc_capture_requests")
+      .insert({
+        company_id: identity.company_id,
+        site_id: data.site_id,
+        session_id: session.id,
+        phone: identity.phone,
+        requested_by: identity.user_id,
+        purpose: "create_checkpoint",
+        operation_type: "checkpoint_registration",
+        checkpoint_id: data.checkpoint_id,
+        checkpoint_name: data.checkpoint_name,
+        expected_device_id: device.id,
+        expected_device_identifier: device.device_identifier,
+        status: "waiting",
+        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (error) return { session: await clearFlow(client, session), message: { title: "COULD NOT START", lines: [error.message], options: [{ id: "menu", label: "Main Menu" }] } };
+
+    data.capture_request_id = request?.id;
+    const next = await patchSession(client, session, { current_step: "WAITING_FOR_NFC", temporary_data: data });
+    return {
+      session: next,
+      message: {
+        title: "6/6 - NFC TAG ASSIGNMENT",
+        lines: [
+          "Checkpoint: " + data.checkpoint_name,
+          "Zone: " + data.location_note,
+          "Site: " + data.site_name,
+          "Scanning Device: " + data.expected_device_label,
+          "",
+          "Use this device to scan the new NFC tag.",
+          "Scans from other devices will not complete this registration.",
+        ],
+        footer: "Type cancel to stop.",
+      },
+    };
+  }
+
+  if (session.current_step === "WAITING_FOR_NFC") {
+    const { data: request } = await client.from("whatsapp_nfc_capture_requests").select("id, status, nfc_tag_id, device_identifier, captured_at").eq("id", data.capture_request_id).maybeSingle();
+    if (request?.status === "captured" && request.nfc_tag_id) {
+      await client.from("whatsapp_nfc_capture_requests").update({ status: "completed" }).eq("id", data.capture_request_id);
+      return { session: await clearFlow(client, session), message: { title: "CHECKPOINT REGISTERED", lines: ["Checkpoint: " + data.checkpoint_name, "Site: " + data.site_name, "Scanning Device: " + (request.device_identifier ?? data.expected_device_identifier), "Datalog: " + dataLogOptionSummary(data), "Status: Active"], options: [{ id: "checkpoints", label: "View Checkpoints" }, { id: "add_checkpoint", label: "Register Another" }, { id: "menu", label: "Main Menu" }] } };
+    }
+    return { session, message: { title: "STILL WAITING", lines: ["No authorized tag scan has arrived yet.", "Use " + data.expected_device_label + " to scan the NFC tag."], footer: "Type cancel to stop." } };
   }
 
   return { session: await clearFlow(client, session), message: CANCELLED };
 }
-
 /* ------------------------------ create patrol ------------------------------ */
 
 const YES_NO = [
@@ -718,10 +756,10 @@ async function revokeWhatsApp(client: SupabaseClient, identity: Identity, sessio
 /* ----------------------------- report incident ----------------------------- */
 
 const SEVERITIES = [
-  { id: "low", label: "🟢 Minor" },
-  { id: "medium", label: "🟡 Moderate" },
-  { id: "high", label: "🟠 Serious" },
-  { id: "critical", label: "🔴 Emergency" },
+  { id: "low", label: "ðŸŸ¢ Minor" },
+  { id: "medium", label: "ðŸŸ¡ Moderate" },
+  { id: "high", label: "ðŸŸ  Serious" },
+  { id: "critical", label: "ðŸ”´ Emergency" },
 ];
 
 async function reportIncident(
@@ -784,7 +822,7 @@ async function reportIncident(
           data.description,
           data.site_name,
           data.severity_label,
-          media.length ? `📷 ${media.length} image${media.length === 1 ? "" : "s"} attached` : "No images attached",
+          media.length ? `ðŸ“· ${media.length} image${media.length === 1 ? "" : "s"} attached` : "No images attached",
         ],
         options: [{ id: "confirm", label: "Submit" }, { id: "cancel", label: "Cancel" }],
       },
@@ -816,8 +854,8 @@ async function reportIncident(
     return {
       session: await clearFlow(client, session),
       message: {
-        title: outcome.result.duplicate ? "INCIDENT ALREADY LOGGED" : "✅ INCIDENT CREATED",
-        lines: [`Reference: ${record.reference}`, `${data.site_name} · ${data.severity_label}`, `Status: ${record.status}`],
+        title: outcome.result.duplicate ? "INCIDENT ALREADY LOGGED" : "âœ… INCIDENT CREATED",
+        lines: [`Reference: ${record.reference}`, `${data.site_name} Â· ${data.severity_label}`, `Status: ${record.status}`],
         options: [{ id: "incidents", label: "View Incidents" }, { id: "menu", label: "Main Menu" }],
       },
     };
@@ -953,6 +991,7 @@ async function secureDeviceAction(client: SupabaseClient, identity: Identity, se
 
   return { session: await clearFlow(client, session), message: CANCELLED };
 }
+
 
 
 

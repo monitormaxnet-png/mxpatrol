@@ -1,4 +1,4 @@
-// Canonical management write service.
+﻿// Canonical management write service.
 // Used by BOTH assistants:
 //  - Web Management AI  -> supabase/functions/management-actions (edge function)
 //  - WhatsApp Management AI -> supabase/functions/whatsapp-webhook/lib/flows.ts
@@ -219,7 +219,7 @@ export async function registerDevice(client: SupabaseClient, actor: ManagementAc
     throw new ManagementActionError("Enter the pairing code shown on the MX Patrol device, e.g. MX-48768");
   }
 
-  // Path A — a device record in this company already carries this code (admin-issued code).
+  // Path A â€” a device record in this company already carries this code (admin-issued code).
   const { data: existingDevice, error: existingError } = await client
     .from("devices")
     .select("id, device_identifier, device_name, pairing_status, pairing_expires_at, site_id")
@@ -261,7 +261,7 @@ export async function registerDevice(client: SupabaseClient, actor: ManagementAc
     return devicePairedResult(updated ?? existingDevice, site, deviceName, code);
   }
 
-  // Path B — the physical device published the code itself (device-initiated pairing request).
+  // Path B â€” the physical device published the code itself (device-initiated pairing request).
   const { data: request, error: requestError } = await client
     .from("device_pairing_requests")
     .select("id, pairing_code, device_identifier, device_metadata, status, expires_at, claimed_device_id")
@@ -449,7 +449,7 @@ export async function createCheckpoint(client: SupabaseClient, actor: Management
 
   const { data: existing } = await client
     .from("checkpoints")
-    .select("id, name, nfc_tag_id, data_log_form_id, data_log_enabled, data_log_label, site_id, created_at")
+    .select("id, name, nfc_tag_id, data_log_form_id, data_log_enabled, data_log_label, site_id, status, created_at")
     .eq("company_id", actor.company_id)
     .eq("site_id", site.id)
     .eq("name", name)
@@ -480,11 +480,23 @@ export async function createCheckpoint(client: SupabaseClient, actor: Management
       location_lat: typeof input.location_lat === "number" ? input.location_lat : null,
       location_lng: typeof input.location_lng === "number" ? input.location_lng : null,
       sort_order: 0,
+      status: "active",
     })
-    .select("id, name, nfc_tag_id, data_log_form_id, data_log_enabled, data_log_label, site_id")
+    .select("id, name, nfc_tag_id, data_log_form_id, data_log_enabled, data_log_label, site_id, status")
     .maybeSingle();
 
   if (error || !data) throw new ManagementActionError(error?.message ?? "Checkpoint could not be created", 500);
+
+  await client.from("checkpoint_audit_logs").insert({
+    company_id: actor.company_id,
+    site_id: site.id,
+    checkpoint_id: data.id,
+    action: "checkpoint_created",
+    previous_values: {},
+    new_values: { name, site_id: site.id, location_note: locationNote || null, nfc_status: nfcTagId ? "assigned" : "pending_assignment", data_log_enabled: dataLogEnabled, data_log_label: dataLogLabel },
+    user_id: actor.user_id ?? null,
+    metadata: { source: String(input.created_via ?? "management_action") },
+  });
 
   return checkpointResult(data, site, false);
 }
@@ -1157,5 +1169,8 @@ export async function runManagementAction(
       throw new ManagementActionError(`Unsupported management action: ${action}`, 400);
   }
 }
+
+
+
 
 

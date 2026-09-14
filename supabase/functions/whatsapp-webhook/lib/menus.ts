@@ -1,4 +1,4 @@
-import type { OutMessage, SessionRow } from "./types.ts";
+﻿import type { OutMessage, SessionRow } from "./types.ts";
 
 export const USER_HOME_KEY = "user_home";
 export const MANAGEMENT_HOME_KEY = "management_home";
@@ -111,3 +111,4 @@ export function backTarget(session: SessionRow): string {
   }
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }
+

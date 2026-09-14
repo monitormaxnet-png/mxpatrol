@@ -1,4 +1,4 @@
-// deno-lint-ignore no-explicit-any
+﻿// deno-lint-ignore no-explicit-any
 type SupabaseClient = any;
 import type { Identity, OutMessage, SessionRow } from "./types.ts";
 import { greeting, timeAgo } from "./types.ts";
@@ -1242,6 +1242,7 @@ export function backTarget(session: SessionRow): string {
   }
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }
+
 
 
 

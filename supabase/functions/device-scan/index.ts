@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -311,6 +311,117 @@ Deno.serve(async (req) => {
     const deviceMetadata = scan.device_metadata && typeof scan.device_metadata === "object" ? scan.device_metadata as Record<string, unknown> : {};
     const batteryLevel = numberOrNull(deviceMetadata.battery_level ?? scan.battery_level);
 
+    if (tagUid) {
+      try {
+        const { data: assignments, error: assignmentError } = await serviceClient
+          .from("whatsapp_nfc_capture_requests")
+          .select("id, phone, company_id, site_id, checkpoint_id, checkpoint_name, expected_device_id, expected_device_identifier, operation_type, status, expires_at")
+          .eq("company_id", device.company_id)
+          .eq("expected_device_id", device.id)
+          .eq("status", "waiting")
+          .gt("expires_at", now)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (assignmentError) {
+          if (assignmentError.code !== "42703" && assignmentError.code !== "PGRST204") console.warn("device-scan pending assignment lookup failed", assignmentError);
+        } else if (assignments?.length) {
+          const assignment = assignments[0] as Record<string, any>;
+          const checkpointIdForAssignment = stringOrNull(assignment.checkpoint_id);
+          if (!checkpointIdForAssignment) return respond(false, { code: "NFC_ASSIGNMENT_INVALID", error: "Pending NFC assignment is missing a checkpoint" }, 409);
+
+          const { data: assignedElsewhere, error: clashError } = await serviceClient
+            .from("checkpoints")
+            .select("id, name")
+            .eq("company_id", device.company_id)
+            .eq("nfc_tag_id", tagUid)
+            .neq("id", checkpointIdForAssignment)
+            .maybeSingle();
+          if (clashError) throw clashError;
+          if (assignedElsewhere) {
+            await serviceClient.from("whatsapp_nfc_capture_requests").update({ status: "failed", metadata: { reason: "uid_already_assigned", checkpoint_id: assignedElsewhere.id } }).eq("id", assignment.id).eq("status", "waiting");
+            return respond(false, { code: "NFC_UID_ALREADY_ASSIGNED", error: `This NFC tag is already assigned to ${assignedElsewhere.name ?? "another checkpoint"}` }, 409);
+          }
+
+          const { data: checkpointBefore } = await serviceClient
+            .from("checkpoints")
+            .select("id, name, nfc_tag_id, company_id, site_id")
+            .eq("id", checkpointIdForAssignment)
+            .eq("company_id", device.company_id)
+            .maybeSingle();
+          if (!checkpointBefore?.id) return respond(false, { code: "CHECKPOINT_NOT_FOUND", error: "Pending assignment checkpoint was not found for this company" }, 404);
+
+          const updateCheckpoint = await serviceClient
+            .from("checkpoints")
+            .update({ nfc_tag_id: tagUid, site_id: checkpointBefore.site_id ?? assignment.site_id ?? device.site_id ?? null })
+            .eq("id", checkpointBefore.id)
+            .eq("company_id", device.company_id)
+            .select("id, name, site_id, nfc_tag_id")
+            .maybeSingle();
+          if (updateCheckpoint.error) throw updateCheckpoint.error;
+
+          await serviceClient.from("whatsapp_nfc_capture_requests").update({
+            status: "captured",
+            nfc_tag_id: tagUid,
+            device_identifier: deviceIdentifier,
+            gps_lat: gpsLat,
+            gps_lng: gpsLng,
+            captured_at: scannedAt,
+            completed_at: now,
+          }).eq("id", assignment.id).eq("status", "waiting");
+
+          await serviceClient.from("checkpoint_audit_logs").insert({
+            company_id: device.company_id,
+            site_id: checkpointBefore.site_id ?? assignment.site_id ?? device.site_id ?? null,
+            checkpoint_id: checkpointBefore.id,
+            action: assignment.operation_type === "nfc_tag_replacement" ? "nfc_replaced" : "nfc_assigned",
+            previous_values: { nfc_tag_id: checkpointBefore.nfc_tag_id || null },
+            new_values: { nfc_tag_id: tagUid },
+            device_id: device.id,
+            device_identifier: deviceIdentifier,
+            metadata: { assignment_id: assignment.id, operation_type: assignment.operation_type ?? "checkpoint_registration" },
+          });
+
+          if (assignment.phone) {
+            try {
+              await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-send`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+                body: JSON.stringify({
+                  to: assignment.phone,
+                  message: [
+                    "NFC TAG ASSIGNED",
+                    "",
+                    `Checkpoint: ${updateCheckpoint.data?.name ?? checkpointBefore.name ?? assignment.checkpoint_name ?? "Checkpoint"}`,
+                    `Scanning Device: ${device.device_name ?? deviceIdentifier}`,
+                    "",
+                    "MX Patrol has captured the physical NFC tag. Continue the checkpoint setup in this chat.",
+                  ].join("\n"),
+                  message_type: "system",
+                  company_id: device.company_id,
+                }),
+              });
+            } catch (notifyError) {
+              console.warn("device-scan NFC assignment WhatsApp notify failed", notifyError);
+            }
+          }
+
+          return respond(true, {
+            result: {
+              success: true,
+              code: assignment.operation_type === "nfc_tag_replacement" ? "CHECKPOINT_NFC_REPLACED" : "CHECKPOINT_REGISTERED",
+              checkpoint: { id: checkpointBefore.id, name: updateCheckpoint.data?.name ?? checkpointBefore.name ?? null, site_id: updateCheckpoint.data?.site_id ?? checkpointBefore.site_id ?? null },
+              message: assignment.operation_type === "nfc_tag_replacement" ? "NFC tag replaced" : "Checkpoint registered",
+            },
+            checkpoint: { id: checkpointBefore.id, name: updateCheckpoint.data?.name ?? checkpointBefore.name ?? null, site_id: updateCheckpoint.data?.site_id ?? checkpointBefore.site_id ?? null },
+            pending_assignment: { id: assignment.id, status: "captured" },
+            tag_status: "registered",
+          });
+        }
+      } catch (assignmentError) {
+        console.warn("device-scan pending assignment handling failed", assignmentError);
+      }
+    }
     const deviceUpdatePayload: Record<string, unknown> = {
       status: "online",
       last_seen_at: now,
@@ -527,75 +638,9 @@ Deno.serve(async (req) => {
     let pendingTag: { id: string; status: string } | null = null;
     let alert: { id: string } | null = null;
     let whatsappCaptured = false;
-
-    // Fulfil a pending "Add Checkpoint" request started from WhatsApp.
-    if (!checkpointId && tagUid) {
-      const { data: captureRequests, error: captureError } = await serviceClient
-        .from("whatsapp_nfc_capture_requests")
-        .select("id, phone, checkpoint_name, site_id, company_id")
-        .eq("company_id", device.company_id)
-        .eq("status", "waiting")
-        .gt("expires_at", new Date().toISOString())
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (captureError) {
-        console.warn("device-scan whatsapp capture lookup failed", captureError);
-      } else if (captureRequests?.length) {
-        const request = captureRequests[0] as any;
-        const { error: updateError } = await serviceClient
-          .from("whatsapp_nfc_capture_requests")
-          .update({
-            status: "captured",
-            nfc_tag_id: tagUid,
-            device_identifier: deviceIdentifier,
-            gps_lat: gpsLat,
-            gps_lng: gpsLng,
-            captured_at: scannedAt,
-          })
-          .eq("id", request.id)
-          .eq("status", "waiting");
-
-        if (updateError) {
-          console.warn("device-scan whatsapp capture update failed", updateError);
-        } else {
-          whatsappCaptured = true;
-          const notice = [
-            "*✅ NFC TAG DETECTED*",
-            "",
-            `Checkpoint: ${request.checkpoint_name}`,
-            `Device used: ${device.device_name ?? deviceIdentifier}`,
-            "",
-            "1. Create Checkpoint",
-            "2. Cancel",
-            "",
-            "Reply with a number.",
-          ].join("\n");
-
-          try {
-            const notifyResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-send`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-              },
-              body: JSON.stringify({
-                to: request.phone,
-                message: notice,
-                message_type: "system",
-                company_id: request.company_id,
-              }),
-            });
-            if (!notifyResponse.ok) {
-              console.warn("device-scan whatsapp notify failed", notifyResponse.status, await notifyResponse.text());
-            }
-          } catch (notifyError) {
-            console.warn("device-scan whatsapp notify error", notifyError);
-          }
-        }
-      }
-    }
-
+    // Device-bound checkpoint NFC assignments are handled before normal scan matching.
+    // The old generic WhatsApp capture fallback is intentionally disabled so a random
+    // enrolled scanner cannot satisfy another device's pending assignment.
     if (!checkpointId && tagUid && !whatsappCaptured) {
       const message = [
         "New NFC Tag Detected",
@@ -714,5 +759,7 @@ Deno.serve(async (req) => {
     });
   }
 });
+
+
 
 

@@ -280,7 +280,7 @@ async function registerDevice(
     return {
       session: next,
       message: {
-        title: "REGISTER DEVICE â€” CONFIRM",
+        title: "REGISTER DEVICE — CONFIRM",
         lines: [
           `Device Name: ${data.device_name}`,
           `Device Type: ${data.device_type_label}`,

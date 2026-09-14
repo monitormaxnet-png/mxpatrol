@@ -320,9 +320,7 @@ export type Database = {
         Row: {
           company_id: string
           created_at: string
-          data_log_enabled: boolean
           data_log_form_id: string | null
-          data_log_label: string | null
           id: string
           location_lat: number | null
           location_lng: number | null
@@ -336,9 +334,7 @@ export type Database = {
         Insert: {
           company_id: string
           created_at?: string
-          data_log_enabled?: boolean
           data_log_form_id?: string | null
-          data_log_label?: string | null
           id?: string
           location_lat?: number | null
           location_lng?: number | null
@@ -352,9 +348,7 @@ export type Database = {
         Update: {
           company_id?: string
           created_at?: string
-          data_log_enabled?: boolean
           data_log_form_id?: string | null
-          data_log_label?: string | null
           id?: string
           location_lat?: number | null
           location_lng?: number | null
@@ -610,8 +604,7 @@ export type Database = {
           company_id: string
           created_at: string
           device_id: string | null
-          datalog_value: string | null
-          form_id: string | null
+          form_id: string
           id: string
           patrol_session_checkpoint_id: string | null
           patrol_session_id: string | null
@@ -628,8 +621,7 @@ export type Database = {
           company_id: string
           created_at?: string
           device_id?: string | null
-          datalog_value?: string | null
-          form_id?: string | null
+          form_id: string
           id?: string
           patrol_session_checkpoint_id?: string | null
           patrol_session_id?: string | null
@@ -646,8 +638,7 @@ export type Database = {
           company_id?: string
           created_at?: string
           device_id?: string | null
-          datalog_value?: string | null
-          form_id?: string | null
+          form_id?: string
           id?: string
           patrol_session_checkpoint_id?: string | null
           patrol_session_id?: string | null
@@ -2924,21 +2915,6 @@ export type Database = {
           },
         ]
       }
-      tmp_scan_verify: {
-        Row: {
-          detail: Json | null
-          step: string | null
-        }
-        Insert: {
-          detail?: Json | null
-          step?: string | null
-        }
-        Update: {
-          detail?: Json | null
-          step?: string | null
-        }
-        Relationships: []
-      }
       user_roles: {
         Row: {
           id: string
@@ -3457,7 +3433,7 @@ export type Database = {
           progress_percent: number
           schedule_id: string
           selection_reason: string
-          session_checkpoint_id: string | null
+          session_checkpoint_id: string
           session_id: string
           total_count: number
         }[]
@@ -3487,10 +3463,10 @@ export type Database = {
         }
         Returns: {
           completed: number
-          patrol_session_id: string | null
+          patrol_session_id: string
           progress_percent: number
           required: number
-          session_checkpoint_id: string | null
+          session_checkpoint_id: string
           status: string
           submission_id: string
         }[]
@@ -3700,5 +3676,3 @@ export const Constants = {
     },
   },
 } as const
-
-

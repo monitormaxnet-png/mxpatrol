@@ -1024,6 +1024,18 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
       { id: "back", label: "Back" },
     ],
   },
+  reports_period: {
+    title: "DAILY / WEEKLY SUMMARY",
+    menuKey: "reports_period",
+    lines: ["Choose a time period."],
+    options: [
+      { id: "today", label: "Today Summary" },
+      { id: "yesterday", label: "Yesterday Summary" },
+      { id: "week", label: "This Week Summary" },
+      { id: "problems", label: "Problems Only" },
+      { id: "back", label: "Back" },
+    ],
+  },
   reports_checkpoint_activity: reportMenu("CHECKPOINT ACTIVITY", "reports_checkpoint_activity", [
     { id: "report:checkpoint_activity:summary", label: "Activity Summary" },
     { id: "report:checkpoint_activity:checkpoint", label: "By Checkpoint" },
@@ -1139,6 +1151,7 @@ export const WA_MENU_PARENTS: Record<string, string> = {
   management_patrol_config: MANAGEMENT_HOME_KEY,
   management_reports: MANAGEMENT_HOME_KEY,
   management_whatsapp: MANAGEMENT_HOME_KEY,
+  reports_period: "report_period",
   reports_checkpoint_activity: "report_period",
   reports_scan_investigations: "report_period",
   reports_checkpoint_scans: "report_period",

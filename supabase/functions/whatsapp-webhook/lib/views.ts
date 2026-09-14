@@ -872,10 +872,11 @@ export async function reportCategorySummary(client: SupabaseClient, identity: Id
   if (action.startsWith("report:device_security:") && identity.platformRole !== "owner") return ownerOnlyDenial();
   const [, category, report] = action.split(":");
   const title = (category + " " + report).replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
-  const { data: scans } = await siteFilter<any>(client.from("scan_logs").select("id, tag_status, device_identifier, scanned_at, checkpoints(name)").order("scanned_at", { ascending: false }).limit(200), identity, siteId);
-  const { data: sessions } = await siteFilter<any>(client.from("patrol_sessions").select("id, status, scheduled_start, checkpoint_completed, checkpoint_total, patrol_routes(name)").order("scheduled_start", { ascending: false }).limit(100), identity, siteId);
-  const { data: alerts } = await siteFilter<any>(client.from("alerts").select("id, type, is_read, created_at, device_identifier").order("created_at", { ascending: false }).limit(100), identity, siteId);
-  const { data: incidents } = await siteFilter<any>(client.from("incidents").select("id, resolved, severity, created_at, device_identifier").order("created_at", { ascending: false }).limit(100), identity, siteId);
+  const windowFrom = periodStart("week").toISOString();
+  const { data: scans } = await siteFilter<any>(client.from("scan_logs").select("id, tag_status, device_identifier, scanned_at, checkpoints(name)").gte("scanned_at", windowFrom).order("scanned_at", { ascending: false }).limit(200), identity, siteId);
+  const { data: sessions } = await siteFilter<any>(client.from("patrol_sessions").select("id, status, scheduled_start, checkpoint_completed, checkpoint_total, patrol_routes(name)").gte("scheduled_start", windowFrom).order("scheduled_start", { ascending: false }).limit(100), identity, siteId);
+  const { data: alerts } = await siteFilter<any>(client.from("alerts").select("id, type, is_read, created_at, device_identifier").gte("created_at", windowFrom).order("created_at", { ascending: false }).limit(100), identity, siteId);
+  const { data: incidents } = await siteFilter<any>(client.from("incidents").select("id, resolved, severity, created_at, device_identifier").gte("created_at", windowFrom).order("created_at", { ascending: false }).limit(100), identity, siteId);
   const { data: devices } = await siteFilter<any>(client.from("devices").select("id, status, device_identifier, app_version, minimum_app_version, secure_mode_enabled, secure_mode_status, kiosk_active, device_owner_active, developer_mode_detected, adb_detected"), identity, siteId);
   const scanRows = scans ?? [];
   const patrolRows = sessions ?? [];

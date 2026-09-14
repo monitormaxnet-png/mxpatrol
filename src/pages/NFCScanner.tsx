@@ -952,7 +952,7 @@ function getRestrictedScannerState(input: { deviceCompany: { pairingStatus?: str
     return { kind: "locked", title: "MX PATROL DEVICE LOCKED", detail: "This device has been restricted by MX Patrol administration.", tone: "danger" };
   }
 
-  if (status === "disabled" || status === "revoked" || pairingStatus === "revoked") {
+  if (status === "disabled" || status === "revoked") {
     return { kind: "disabled", title: "DEVICE DISABLED", detail: "This RG360 cannot record patrol scans.", tone: "danger" };
   }
 

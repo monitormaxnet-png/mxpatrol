@@ -423,6 +423,15 @@ const NFCScanner = () => {
     [companyId, deviceCompany?.deviceIdentifier, localDeviceIdentifier, pendingDataLog, queryClient],
   );
 
+  const skipDataLog = useCallback(() => {
+    if (submittingDataLog) return;
+    setPendingDataLog(null);
+    setDataLogOpen(false);
+    setLastError(null);
+    setScannerStatus(nfcSupported ? "scanning" : "idle");
+    toast.info("Data log skipped - you can keep scanning");
+  }, [submittingDataLog, nfcSupported]);
+
   const addToLog = useCallback((result: ScanValidationResult, valid: boolean) => {
     console.debug(`[NFCScanner] session log entry ${JSON.stringify({
       valid,
@@ -805,6 +814,7 @@ const NFCScanner = () => {
             checkpointName={pendingDataLog.checkpointName}
             submitting={submittingDataLog}
             onSubmit={submitDataLog}
+            onCancel={skipDataLog}
           />
         ) : (
           <>

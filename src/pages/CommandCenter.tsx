@@ -56,7 +56,7 @@ type MissedCheckpointRow = {
 };
 
 type DashboardDevice = { id: string; status?: string | null; device_identifier?: string | null; device_name?: string | null; last_seen_at?: string | null; site_id?: string | null };
-type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | null; title?: string | null; message?: string | null; created_at?: string | null; site_id?: string | null };
+type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | null; title?: string | null; message?: string | null; created_at?: string | null; site_id?: string | null; checkpoint_id?: string | null };
 type DashboardIncident = { id: string; resolved?: boolean | null; severity?: string | null; title?: string | null; incident_type?: string | null; created_at?: string | null; site_id?: string | null };
 type DashboardScan = { id: string; scanned_at?: string | null; tag_status?: string | null; device_identifier?: string | null; checkpoints?: { name?: string | null } | null; guards?: { full_name?: string | null } | null };
 type DatalogSubmission = { id: string; submitted_at?: string | null; datalog_value?: string | null; responses_json?: any; site_id?: string | null; checkpoint_id?: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
@@ -245,7 +245,7 @@ export default function CommandCenter() {
       const siteId = selectedSiteId!;
       const [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows] = await Promise.all([
         supabase.from('devices').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('last_seen_at', { ascending: false }).limit(100),
-        supabase.from('alerts').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
+        supabase.from('alerts').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100),
         supabase.from('incidents').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
         supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId).eq('site_id', siteId).order('scanned_at', { ascending: false }).limit(200),
         supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('sort_order').limit(200),
@@ -257,9 +257,11 @@ export default function CommandCenter() {
       const results = [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows];
       const failed = results.find((result) => result.error);
       if (failed?.error) throw failed.error;
+      const siteCheckpointIds = new Set((checkpointRows.data ?? []).map((c) => c.id));
+      const siteAlertsData = (alertRows.data ?? []).filter((a) => !a.checkpoint_id || siteCheckpointIds.has(a.checkpoint_id));
       return {
         devices: deviceRows.data ?? [],
-        alerts: alertRows.data ?? [],
+        alerts: siteAlertsData,
         incidents: incidentRows.data ?? [],
         scans: scanRows.data ?? [],
         checkpoints: checkpointRows.data ?? [],
@@ -273,7 +275,7 @@ export default function CommandCenter() {
 
   const ownerData = ownerScoped ? ownerScopedData.data : null;
   const siteDevices = (ownerData?.devices ?? devices.data ?? []) as DashboardDevice[];
-  const siteAlerts = ownerData ? (ownerData.alerts as DashboardAlert[]) : ((alerts.data ?? []) as DashboardAlert[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
+  const siteAlerts = ownerData ? (ownerData.alerts as DashboardAlert[]) : ((alerts.data ?? []) as DashboardAlert[]).filter((row) => !selectedSiteId || checkpoints.data.some((cp) => cp.id === row.checkpoint_id));
   const siteIncidents = ownerData ? (ownerData.incidents as DashboardIncident[]) : ((incidents.data ?? []) as DashboardIncident[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
   const sitePatrols = ownerData?.patrols ?? patrols.data ?? [];
   const siteScans = (ownerData?.scans ?? scans.data ?? []) as DashboardScan[];

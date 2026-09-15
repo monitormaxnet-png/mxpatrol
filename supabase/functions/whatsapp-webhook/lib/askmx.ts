@@ -13,6 +13,8 @@ export type Intent =
   | { action: "incomplete_patrols" }
   | { action: "late_patrols" }
   | { action: "missed_patrols" }
+  | { action: "late_sessions" }
+  | { action: "missed_sessions" }
   | { action: "missed_checkpoints" }
   | { action: "checkpoints" }
   | { action: "management" }
@@ -115,6 +117,8 @@ export function keywordIntent(text: string): Intent | null {
   if (/^(user|user assistant)$/i.test(value)) return { action: "user" };
   if (/incomplete patrols?/.test(value)) return { action: "incomplete_patrols" };
   if (/completed patrols?|complete patrols?/.test(value)) return { action: "completed_patrols" };
+  if (/^(late sessions?|show late sessions?)$/.test(value)) return { action: "late_sessions" };
+  if (/^(missed|missed sessions?|show missed sessions?)$/.test(value)) return { action: "missed_sessions" };
   if (/(late|delayed).*patrols?/.test(value)) return { action: "late_patrols" };
   if (/missed patrols?/.test(value)) return { action: "missed_patrols" };
   if (/missed checkpoints?|checkpoints?.*missed/.test(value)) return { action: "missed_checkpoints" };
@@ -164,3 +168,4 @@ export async function classifyIntent(text: string): Promise<Intent> {
     return { action: "unknown" };
   }
 }
+

@@ -224,6 +224,8 @@ const MANAGEMENT_ONLY_ACTIONS = new Set([
 const NL_INTENTS: Array<[RegExp, string]> = [
   [/patrol\s+status/, 'menu:patrol_status'],
   [/(missed\s+checkpoint|checkpoint.*miss)/, 'missed_checkpoints'],
+  [/^(missed|missed sessions?|show missed sessions?)$/, 'missed_sessions'],
+  [/^(late sessions?|show late sessions?)$/, 'late_sessions'],
   [/missed\s+patrol/, 'missed_patrols'],
   [/(late|delayed)\s+patrol/, 'late_patrols'],
   [/incomplete\s+patrol/, 'incomplete_patrols'],

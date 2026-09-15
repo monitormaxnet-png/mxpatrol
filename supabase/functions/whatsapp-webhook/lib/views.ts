@@ -1,4 +1,4 @@
-﻿// deno-lint-ignore no-explicit-any
+// deno-lint-ignore no-explicit-any
 type SupabaseClient = any;
 import type { Identity, OutMessage, SessionRow } from "./types.ts";
 import { greeting, timeAgo } from "./types.ts";
@@ -598,15 +598,17 @@ const PATROL_STATUS_LABELS: Record<keyof typeof PATROL_STATUS_GROUPS, string> = 
   missed: "Missed",
 };
 
-/** Patrol Status overview: real, site-scoped counts with numbered drill-down options. */
+/** Patrol Status overview: compact session counts for the selected site and today reporting period. */
 export async function patrolStatusOverview(
   client: SupabaseClient,
   identity: Identity,
   siteId: string | null,
   siteName?: string | null,
 ): Promise<OutMessage> {
+  const from = periodStart('today').toISOString();
+  const to = periodEnd('today').toISOString();
   const { data } = await siteFilter<any>(
-    client.from("patrol_sessions").select("id, status, site_id").limit(500),
+    client.from('patrol_sessions').select('id, status, site_id').gte('scheduled_start', from).lte('scheduled_start', to).limit(500),
     identity,
     siteId,
   );
@@ -615,33 +617,87 @@ export async function patrolStatusOverview(
     rows.filter((row) => (PATROL_STATUS_GROUPS[group] as readonly string[]).includes(String(row.status))).length;
 
   return {
-    title: siteName ? `PATROL STATUS - ${siteName}` : "PATROL STATUS",
-    menuKey: "patrol_status",
+    title: siteName ? 'PATROL STATUS - ' + siteName : 'PATROL STATUS - ALL SITES',
+    menuKey: 'patrol_status',
     lines: [
-      `Completed: ${count("completed")}`,
-      `Incomplete: ${count("incomplete")}`,
-      `Late / Delayed: ${count("late")}`,
-      `Missed: ${count("missed")}`,
-      "",
-      "Choose a status for the detailed list.",
+      'Period: Today',
+      'Expected sessions: ' + rows.length,
+      'Completed sessions: ' + count('completed'),
+      'Incomplete sessions: ' + count('incomplete'),
+      'Late sessions: ' + count('late'),
+      'Missed sessions: ' + count('missed'),
+      '',
+      'Choose a status for a short session summary.',
     ],
     options: [
-      { id: "completed_patrols", label: PATROL_STATUS_LABELS.completed },
-      { id: "incomplete_patrols", label: PATROL_STATUS_LABELS.incomplete },
-      { id: "late_patrols", label: PATROL_STATUS_LABELS.late },
-      { id: "missed_patrols", label: PATROL_STATUS_LABELS.missed },
-      { id: "back", label: "Back" },
+      { id: 'completed_patrols', label: PATROL_STATUS_LABELS.completed },
+      { id: 'incomplete_patrols', label: PATROL_STATUS_LABELS.incomplete },
+      { id: 'late_patrols', label: PATROL_STATUS_LABELS.late },
+      { id: 'missed_patrols', label: PATROL_STATUS_LABELS.missed },
+      { id: 'back', label: 'Back' },
     ],
   };
 }
 
-function lateBy(scheduled: string | null, actual: string | null): string | null {
-  if (!scheduled || !actual) return null;
-  const diff = new Date(actual).getTime() - new Date(scheduled).getTime();
+type PatrolSummaryRow = {
+  siteId: string | null;
+  siteName: string;
+  patrolKey: string;
+  patrolName: string;
+  expected: number;
+  completed: number;
+  incomplete: number;
+  late: number;
+  missed: number;
+};
 
-  if (!Number.isFinite(diff) || diff <= 0) return null;
-  const mins = Math.round(diff / 60000);
-  return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+function patrolSummaryName(row: Record<string, any>): string {
+  const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
+  const template = Array.isArray(row.patrol_templates) ? row.patrol_templates[0] : row.patrol_templates;
+  return String(route?.name ?? template?.name ?? 'Patrol');
+}
+
+function patrolSummaryKey(row: Record<string, any>): string {
+  const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
+  const template = Array.isArray(row.patrol_templates) ? row.patrol_templates[0] : row.patrol_templates;
+  return String(route?.id ?? template?.id ?? patrolSummaryName(row));
+}
+
+function siteSummaryName(row: Record<string, any>): string {
+  const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
+  return String(site?.name ?? 'Unassigned site');
+}
+
+function summarizePatrolStatusRows(rows: Record<string, any>[]) {
+  const map = new Map<string, PatrolSummaryRow>();
+  for (const row of rows) {
+    const key = String(row.site_id ?? 'none') + ':' + patrolSummaryKey(row);
+    const current = map.get(key) ?? {
+      siteId: row.site_id ?? null,
+      siteName: siteSummaryName(row),
+      patrolKey: patrolSummaryKey(row),
+      patrolName: patrolSummaryName(row),
+      expected: 0,
+      completed: 0,
+      incomplete: 0,
+      late: 0,
+      missed: 0,
+    };
+    current.expected += 1;
+    if ((PATROL_STATUS_GROUPS.completed as readonly string[]).includes(String(row.status))) current.completed += 1;
+    if ((PATROL_STATUS_GROUPS.incomplete as readonly string[]).includes(String(row.status))) current.incomplete += 1;
+    if ((PATROL_STATUS_GROUPS.late as readonly string[]).includes(String(row.status))) current.late += 1;
+    if ((PATROL_STATUS_GROUPS.missed as readonly string[]).includes(String(row.status))) current.missed += 1;
+    map.set(key, current);
+  }
+  return Array.from(map.values()).sort((a, b) => a.siteName.localeCompare(b.siteName) || a.patrolName.localeCompare(b.patrolName));
+}
+
+function patrolSummaryLine(row: PatrolSummaryRow, group: keyof typeof PATROL_STATUS_GROUPS) {
+  if (group === 'completed') return row.patrolName + ' - ' + row.completed + ' / ' + row.expected + ' sessions completed';
+  const count = group === 'incomplete' ? row.incomplete : group === 'late' ? row.late : row.missed;
+  const label = group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
+  return row.patrolName + ' - ' + count + ' ' + label + ' session' + (count === 1 ? '' : 's');
 }
 
 export async function patrolStatusView(
@@ -650,57 +706,125 @@ export async function patrolStatusView(
   siteId: string | null,
   group: keyof typeof PATROL_STATUS_GROUPS,
 ): Promise<OutMessage> {
-  const statuses = [...PATROL_STATUS_GROUPS[group]];
+  const from = periodStart('today').toISOString();
+  const to = periodEnd('today').toISOString();
   const { data } = await siteFilter<any>(
     client
-      .from("patrol_sessions")
-      .select("id, status, scheduled_start, scheduled_end, actual_start, checkpoint_completed, checkpoint_total, site_id, sites(name), patrol_routes(name), patrol_templates(name)")
-      .in("status", statuses)
-      .order("scheduled_start", { ascending: false })
-      .limit(8),
+      .from('patrol_sessions')
+      .select('id, status, scheduled_start, site_id, sites(name), patrol_routes(id,name), patrol_templates(id,name)')
+      .gte('scheduled_start', from)
+      .lte('scheduled_start', to)
+      .order('scheduled_start', { ascending: false })
+      .limit(500),
     identity,
     siteId,
   );
-  const rows = (data ?? []) as any[];
-  const title = group === "completed" ? "COMPLETED PATROLS" : group === "incomplete" ? "INCOMPLETE PATROLS" : group === "late" ? "LATE / DELAYED PATROLS" : "MISSED PATROLS";
-  const backOptions = [{ id: "patrol_status", label: "Patrol Status" }, { id: "menu", label: "Main Menu" }];
-  if (!rows.length) return { title, lines: ["No matching patrols for the active site."], options: backOptions };
-  return {
-    title,
-    lines: [rows.map((row, index) => formatPatrolStatusRow(row, index, group)).join("\n\n")],
-    options: backOptions,
-  };
+  const rows = summarizePatrolStatusRows((data ?? []) as any[]);
+  const countKey = group === 'completed' ? 'completed' : group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
+  const visible = rows.filter((row) => row[countKey] > 0);
+  const siteLabel = siteId ? ((visible[0]?.siteName) ?? 'Selected site') : 'ALL SITES';
+  const title = (group === 'completed' ? 'COMPLETED' : group === 'incomplete' ? 'INCOMPLETE' : group === 'late' ? 'LATE' : 'MISSED') + ' PATROLS - ' + siteLabel;
+  const options = [{ id: 'reports', label: 'Reports' }, { id: 'back', label: 'Back' }];
 
+  if (!visible.length) {
+    const empty = group === 'completed' ? 'No completed patrol sessions found for the selected period.' : group === 'incomplete' ? 'No incomplete patrol sessions.' : group === 'late' ? 'No late patrol sessions.' : 'No missed patrol sessions.';
+    return { title, lines: ['Period: Today', '', empty, '', 'Type reports for details.', 'Type back to return.'], options };
+  }
+
+  const lines: string[] = ['Period: Today', ''];
+  if (!siteId) {
+    for (const site of Array.from(new Set(visible.map((row) => row.siteName)))) {
+      const siteRows = visible.filter((row) => row.siteName === site);
+      lines.push(site, ...siteRows.map((row) => patrolSummaryLine(row, group)), '');
+    }
+  } else {
+    lines.push(...visible.map((row) => patrolSummaryLine(row, group)), '');
+  }
+
+  if (group === 'completed') {
+    const completed = visible.reduce((sum, row) => sum + row.completed, 0);
+    const expected = visible.reduce((sum, row) => sum + row.expected, 0);
+    lines.push('Total: ' + completed + ' / ' + expected + ' sessions completed');
+  } else {
+    const total = visible.reduce((sum, row) => sum + (group === 'incomplete' ? row.incomplete : group === 'late' ? row.late : row.missed), 0);
+    const label = group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
+    lines.push('Total ' + label + ' sessions: ' + total);
+  }
+  if (group === 'late') lines.push('', 'Type late sessions to view late session details.', 'Type reports for full details.', 'Type back to return.');
+  else if (group === 'missed') lines.push('', 'Type missed to view missed session details.', 'Type reports for full details.', 'Type back to return.');
+  else lines.push('', 'Type reports for details.', 'Type back to return.');
+
+  return { title, lines, options };
+}
+function lateMinutes(row: Record<string, any>): number | null {
+  if (typeof row.late_minutes === 'number') return row.late_minutes;
+  if (!row.scheduled_start || !row.actual_start) return null;
+  const diff = new Date(row.actual_start).getTime() - new Date(row.scheduled_start).getTime();
+  if (!Number.isFinite(diff) || diff <= 0) return null;
+  return Math.round(diff / 60000);
 }
 
-/** Exported for tests: every patrol line carries the canonical scheduled time. */
-export function formatPatrolStatusRow(row: Record<string, any>, index: number, group: string): string {
-  const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
-  const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
-  const template = Array.isArray(row.patrol_templates) ? row.patrol_templates[0] : row.patrol_templates;
-  const scheduled = waTime(row.scheduled_start) ?? "unknown";
-  const end = waTime(row.scheduled_end);
-  const done = row.checkpoint_completed ?? 0;
-  const total = row.checkpoint_total ?? 0;
-  const lines = [
-    `${index + 1}. ${route?.name ?? template?.name ?? "Patrol"}`,
-    `Site: ${site?.name ?? "Unassigned"}`,
-    `Date: ${waDate(row.scheduled_start) ?? "unknown"}`,
-    `Scheduled: ${scheduled}${end ? ` (window ${scheduled} - ${end})` : ""}`,
-    `Status: ${group === "missed" ? "Missed" : String(row.status).replace(/_/g, " ")}`,
-  ];
-  if (group === "late") {
-    const started = waTime(row.actual_start);
-    lines.push(`Actual start: ${started ?? "not started"}`);
-    const late = lateBy(row.scheduled_start, row.actual_start);
-    if (late) lines.push(`Late by: ${late}`);
-  }
-  if (group !== "missed") {
-    lines.push(`Checkpoints: ${done}/${total}${total > done ? ` (${total - done} missed)` : ""}`);
-  }
-  return lines.join("\n");
+function sessionDrilldownTime(row: Record<string, any>, multiDay: boolean): string {
+  const time = waTime(row.scheduled_start) ?? 'Unknown time';
+  if (!multiDay) return time;
+  return (waDate(row.scheduled_start) ?? 'Unknown date') + ' - ' + time;
 }
 
+export async function patrolSessionDrilldownView(
+  client: SupabaseClient,
+  identity: Identity,
+  siteId: string | null,
+  kind: 'late' | 'missed',
+): Promise<OutMessage> {
+  const from = periodStart('today').toISOString();
+  const to = periodEnd('today').toISOString();
+  const statuses = kind === 'late' ? [...PATROL_STATUS_GROUPS.late] : [...PATROL_STATUS_GROUPS.missed];
+  const { data } = await siteFilter<any>(
+    client
+      .from('patrol_sessions')
+      .select('id, status, scheduled_start, actual_start, site_id, sites(name), patrol_routes(id,name), patrol_templates(id,name)')
+      .in('status', statuses)
+      .gte('scheduled_start', from)
+      .lte('scheduled_start', to)
+      .order('scheduled_start', { ascending: true })
+      .limit(100),
+    identity,
+    siteId,
+  );
+  const rows = ((data ?? []) as any[]).sort((a, b) => String(patrolSummaryName(a)).localeCompare(String(patrolSummaryName(b))) || new Date(a.scheduled_start ?? 0).getTime() - new Date(b.scheduled_start ?? 0).getTime());
+  const titleSite = siteId ? (rows[0] ? siteSummaryName(rows[0]) : 'Selected site') : 'ALL SITES';
+  const title = (kind === 'late' ? 'LATE SESSIONS - ' : 'MISSED SESSIONS - ') + titleSite;
+  const parent = kind === 'late' ? 'late_patrols' : 'missed_patrols';
+  const options = [{ id: 'reports', label: 'Reports' }, { id: parent, label: kind === 'late' ? 'Late Patrols' : 'Missed Patrols' }, { id: 'back', label: 'Back' }];
+
+  if (!rows.length) {
+    const empty = kind === 'late' ? 'No late patrol sessions found for the selected period.' : 'No missed patrol sessions found for the selected period.';
+    return { title, menuKey: kind === 'late' ? 'late_sessions' : 'missed_sessions', lines: ['Period: Today', '', empty, '', 'Type back to return.'], options };
+  }
+
+  const multiDay = periodStart('today').toDateString() !== periodEnd('today').toDateString();
+  const lines: string[] = ['Period: Today', ''];
+  const siteGroups = siteId ? [titleSite] : Array.from(new Set(rows.map(siteSummaryName)));
+  for (const site of siteGroups) {
+    const siteRows = siteId ? rows : rows.filter((row) => siteSummaryName(row) === site);
+    if (!siteId) lines.push(site);
+    for (const patrol of Array.from(new Set(siteRows.map(patrolSummaryName)))) {
+      lines.push(patrol);
+      for (const row of siteRows.filter((item) => patrolSummaryName(item) === patrol)) {
+        const scheduled = sessionDrilldownTime(row, multiDay);
+        if (kind === 'late') {
+          const minutes = lateMinutes(row);
+          lines.push(scheduled + ' session - ' + (minutes == null ? 'Late' : minutes + ' min late'));
+        } else {
+          lines.push(scheduled + ' session - Missed');
+        }
+      }
+      lines.push('');
+    }
+  }
+  lines.push('Type reports for full details.', 'Type back to return.');
+  return { title, menuKey: kind === 'late' ? 'late_sessions' : 'missed_sessions', lines, options };
+}
 export async function missedCheckpointsView(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
   let query = client
     .from("patrol_session_checkpoints")
@@ -1258,8 +1382,11 @@ export function backTarget(session: SessionRow): string {
   if (current === "patrol_status") {
     return session.last_menu === "management" ? "management_operations" : USER_HOME_KEY;
   }
+  if (current === "late_sessions") return "late_patrols";
+  if (current === "missed_sessions") return "missed_patrols";
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }
+
 
 
 

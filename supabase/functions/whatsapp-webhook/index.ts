@@ -1,4 +1,4 @@
-﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { normalizePhone, type Identity, type OutMessage, type SessionRow, type SiteRow } from "./lib/types.ts";
 import { emptyTwiml, parseInboundWhatsAppRequest, type InboundWhatsAppMessage } from "./lib/request.ts";
@@ -19,6 +19,7 @@ import {
   managementMenu,
   checkpointsView,
   patrolStatusView,
+  patrolSessionDrilldownView,
   patrolStatusOverview,
   missedCheckpointsView,
   reportPeriodMenu,
@@ -285,6 +286,13 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       return await patrolStatusView(ctx.client, ctx.identity, siteId, group);
     }
 
+    case "late_sessions":
+    case "missed_sessions": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return await patrolSessionDrilldownView(ctx.client, ctx.identity, siteId, intent.action === "late_sessions" ? "late" : "missed");
+    }
+
     case "missed_checkpoints": {
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
@@ -419,6 +427,19 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
     }
     if (!isReportMenu) ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "management" });
     return WA_SUBMENUS[id];
+  }
+
+  if (id === "late_sessions" || id === "missed_sessions") {
+    const { siteId, ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    return await patrolSessionDrilldownView(ctx.client, ctx.identity, siteId, id === "late_sessions" ? "late" : "missed");
+  }
+
+  if (id === "completed_patrols" || id === "incomplete_patrols" || id === "late_patrols" || id === "missed_patrols") {
+    const { siteId, ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    const group = id === "completed_patrols" ? "completed" : id === "incomplete_patrols" ? "incomplete" : id === "late_patrols" ? "late" : "missed";
+    return await patrolStatusView(ctx.client, ctx.identity, siteId, group);
   }
 
   if (id.startsWith("report:")) {
@@ -662,6 +683,7 @@ serve(async (req) => {
     );
   }
 });
+
 
 
 

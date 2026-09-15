@@ -23,6 +23,9 @@ import {
 import {
   PATROL_STATUS_GROUPS,
   PATROL_STATUS_LABELS,
+  patrolStatusSummaryLine,
+  patrolSummaryTotals,
+  summarizePatrolSessions,
   assistantDate,
   assistantTime,
   describePatrol,
@@ -44,7 +47,7 @@ import { reportMenuItems } from '@/lib/assistantReportDefinitions';
 const LiveMap = lazy(() => import('@/components/dashboard/LiveMap'));
 
 type Message = { id: number; from: 'assistant' | 'user'; title?: string; body: ReactNode };
-type SessionRow = AssistantPatrolRow & { patrol_routes?: { name: string } | null; patrol_templates?: { name: string } | null; sites?: { name: string } | null };
+type SessionRow = AssistantPatrolRow & { patrol_routes?: { id?: string | null; name: string } | null; patrol_templates?: { id?: string | null; name: string } | null; sites?: { name: string } | null };
 type MissedCheckpointRow = {
   id: string;
   status: string | null;
@@ -77,7 +80,7 @@ function startOfDay(daysAgo: number) {
 }
 
 function named(row: SessionRow): AssistantPatrolRow {
-  return { ...row, patrol_name: row.patrol_routes?.name ?? row.patrol_templates?.name ?? 'Patrol', site_name: row.sites?.name ?? null };
+  return { ...row, patrol_id: row.patrol_routes?.id ?? row.patrol_templates?.id ?? null, patrol_name: row.patrol_routes?.name ?? row.patrol_templates?.name ?? 'Patrol', site_name: row.sites?.name ?? null };
 }
 
 export default function CommandCenter() {
@@ -198,7 +201,7 @@ export default function CommandCenter() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('patrol_sessions')
-        .select('id, status, scheduled_start, scheduled_end, actual_start, finalized_at, checkpoint_completed, checkpoint_total, site_id, patrol_routes(name), patrol_templates(name), sites(name)')
+        .select('id, status, scheduled_start, scheduled_end, actual_start, finalized_at, checkpoint_completed, checkpoint_total, site_id, patrol_routes(id,name), patrol_templates(id,name), sites(name)')
         .eq('site_id', selectedSiteId!)
         .order('scheduled_start', { ascending: false })
         .limit(100);
@@ -249,7 +252,7 @@ export default function CommandCenter() {
         supabase.from('incidents').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
         supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId).eq('site_id', siteId).order('scanned_at', { ascending: false }).limit(200),
         supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('sort_order').limit(200),
-        supabase.from('patrol_sessions').select('id, status, scheduled_start, scheduled_end, actual_start, finalized_at, checkpoint_completed, checkpoint_total, site_id, patrol_routes(name), patrol_templates(name), sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('scheduled_start', { ascending: false }).limit(100),
+        supabase.from('patrol_sessions').select('id, status, scheduled_start, scheduled_end, actual_start, finalized_at, checkpoint_completed, checkpoint_total, site_id, patrol_routes(id,name), patrol_templates(id,name), sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('scheduled_start', { ascending: false }).limit(100),
         supabase.from('data_log_submissions').select('id, submitted_at, datalog_value, responses_json, site_id, checkpoint_id, sites(name), checkpoints(name, data_log_label)').eq('company_id', companyId).eq('site_id', siteId).order('submitted_at', { ascending: false }).limit(100),
         supabase.from('patrol_routes').select('id, name').eq('company_id', companyId).eq('site_id', siteId).eq('status', 'active').order('name'),
         supabase.from('data_log_forms').select('id, name, site_id, data_log_form_fields(id)').eq('company_id', companyId).eq('is_active', true).or(`site_id.is.null,site_id.eq.${siteId}`).order('name'),
@@ -427,10 +430,12 @@ export default function CommandCenter() {
     if (action === 'checkpoints') return addAssistant('CHECKPOINTS - ' + selectedSite, <CheckpointList rows={siteCheckpoints} />);
     if (action === 'pending_nfc') return addAssistant('PENDING NFC ASSIGNMENT - ' + selectedSite, <CheckpointList rows={siteCheckpoints.filter((row: any) => !row.nfc_tag_id)} />);
     if (action === 'patrol_status') return showMenu(state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status');
-    if (action === 'completed_patrols') return addAssistant('COMPLETED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'completed')} />);
-    if (action === 'incomplete_patrols') return addAssistant('INCOMPLETE PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'incomplete')} variant='incomplete' />);
-    if (action === 'late_patrols') return addAssistant('LATE / DELAYED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'late')} variant='late' />);
-    if (action === 'missed_patrols') return addAssistant('MISSED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'missed')} variant='missed' />);
+    if (action === 'completed_patrols') return addAssistant('COMPLETED PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='completed' site={selectedSite} />);
+    if (action === 'incomplete_patrols') return addAssistant('INCOMPLETE PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='incomplete' site={selectedSite} />);
+    if (action === 'late_patrols') return addAssistant('LATE PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='late' site={selectedSite} />);
+    if (action === 'missed_patrols') return addAssistant('MISSED PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='missed' site={selectedSite} />);
+    if (action === 'late_sessions') return addAssistant('LATE SESSIONS - ' + selectedSite, <PatrolSessionDrilldown rows={periodRows('today').sessions} kind='late' />);
+    if (action === 'missed_sessions') return addAssistant('MISSED SESSIONS - ' + selectedSite, <PatrolSessionDrilldown rows={periodRows('today').sessions} kind='missed' />);
     if (action === 'missed_checkpoints') return addAssistant('MISSED CHECKPOINTS - ' + selectedSite, <MissedCheckpointList rows={missedCheckpoints.data ?? []} loading={missedCheckpoints.isLoading} />);
     if (action === 'view_companies') {
       if (!isPlatformOwner) return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can view all companies.</p>);
@@ -965,17 +970,81 @@ function DeviceList({ devices, offlineOnly }: { devices: any[]; offlineOnly?: bo
 function IncidentList({ rows }: { rows: any[] }) { if (!rows.length) return <p>No incidents match this view for the active site.</p>; return <div className='space-y-2'>{rows.slice(0, 8).map((incident) => <div key={incident.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{incident.title ?? incident.incident_type ?? 'Incident'}</b><p className='text-slate-400'>{incident.severity ?? 'normal'} - {incident.resolved ? 'Resolved' : 'Open'} - {assistantDate(incident.created_at) ?? ''}</p></div>)}</div>; }
 function CheckpointList({ rows }: { rows: any[] }) { if (!rows.length) return <p>No checkpoints match this view for the active site.</p>; return <div className='space-y-2'>{rows.slice(0, 12).map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>NFC: {row.nfc_tag_id ? 'Assigned' : 'Awaiting assignment'}</p></div>)}</div>; }
 
+function drilldownLateMinutes(row: AssistantPatrolRow): number | null {
+  if (!row.scheduled_start || !row.actual_start) return null;
+  const diff = new Date(row.actual_start).getTime() - new Date(row.scheduled_start).getTime();
+  if (!Number.isFinite(diff) || diff <= 0) return null;
+  return Math.round(diff / 60000);
+}
+
+function PatrolSessionDrilldown({ rows, kind }: { rows: AssistantPatrolRow[]; kind: 'late' | 'missed' }) {
+  const statuses = PATROL_STATUS_GROUPS[kind] as readonly string[];
+  const selected = rows
+    .filter((row) => statuses.includes(String(row.status)))
+    .sort((a, b) => String(a.patrol_name ?? 'Patrol').localeCompare(String(b.patrol_name ?? 'Patrol')) || new Date(a.scheduled_start ?? 0).getTime() - new Date(b.scheduled_start ?? 0).getTime());
+
+  if (!selected.length) {
+    const empty = kind === 'late' ? 'No late patrol sessions found for the selected period.' : 'No missed patrol sessions found for the selected period.';
+    return <div><p className='text-slate-300'>Period: Today</p><p className='mt-3'>{empty}</p><p className='mt-3 text-slate-400'>Type back to return.</p></div>;
+  }
+
+  const patrolNames = Array.from(new Set(selected.map((row) => row.patrol_name ?? 'Patrol')));
+  return <div className='space-y-4'>
+    <p className='text-slate-300'>Period: Today</p>
+    {patrolNames.map((patrol) => {
+      const patrolRows = selected.filter((row) => (row.patrol_name ?? 'Patrol') === patrol);
+      return <div key={patrol} className='space-y-2'>
+        <p className='font-bold text-emerald-300'>{patrol}</p>
+        {patrolRows.map((row) => {
+          const scheduled = assistantTime(row.scheduled_start) ?? 'Unknown time';
+          const minutes = drilldownLateMinutes(row);
+          const label = kind === 'late'
+            ? scheduled + ' session - ' + (minutes == null ? 'Late' : minutes + ' min late')
+            : scheduled + ' session - Missed';
+          return <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3 font-mono text-sm text-slate-100'>{label}</div>;
+        })}
+      </div>;
+    })}
+    <p className='text-slate-400'>Type back to return.</p>
+  </div>;
+}
+function PatrolSessionSummary({ rows, group, site }: { rows: AssistantPatrolRow[]; group: PatrolStatusGroup; site: string }) {
+  const sections = summarizePatrolSessions(rows, group);
+  const totals = patrolSummaryTotals(sections, group);
+  if (!sections.length) {
+    const empty = group === 'completed'
+      ? 'No completed patrol sessions found for the selected period.'
+      : group === 'incomplete'
+        ? 'No incomplete patrol sessions.'
+        : group === 'late'
+          ? 'No late patrol sessions.'
+          : 'No missed patrol sessions.';
+    return <div><p className='text-slate-300'>Period: Today</p><p className='mt-3'>{empty}</p><p className='mt-3 text-slate-400'>View Reports for detailed session evidence.</p></div>;
+  }
+  return <div className='space-y-3'>
+    <p className='text-slate-300'>Period: Today</p>
+    {sections.map((section) => <div key={section.site_id ?? section.site_name} className='space-y-2'>
+      {!section.site_id || section.site_name !== site ? <p className='font-bold text-emerald-300'>{section.site_name}</p> : null}
+      {section.rows.map((row) => <div key={row.site_id + row.patrol_id} className='flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-slate-950/70 p-3'>
+        <span className='min-w-0 truncate font-bold'>{row.patrol_name}</span>
+        <span className='shrink-0 text-sm text-emerald-300'>{patrolStatusSummaryLine(row, group)}</span>
+      </div>)}
+    </div>)}
+    <p className='font-bold text-slate-100'>{group === 'completed' ? 'Total: ' + totals.matching + ' / ' + totals.expected + ' sessions completed' : 'Total ' + group + ' sessions: ' + totals.matching}</p>
+    <p className='text-slate-400'>View Reports for detailed session evidence.</p>
+  </div>;
+}
 function PatrolList({ rows, variant }: { rows: AssistantPatrolRow[]; variant?: 'missed' | 'late' | 'incomplete' }) {
   if (!rows.length) return <p>No matching patrols for the active site.</p>;
   return <div className='space-y-2'>{rows.slice(0, 10).map((row) => {
     const view = describePatrol(row);
     return <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
       <b>{view.patrol}</b>
-      <p className='text-slate-400'>{view.site} · {view.date}</p>
+      <p className='text-slate-400'>{view.site} - {view.date}</p>
       <p className='text-emerald-200'>Scheduled: {view.scheduledTime}{view.scheduledWindow ? ` (window ${view.scheduledWindow})` : ''}</p>
       <p className='text-slate-300'>Status: {variant === 'missed' ? 'Missed' : view.status}</p>
-      {variant === 'late' ? <p className='text-amber-200'>Actual start: {view.actualStart ?? 'not started'}{view.lateBy ? ` · Late by ${view.lateBy}` : ''}</p> : null}
-      {variant !== 'missed' ? <p className='text-slate-300'>Checkpoints: {view.checkpoints}{view.missedCheckpoints ? ` · ${view.missedCheckpoints} missed` : ''}</p> : null}
+      {variant === 'late' ? <p className='text-amber-200'>Actual start: {view.actualStart ?? 'not started'}{view.lateBy ? ` - Late by ${view.lateBy}` : ''}</p> : null}
+      {variant !== 'missed' ? <p className='text-slate-300'>Checkpoints: {view.checkpoints}{view.missedCheckpoints ? ` - ${view.missedCheckpoints} missed` : ''}</p> : null}
     </div>;
   })}</div>;
 }
@@ -987,8 +1056,8 @@ function MissedCheckpointList({ rows, loading }: { rows: MissedCheckpointRow[]; 
     const session = row.patrol_sessions;
     return <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
       <b>{row.checkpoints?.name ?? row.checkpoint_name_snapshot ?? 'Checkpoint'}</b>
-      <p className='text-slate-400'>Patrol: {session?.patrol_routes?.name ?? 'Session'} · {session?.sites?.name ?? 'Site'}</p>
-      <p className='text-slate-300'>{assistantDate(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown date'} · Expected: {assistantTime(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown'}</p>
+      <p className='text-slate-400'>Patrol: {session?.patrol_routes?.name ?? 'Session'} - {session?.sites?.name ?? 'Site'}</p>
+      <p className='text-slate-300'>{assistantDate(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown date'} - Expected: {assistantTime(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown'}</p>
       <p className='text-rose-200'>Status: {String(row.status ?? 'missed')}</p>
     </div>;
   })}</div>;
@@ -999,7 +1068,7 @@ function SavedReports({ jobs, loading }: { jobs: Array<{ id: string; report_type
   if (!jobs.length) return <p>No reports have been generated yet. Choose <b>Generate Patrol Report</b> to create one.</p>;
   return <div className='space-y-2'>{jobs.slice(0, 8).map((job) => <div key={job.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
     <b>{job.report_type.replace(/_/g, ' ')}</b>
-    <p className='text-slate-400'>{job.sites?.name ?? 'All sites'} · {job.date_range} · {job.status}</p>
+    <p className='text-slate-400'>{job.sites?.name ?? 'All sites'} - {job.date_range} - {job.status}</p>
     <p className='text-slate-400'>{assistantDate(job.ai_reports?.generated_at ?? job.created_at)} {assistantTime(job.ai_reports?.generated_at ?? job.created_at)}</p>
     {job.ai_reports?.summary_text ? <p className='mt-1 text-slate-200'>{job.ai_reports.summary_text.slice(0, 400)}</p> : null}
   </div>)}</div>;
@@ -1025,8 +1094,10 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   });
   if (isLoading) return <p>Loading...</p>;
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
-  return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` · ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` · ${row.frequency_type}` : ''}</p></div>)}</div>;
+  return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` - ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` - ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
+
 
 
 

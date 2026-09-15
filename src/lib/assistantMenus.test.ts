@@ -208,7 +208,7 @@ describe("patrol output includes canonical times", () => {
     expect(view.site).toBe("Airport Junction");
     expect(view.date).toContain("2026");
     expect(view.status).toBe("missed");
-    expect(patrolHeadline(missed)).toBe("06:00 — Missed — Night Patrol");
+    expect(patrolHeadline(missed)).toBe("06:00 - Missed - Night Patrol");
   });
 
   it("shows scheduled, actual and late-by for late patrols", () => {
@@ -258,3 +258,4 @@ describe("Reports category menu", () => {
     expect(resolveAssistantInput(mgmtState("reports_checkpoint_activity"), "4", owner)).toMatchObject({ kind: "menu", menuKey: "management_reports" });
   });
 });
+

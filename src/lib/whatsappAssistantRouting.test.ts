@@ -5,7 +5,8 @@ import {
   USER_HOME_KEY,
   WA_SUBMENUS,
   backTarget,
-  formatPatrolStatusRow,
+  patrolStatusView,
+  patrolSessionDrilldownView,
   mainMenu,
   managementMenu,
   patrolStatusOverview,
@@ -116,6 +117,8 @@ describe("WhatsApp Patrol Status consolidates the four outcomes", () => {
     const query: any = {
       select: () => query,
       limit: () => query,
+      gte: () => query,
+      lte: () => query,
       in: (col: string, value: unknown) => { captured.push([col, value]); return query; },
       eq: (col: string, value: unknown) => { captured.push([col, value]); return query; },
       then: (resolve: (value: { data: unknown[] }) => unknown) => resolve({ data: rows }),
@@ -125,10 +128,10 @@ describe("WhatsApp Patrol Status consolidates the four outcomes", () => {
     const view = await patrolStatusOverview(client, identity, "site-1", "Airport Junction");
     expect(captured).toContainEqual(["site_id", "site-1"]);
     expect(view.title).toContain("Airport Junction");
-    expect(view.lines).toContain("Completed: 2");
-    expect(view.lines).toContain("Incomplete: 1");
-    expect(view.lines).toContain("Late / Delayed: 1");
-    expect(view.lines).toContain("Missed: 1");
+    expect(view.lines).toContain("Completed sessions: 2");
+    expect(view.lines).toContain("Incomplete sessions: 1");
+    expect(view.lines).toContain("Late sessions: 1");
+    expect(view.lines).toContain("Missed sessions: 1");
 
     const options = (view.options ?? []).map((option) => option.id);
     expect(options.slice(0, 4)).toEqual(removed);
@@ -142,40 +145,69 @@ describe("WhatsApp Patrol Status consolidates the four outcomes", () => {
 });
 
 
-describe("WhatsApp patrol output includes canonical scheduled times", () => {
-  const row = {
-    id: "s1",
-    status: "missed",
-    scheduled_start: "2026-08-24T04:00:00.000Z",
-    scheduled_end: "2026-08-24T05:00:00.000Z",
-    actual_start: null,
-    checkpoint_completed: 0,
-    checkpoint_total: 5,
-    sites: { name: "Airport Junction" },
-    patrol_routes: { name: "Night Patrol" },
-  };
+describe('WhatsApp patrol status summaries use patrol sessions', () => {
+  const rows = [
+    ...Array.from({ length: 6 }, (_, index) => ({ id: 'gate-c-' + index, status: 'completed', scheduled_start: '2026-09-15T06:00:00.000Z', site_id: 'site-1', sites: { name: 'Tlokweng' }, patrol_routes: { id: 'gate', name: 'Gate Patrol' } })),
+    ...Array.from({ length: 2 }, (_, index) => ({ id: 'gate-i-' + index, status: 'incomplete', scheduled_start: '2026-09-15T08:00:00.000Z', site_id: 'site-1', sites: { name: 'Tlokweng' }, patrol_routes: { id: 'gate', name: 'Gate Patrol' } })),
+    { id: 'perimeter-late', status: 'late_start', scheduled_start: '2026-09-15T09:00:00.000Z', actual_start: '2026-09-15T09:12:00.000Z', site_id: 'site-1', sites: { name: 'Tlokweng' }, patrol_routes: { id: 'perimeter', name: 'Perimeter Patrol' } },
+    { id: 'server-missed', status: 'missed', scheduled_start: '2026-09-15T10:00:00.000Z', site_id: 'site-1', sites: { name: 'Tlokweng' }, patrol_routes: { id: 'server', name: 'Server Patrol' } },
+  ];
 
-  it("prints scheduled time, site, date and status for missed patrols", () => {
-    const text = formatPatrolStatusRow(row, 0, "missed");
-    expect(text).toContain("1. Night Patrol");
-    expect(text).toContain("Site: Airport Junction");
-    expect(text).toContain("Scheduled: 06:00");
-    expect(text).toContain("Status: Missed");
+  function clientFor(data: unknown[]) {
+    const query: any = {
+      select: () => query,
+      gte: () => query,
+      lte: () => query,
+      eq: () => query,
+      in: () => query,
+      order: () => query,
+      limit: () => query,
+      then: (resolve: (value: { data: unknown[] }) => unknown) => resolve({ data }),
+    };
+    return { from: () => query } as any;
+  }
+
+  it('shows completed sessions over expected sessions per Patrol', async () => {
+    const view = await patrolStatusView(clientFor(rows), identity, 'site-1', 'completed');
+    const text = view.lines.join('\n');
+    expect(text).toContain('Gate Patrol - 6 / 8 sessions completed');
+    expect(text).toContain('Total: 6 / 8 sessions completed');
+    expect(text).not.toContain('Checkpoints:');
+    expect(text).not.toContain('Scheduled:');
   });
 
-  it("prints scheduled, actual and late-by for late patrols", () => {
-    const text = formatPatrolStatusRow({ ...row, status: "late_start", actual_start: "2026-08-24T04:25:00.000Z" }, 1, "late");
-    expect(text).toContain("Scheduled: 06:00");
-    expect(text).toContain("Actual start: 06:25");
-    expect(text).toContain("Late by: 25 min");
+  it('shows incomplete, late and missed session counts without denominators', async () => {
+    const incomplete = await patrolStatusView(clientFor(rows), identity, 'site-1', 'incomplete');
+    expect(incomplete.lines.join('\n')).toContain('Gate Patrol - 2 incomplete sessions');
+    expect(incomplete.lines.join('\n')).toContain('Total incomplete sessions: 2');
+
+    const late = await patrolStatusView(clientFor(rows), identity, 'site-1', 'late');
+    expect(late.lines.join('\n')).toContain('Perimeter Patrol - 1 late session');
+    expect(late.lines.join('\n')).toContain('Type late sessions to view late session details.');
+    expect(late.lines.join('\n')).not.toContain('Actual start');
+
+    const missed = await patrolStatusView(clientFor(rows), identity, 'site-1', 'missed');
+    expect(missed.lines.join('\n')).toContain('Server Patrol - 1 missed session');
+    expect(missed.lines.join('\n')).toContain('Type missed to view missed session details.');
+    expect(missed.lines.join('\n')).not.toContain('missed checkpoint');
   });
 
-  it("prints checkpoint progress for incomplete patrols", () => {
-    const text = formatPatrolStatusRow({ ...row, status: "incomplete", checkpoint_completed: 3 }, 0, "incomplete");
-    expect(text).toContain("Checkpoints: 3/5 (2 missed)");
+  it('drills into late and missed sessions without checkpoint detail', async () => {
+    const late = await patrolSessionDrilldownView(clientFor(rows), identity, 'site-1', 'late');
+    const lateText = late.lines.join('\n');
+    expect(late.title).toContain('LATE SESSIONS');
+    expect(lateText).toContain('Perimeter Patrol');
+    expect(lateText).toContain('11:00 session - 12 min late');
+    expect(lateText).not.toContain('Checkpoints');
+
+    const missed = await patrolSessionDrilldownView(clientFor(rows), identity, 'site-1', 'missed');
+    const missedText = missed.lines.join('\n');
+    expect(missed.title).toContain('MISSED SESSIONS');
+    expect(missedText).toContain('Server Patrol');
+    expect(missedText).toContain('12:00 session - Missed');
+    expect(missedText).not.toContain('scan log');
   });
 });
-
 describe("WhatsApp report language routing", () => {
   it("routes report requests to the reports action with the right period", () => {
     expect(keywordIntent("reports")).toEqual({ action: "reports" });
@@ -263,3 +295,4 @@ describe("WhatsApp text encoding guardrails", () => {
     expect(twiml(rendered)).toContain("🟢 Minor");
   });
 });
+

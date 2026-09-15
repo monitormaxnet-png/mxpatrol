@@ -1,4 +1,4 @@
-﻿// deno-lint-ignore no-explicit-any
+// deno-lint-ignore no-explicit-any
 type SupabaseClient = any;
 import type { Identity, OutMessage, SessionRow, SiteRow } from "./types.ts";
 import { allowedSites } from "./identity.ts";
@@ -318,7 +318,7 @@ async function registerDevice(
     return {
       session: await clearFlow(client, session),
       message: {
-        title: outcome.result.duplicate ? "DEVICE ALREADY REGISTERED" : "âœ… DEVICE REGISTERED",
+        title: outcome.result.duplicate ? "DEVICE ALREADY REGISTERED" : "✅ DEVICE REGISTERED",
         lines: [outcome.result.summary],
         options: [{ id: "devices", label: "View Devices" }, { id: "menu", label: "Main Menu" }],
       },
@@ -756,10 +756,10 @@ async function revokeWhatsApp(client: SupabaseClient, identity: Identity, sessio
 /* ----------------------------- report incident ----------------------------- */
 
 const SEVERITIES = [
-  { id: "low", label: "ðŸŸ¢ Minor" },
-  { id: "medium", label: "ðŸŸ¡ Moderate" },
-  { id: "high", label: "ðŸŸ  Serious" },
-  { id: "critical", label: "ðŸ”´ Emergency" },
+  { id: "low", label: "🟢 Minor" },
+  { id: "medium", label: "🟡 Moderate" },
+  { id: "high", label: "🟠 Serious" },
+  { id: "critical", label: "🔴 Emergency" },
 ];
 
 async function reportIncident(
@@ -822,7 +822,7 @@ async function reportIncident(
           data.description,
           data.site_name,
           data.severity_label,
-          media.length ? `ðŸ“· ${media.length} image${media.length === 1 ? "" : "s"} attached` : "No images attached",
+          media.length ? `📷 ${media.length} image${media.length === 1 ? "" : "s"} attached` : "No images attached",
         ],
         options: [{ id: "confirm", label: "Submit" }, { id: "cancel", label: "Cancel" }],
       },
@@ -854,8 +854,8 @@ async function reportIncident(
     return {
       session: await clearFlow(client, session),
       message: {
-        title: outcome.result.duplicate ? "INCIDENT ALREADY LOGGED" : "âœ… INCIDENT CREATED",
-        lines: [`Reference: ${record.reference}`, `${data.site_name} Â· ${data.severity_label}`, `Status: ${record.status}`],
+        title: outcome.result.duplicate ? "INCIDENT ALREADY LOGGED" : "✅ INCIDENT CREATED",
+        lines: [`Reference: ${record.reference}`, `${data.site_name} · ${data.severity_label}`, `Status: ${record.status}`],
         options: [{ id: "incidents", label: "View Incidents" }, { id: "menu", label: "Main Menu" }],
       },
     };

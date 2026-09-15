@@ -13,7 +13,8 @@ import {
   resolveMenuChoice,
 } from "../../supabase/functions/whatsapp-webhook/lib/views";
 import { keywordIntent } from "../../supabase/functions/whatsapp-webhook/lib/askmx";
-import type { Identity, SessionRow } from "../../supabase/functions/whatsapp-webhook/lib/types";
+import { renderText, twiml } from "../../supabase/functions/whatsapp-webhook/lib/render";
+import type { Identity, OutMessage, SessionRow } from "../../supabase/functions/whatsapp-webhook/lib/types";
 
 const identity: Identity = {
   id: "auth-1",
@@ -217,8 +218,48 @@ describe("WhatsApp reports category menus", () => {
 
 
 describe("WhatsApp text encoding guardrails", () => {
-  it("keeps deployed WhatsApp views free of common mojibake markers", () => {
-    const source = readFileSync("supabase/functions/whatsapp-webhook/lib/views.ts", "utf8");
-    expect(source).not.toMatch(/[\u00C3\u00F0\u00E2]/);
+  const whatsappSources = [
+    "supabase/functions/whatsapp-webhook/index.ts",
+    "supabase/functions/whatsapp-webhook/lib/askmx.ts",
+    "supabase/functions/whatsapp-webhook/lib/flows.ts",
+    "supabase/functions/whatsapp-webhook/lib/render.ts",
+    "supabase/functions/whatsapp-webhook/lib/request.ts",
+    "supabase/functions/whatsapp-webhook/lib/types.ts",
+    "supabase/functions/whatsapp-webhook/lib/views.ts",
+  ];
+
+  it("keeps deployed WhatsApp source free of common mojibake markers", () => {
+    for (const sourcePath of whatsappSources) {
+      const source = readFileSync(sourcePath, "utf8");
+      expect(source, sourcePath).not.toMatch(/ðŸ|Ã|Â|â|�/);
+    }
+  });
+
+  it("preserves emoji and WhatsApp markdown through plain text rendering and form encoding", () => {
+    const message: OutMessage = {
+      title: "SEVERITY",
+      lines: ["How serious is it?", "", "Status symbols: ✅ ❌ ⚠️ 📍 📱 🚨"],
+      options: [
+        { id: "low", label: "🟢 Minor" },
+        { id: "medium", label: "🟡 Moderate" },
+        { id: "high", label: "🟠 Serious" },
+        { id: "critical", label: "🔴 Emergency" },
+      ],
+      footer: "Reply with a number, or type *menu*.",
+    };
+
+    const rendered = renderText(message);
+    expect(rendered).toBe([
+      "*SEVERITY*",
+      "How serious is it?\n\nStatus symbols: ✅ ❌ ⚠️ 📍 📱 🚨",
+      "1. 🟢 Minor\n2. 🟡 Moderate\n3. 🟠 Serious\n4. 🔴 Emergency",
+      "Reply with a number, or type *menu*.",
+    ].join("\n\n"));
+    expect(rendered).not.toMatch(/ðŸ|Ã|Â|â|�/);
+
+    const encoded = new URLSearchParams({ Body: rendered });
+    expect(encoded.get("Body")).toBe(rendered);
+    expect(twiml(rendered)).toContain("encoding=\"UTF-8\"");
+    expect(twiml(rendered)).toContain("🟢 Minor");
   });
 });

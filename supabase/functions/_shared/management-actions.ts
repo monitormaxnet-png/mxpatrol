@@ -1,4 +1,4 @@
-﻿// Canonical management write service.
+// Canonical management write service.
 // Used by BOTH assistants:
 //  - Web Management AI  -> supabase/functions/management-actions (edge function)
 //  - WhatsApp Management AI -> supabase/functions/whatsapp-webhook/lib/flows.ts
@@ -219,7 +219,7 @@ export async function registerDevice(client: SupabaseClient, actor: ManagementAc
     throw new ManagementActionError("Enter the pairing code shown on the MX Patrol device, e.g. MX-48768");
   }
 
-  // Path A â€” a device record in this company already carries this code (admin-issued code).
+  // Path A - a device record in this company already carries this code (admin-issued code).
   const { data: existingDevice, error: existingError } = await client
     .from("devices")
     .select("id, device_identifier, device_name, pairing_status, pairing_expires_at, site_id")
@@ -261,7 +261,7 @@ export async function registerDevice(client: SupabaseClient, actor: ManagementAc
     return devicePairedResult(updated ?? existingDevice, site, deviceName, code);
   }
 
-  // Path B â€” the physical device published the code itself (device-initiated pairing request).
+  // Path B - the physical device published the code itself (device-initiated pairing request).
   const { data: request, error: requestError } = await client
     .from("device_pairing_requests")
     .select("id, pairing_code, device_identifier, device_metadata, status, expires_at, claimed_device_id")

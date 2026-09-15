@@ -1,4 +1,4 @@
-﻿import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, AlertTriangle, ArrowRight, Bell, Bot, CheckCircle2, ChevronDown, Clock3, Cpu, Lock, MapPin, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
@@ -811,7 +811,7 @@ function PatrolStatusOverview({ site, rows, node, loading }: { site: string; row
   return (
     <div>
       <p>Viewing: <b>{site}</b></p>
-      {loading ? <p className='mt-2'>Loading patrol statusâ€¦</p> : (
+      {loading ? <p className='mt-2'>Loading patrol status...</p> : (
         <div className='mt-3 flex flex-wrap gap-2'>
           {groups.map((group) => (
             <div key={group} className='min-w-[7.5rem] rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2'>
@@ -969,35 +969,35 @@ function PatrolList({ rows, variant }: { rows: AssistantPatrolRow[]; variant?: '
     const view = describePatrol(row);
     return <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
       <b>{view.patrol}</b>
-      <p className='text-slate-400'>{view.site} Â· {view.date}</p>
+      <p className='text-slate-400'>{view.site} · {view.date}</p>
       <p className='text-emerald-200'>Scheduled: {view.scheduledTime}{view.scheduledWindow ? ` (window ${view.scheduledWindow})` : ''}</p>
       <p className='text-slate-300'>Status: {variant === 'missed' ? 'Missed' : view.status}</p>
-      {variant === 'late' ? <p className='text-amber-200'>Actual start: {view.actualStart ?? 'not started'}{view.lateBy ? ` Â· Late by ${view.lateBy}` : ''}</p> : null}
-      {variant !== 'missed' ? <p className='text-slate-300'>Checkpoints: {view.checkpoints}{view.missedCheckpoints ? ` Â· ${view.missedCheckpoints} missed` : ''}</p> : null}
+      {variant === 'late' ? <p className='text-amber-200'>Actual start: {view.actualStart ?? 'not started'}{view.lateBy ? ` · Late by ${view.lateBy}` : ''}</p> : null}
+      {variant !== 'missed' ? <p className='text-slate-300'>Checkpoints: {view.checkpoints}{view.missedCheckpoints ? ` · ${view.missedCheckpoints} missed` : ''}</p> : null}
     </div>;
   })}</div>;
 }
 
 function MissedCheckpointList({ rows, loading }: { rows: MissedCheckpointRow[]; loading: boolean }) {
-  if (loading) return <p>Loading missed checkpointsâ€¦</p>;
+  if (loading) return <p>Loading missed checkpoints...</p>;
   if (!rows.length) return <p>No missed checkpoints for the active site.</p>;
   return <div className='space-y-2'>{rows.map((row) => {
     const session = row.patrol_sessions;
     return <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
       <b>{row.checkpoints?.name ?? row.checkpoint_name_snapshot ?? 'Checkpoint'}</b>
-      <p className='text-slate-400'>Patrol: {session?.patrol_routes?.name ?? 'Session'} Â· {session?.sites?.name ?? 'Site'}</p>
-      <p className='text-slate-300'>{assistantDate(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown date'} Â· Expected: {assistantTime(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown'}</p>
+      <p className='text-slate-400'>Patrol: {session?.patrol_routes?.name ?? 'Session'} · {session?.sites?.name ?? 'Site'}</p>
+      <p className='text-slate-300'>{assistantDate(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown date'} · Expected: {assistantTime(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown'}</p>
       <p className='text-rose-200'>Status: {String(row.status ?? 'missed')}</p>
     </div>;
   })}</div>;
 }
 
 function SavedReports({ jobs, loading }: { jobs: Array<{ id: string; report_type: string; status: string; date_range: string; created_at: string; sites?: { name: string } | null; ai_reports?: { summary_text: string | null; generated_at: string | null } | null }>; loading: boolean }) {
-  if (loading) return <p>Loading reportsâ€¦</p>;
+  if (loading) return <p>Loading reports...</p>;
   if (!jobs.length) return <p>No reports have been generated yet. Choose <b>Generate Patrol Report</b> to create one.</p>;
   return <div className='space-y-2'>{jobs.slice(0, 8).map((job) => <div key={job.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
     <b>{job.report_type.replace(/_/g, ' ')}</b>
-    <p className='text-slate-400'>{job.sites?.name ?? 'All sites'} Â· {job.date_range} Â· {job.status}</p>
+    <p className='text-slate-400'>{job.sites?.name ?? 'All sites'} · {job.date_range} · {job.status}</p>
     <p className='text-slate-400'>{assistantDate(job.ai_reports?.generated_at ?? job.created_at)} {assistantTime(job.ai_reports?.generated_at ?? job.created_at)}</p>
     {job.ai_reports?.summary_text ? <p className='mt-1 text-slate-200'>{job.ai_reports.summary_text.slice(0, 400)}</p> : null}
   </div>)}</div>;
@@ -1021,9 +1021,9 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
       return (rows ?? []) as any[];
     },
   });
-  if (isLoading) return <p>Loadingâ€¦</p>;
+  if (isLoading) return <p>Loading...</p>;
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
-  return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` Â· ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` Â· ${row.frequency_type}` : ''}</p></div>)}</div>;
+  return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` · ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` · ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
 
 

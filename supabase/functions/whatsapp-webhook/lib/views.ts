@@ -775,6 +775,7 @@ export async function patrolSessionDrilldownView(
   identity: Identity,
   siteId: string | null,
   kind: 'late' | 'missed',
+  siteName?: string | null,
 ): Promise<OutMessage> {
   const from = periodStart('today').toISOString();
   const to = periodEnd('today').toISOString();
@@ -792,7 +793,7 @@ export async function patrolSessionDrilldownView(
     siteId,
   );
   const rows = ((data ?? []) as any[]).sort((a, b) => String(patrolSummaryName(a)).localeCompare(String(patrolSummaryName(b))) || new Date(a.scheduled_start ?? 0).getTime() - new Date(b.scheduled_start ?? 0).getTime());
-  const titleSite = siteId ? (rows[0] ? siteSummaryName(rows[0]) : 'Selected site') : 'ALL SITES';
+  const titleSite = siteId ? (rows[0] ? siteSummaryName(rows[0]) : siteName ?? 'Selected site') : 'ALL SITES';
   const title = (kind === 'late' ? 'LATE SESSIONS - ' : 'MISSED SESSIONS - ') + titleSite;
   const parent = kind === 'late' ? 'late_patrols' : 'missed_patrols';
   const options = [{ id: 'reports', label: 'Reports' }, { id: parent, label: kind === 'late' ? 'Late Patrols' : 'Missed Patrols' }, { id: 'back', label: 'Back' }];

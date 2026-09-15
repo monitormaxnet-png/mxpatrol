@@ -290,7 +290,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
     case "missed_sessions": {
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
-      return await patrolSessionDrilldownView(ctx.client, ctx.identity, siteId, intent.action === "late_sessions" ? "late" : "missed");
+      return await patrolSessionDrilldownView(ctx.client, ctx.identity, siteId, intent.action === "late_sessions" ? "late" : "missed", ctx.session.current_site_name);
     }
 
     case "missed_checkpoints": {
@@ -432,7 +432,7 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   if (id === "late_sessions" || id === "missed_sessions") {
     const { siteId, ask } = await ensureSiteContext(ctx);
     if (ask) return ask;
-    return await patrolSessionDrilldownView(ctx.client, ctx.identity, siteId, id === "late_sessions" ? "late" : "missed");
+    return await patrolSessionDrilldownView(ctx.client, ctx.identity, siteId, id === "late_sessions" ? "late" : "missed", ctx.session.current_site_name);
   }
 
   if (id === "completed_patrols" || id === "incomplete_patrols" || id === "late_patrols" || id === "missed_patrols") {

@@ -90,6 +90,16 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
     expect(resolveMenuChoice(session(), "6")).toBeNull();
     expect(resolveMenuChoice(withMenu("management_operations"), "99")).toBeNull();
   });
+
+  it('keeps the active site name in empty drill-down headings', async () => {
+    const emptyClient = { from: () => ({ select() { return this; }, in() { return this; }, gte() { return this; }, lte() { return this; }, order() { return this; }, limit() { return this; }, eq() { return this; }, then(resolve: (value: { data: unknown[] }) => unknown) { return resolve({ data: [] }); } }) } as any;
+    const late = await patrolSessionDrilldownView(emptyClient, identity, 'site-1', 'late', 'Airport Junction');
+    expect(late.title).toBe('LATE SESSIONS - Airport Junction');
+    expect(late.lines.join('\n')).toContain('No late patrol sessions found for the selected period.');
+
+    const missed = await patrolSessionDrilldownView(emptyClient, identity, 'site-1', 'missed', 'Airport Junction');
+    expect(missed.title).toBe('MISSED SESSIONS - Airport Junction');
+  });
 });
 
 describe("WhatsApp Patrol Status consolidates the four outcomes", () => {

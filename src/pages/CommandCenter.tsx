@@ -56,7 +56,7 @@ type MissedCheckpointRow = {
 };
 
 type DashboardDevice = { id: string; status?: string | null; device_identifier?: string | null; device_name?: string | null; last_seen_at?: string | null; site_id?: string | null };
-type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | null; title?: string | null; message?: string | null; created_at?: string | null; site_id?: string | null };
+type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | null; title?: string | null; message?: string | null; created_at?: string | null; site_id?: string | null; checkpoint_id?: string | null };
 type DashboardIncident = { id: string; resolved?: boolean | null; severity?: string | null; title?: string | null; incident_type?: string | null; created_at?: string | null; site_id?: string | null };
 type DashboardScan = { id: string; scanned_at?: string | null; tag_status?: string | null; device_identifier?: string | null; checkpoints?: { name?: string | null } | null; guards?: { full_name?: string | null } | null };
 type DatalogSubmission = { id: string; submitted_at?: string | null; datalog_value?: string | null; responses_json?: any; site_id?: string | null; checkpoint_id?: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };

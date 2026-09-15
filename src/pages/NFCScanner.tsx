@@ -428,9 +428,9 @@ const NFCScanner = () => {
     setPendingDataLog(null);
     setDataLogOpen(false);
     setLastError(null);
-    setScannerStatus(nfcSupported ? "scanning" : "idle");
+    // The scan-resume effect reacts to pendingDataLog clearing and restarts NFC.
     toast.info("Data log skipped - you can keep scanning");
-  }, [submittingDataLog, nfcSupported]);
+  }, [submittingDataLog]);
 
   const addToLog = useCallback((result: ScanValidationResult, valid: boolean) => {
     console.debug(`[NFCScanner] session log entry ${JSON.stringify({

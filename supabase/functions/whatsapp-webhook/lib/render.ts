@@ -1,5 +1,9 @@
 import type { OutMessage } from "./types.ts";
 
+// Deno runtime global — declared here so this module also typechecks in the
+// web/Vitest TypeScript program (which has no Deno types).
+declare const Deno: { env: { get(name: string): string | undefined } };
+
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 
 /** Plain-text fallback rendering: numbered options that users can reply to. */

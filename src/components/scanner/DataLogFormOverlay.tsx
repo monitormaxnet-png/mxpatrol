@@ -12,7 +12,7 @@ type Props = {
   onCancel?: () => void;
 };
 
-export const DataLogFormOverlay = ({ form, submitting, onSubmit }: Props) => {
+export const DataLogFormOverlay = ({ form, submitting, onSubmit, onCancel }: Props) => {
   const field = useMemo(() => [...form.fields].sort((a, b) => a.sequence_order - b.sequence_order)[0], [form.fields]);
   const label = (field?.label || form.name || "Datalog").trim();
   const [value, setValue] = useState("");
@@ -49,6 +49,11 @@ export const DataLogFormOverlay = ({ form, submitting, onSubmit }: Props) => {
           {submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
           SUBMIT
         </Button>
+        {onCancel ? (
+          <Button type="button" variant="outline" disabled={submitting} onClick={onCancel}>
+            LATER
+          </Button>
+        ) : null}
       </div>
     </section>
   );

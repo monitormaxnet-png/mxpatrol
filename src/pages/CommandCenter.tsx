@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+﻿import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, AlertTriangle, ArrowRight, Bell, Bot, CheckCircle2, ChevronDown, Clock3, Cpu, Lock, MapPin, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
@@ -125,12 +125,11 @@ export default function CommandCenter() {
   });
 
   const ownerCompanySites = (platformSites.data ?? []) as AssistantSite[];
-  const availableSites = (isPlatformOwner && selectedCompanyId && ownerCompanySites.length
-    ? ownerCompanySites
-    : sites) as AssistantSite[];
+  const availableSites = (isPlatformOwner ? ownerCompanySites : sites) as AssistantSite[];
   const activeSite = availableSites.find((site) => site.id === state.activeSiteId) ?? availableSites[0] ?? null;
   const selectedSiteId = activeSite?.id ?? null;
   const selectedSite = activeSite?.name ?? 'No site assigned';
+  const ownerScoped = isPlatformOwner && !!selectedCompanyId;
   const mode: AssistantMode = state.mode;
 
   const devices = useDevices(selectedSiteId ?? 'all');
@@ -141,12 +140,13 @@ export default function CommandCenter() {
   const reportJobs = useReportJobs();
   const scanCountToday = useQuery({
     queryKey: ['dashboard_scan_count_today', selectedSiteId],
-    enabled: !!user,
+    enabled: !!user && (!isPlatformOwner || !!selectedCompanyId),
     queryFn: async () => {
       let query = supabase
         .from('scan_logs')
         .select('id', { count: 'exact', head: true })
         .gte('scanned_at', startOfDay(0).toISOString());
+      if (ownerScoped && selectedCompanyId) query = query.eq('company_id', selectedCompanyId);
       if (selectedSiteId) query = query.eq('site_id', selectedSiteId);
       const { count, error } = await query;
       if (error) throw error;
@@ -237,13 +237,51 @@ export default function CommandCenter() {
     },
   });
 
-  const siteDevices = (devices.data ?? []) as DashboardDevice[];
-  const siteAlerts = ((alerts.data ?? []) as DashboardAlert[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
-  const siteIncidents = ((incidents.data ?? []) as DashboardIncident[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
-  const sitePatrols = patrols.data ?? [];
-  const siteScans = (scans.data ?? []) as DashboardScan[];
+  const ownerScopedData = useQuery({
+    queryKey: ['assistant_owner_scoped_dashboard', selectedCompanyId, selectedSiteId],
+    enabled: !!user && ownerScoped && !!selectedCompanyId && !!selectedSiteId,
+    queryFn: async () => {
+      const companyId = selectedCompanyId!;
+      const siteId = selectedSiteId!;
+      const [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows] = await Promise.all([
+        supabase.from('devices').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('last_seen_at', { ascending: false }).limit(100),
+        supabase.from('alerts').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
+        supabase.from('incidents').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
+        supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId).eq('site_id', siteId).order('scanned_at', { ascending: false }).limit(200),
+        supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('sort_order').limit(200),
+        supabase.from('patrol_sessions').select('id, status, scheduled_start, scheduled_end, actual_start, finalized_at, checkpoint_completed, checkpoint_total, site_id, patrol_routes(name), patrol_templates(name), sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('scheduled_start', { ascending: false }).limit(100),
+        supabase.from('data_log_submissions').select('id, submitted_at, datalog_value, responses_json, site_id, checkpoint_id, sites(name), checkpoints(name, data_log_label)').eq('company_id', companyId).eq('site_id', siteId).order('submitted_at', { ascending: false }).limit(100),
+        supabase.from('patrol_routes').select('id, name').eq('company_id', companyId).eq('site_id', siteId).eq('status', 'active').order('name'),
+        supabase.from('data_log_forms').select('id, name, site_id, data_log_form_fields(id)').eq('company_id', companyId).eq('is_active', true).or(`site_id.is.null,site_id.eq.${siteId}`).order('name'),
+      ]);
+      const results = [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows];
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw failed.error;
+      return {
+        devices: deviceRows.data ?? [],
+        alerts: alertRows.data ?? [],
+        incidents: incidentRows.data ?? [],
+        scans: scanRows.data ?? [],
+        checkpoints: checkpointRows.data ?? [],
+        patrols: ((patrolRows.data ?? []) as unknown as SessionRow[]).map(named),
+        dataLogs: dataLogRows.data ?? [],
+        routes: routeRows.data ?? [],
+        forms: formRows.data ?? [],
+      };
+    },
+  });
+
+  const ownerData = ownerScoped ? ownerScopedData.data : null;
+  const siteDevices = (ownerData?.devices ?? devices.data ?? []) as DashboardDevice[];
+  const siteAlerts = ownerData ? (ownerData.alerts as DashboardAlert[]) : ((alerts.data ?? []) as DashboardAlert[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
+  const siteIncidents = ownerData ? (ownerData.incidents as DashboardIncident[]) : ((incidents.data ?? []) as DashboardIncident[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
+  const sitePatrols = ownerData?.patrols ?? patrols.data ?? [];
+  const siteScans = (ownerData?.scans ?? scans.data ?? []) as DashboardScan[];
+  const siteCheckpoints = (ownerData?.checkpoints ?? checkpoints.data ?? []) as any[];
+  const siteRoutes = (ownerData?.routes ?? configOptions.data?.routes ?? []) as any[];
+  const siteForms = (ownerData?.forms ?? configOptions.data?.forms ?? []) as any[];
   const siteReportJobs = (reportJobs.data ?? []).filter((job) => !selectedSiteId || job.site_id === selectedSiteId || job.site_id === null);
-  const siteDataLogs = dataLogSubmissions.data ?? [];
+  const siteDataLogs = (ownerData?.dataLogs ?? dataLogSubmissions.data ?? []) as DatalogSubmission[];
 
   useEffect(() => {
     if (!shouldAutoScrollRef.current && !forceNextScrollRef.current) return;
@@ -265,9 +303,9 @@ export default function CommandCenter() {
     siteId: selectedSiteId,
     siteName: selectedSite,
     canManage,
-    checkpoints: ((checkpoints.data ?? []) as any[]).map((row) => ({ id: String(row.id), name: String(row.name) })),
-    routes: (configOptions.data?.routes ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name) })),
-    forms: (configOptions.data?.forms ?? [])
+    checkpoints: siteCheckpoints.map((row: any) => ({ id: String(row.id), name: String(row.name) })),
+    routes: siteRoutes.map((row: any) => ({ id: String(row.id), name: String(row.name) })),
+    forms: siteForms
       .map((row: any) => ({
         id: String(row.id),
         name: String(row.name),
@@ -384,8 +422,8 @@ export default function CommandCenter() {
     if (action === 'incidents_open') return addAssistant('OPEN INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => !row.resolved)} />);
     if (action === 'incidents_high') return addAssistant('HIGH PRIORITY INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => ['high', 'critical'].includes(String(row.severity)))} />);
     if (action === 'incidents_resolved') return addAssistant('RESOLVED INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => row.resolved)} />);
-    if (action === 'checkpoints') return addAssistant('CHECKPOINTS - ' + selectedSite, <CheckpointList rows={checkpoints.data ?? []} />);
-    if (action === 'pending_nfc') return addAssistant('PENDING NFC ASSIGNMENT - ' + selectedSite, <CheckpointList rows={(checkpoints.data ?? []).filter((row: any) => !row.nfc_tag_id)} />);
+    if (action === 'checkpoints') return addAssistant('CHECKPOINTS - ' + selectedSite, <CheckpointList rows={siteCheckpoints} />);
+    if (action === 'pending_nfc') return addAssistant('PENDING NFC ASSIGNMENT - ' + selectedSite, <CheckpointList rows={siteCheckpoints.filter((row: any) => !row.nfc_tag_id)} />);
     if (action === 'patrol_status') return showMenu(state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status');
     if (action === 'completed_patrols') return addAssistant('COMPLETED PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'completed')} />);
     if (action === 'incomplete_patrols') return addAssistant('INCOMPLETE PATROLS - ' + selectedSite, <PatrolList rows={filterPatrols(sitePatrols, 'incomplete')} variant='incomplete' />);
@@ -403,7 +441,7 @@ export default function CommandCenter() {
       const period = action.slice(7) as keyof typeof PERIODS;
       if (PERIODS[period]) return runReportPeriod(period);
       if (action.startsWith('report:device_security:') && !isPlatformOwner) return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can access Device Security Reports.</p>);
-      return addAssistant(reportTitle(action) + ' - ' + selectedSite, <AssistantReportPanel action={action} site={selectedSite} scans={siteScans} patrols={sitePatrols} alerts={siteAlerts} incidents={siteIncidents} devices={siteDevices} checkpoints={(checkpoints.data ?? []) as any[]} routes={configOptions.data?.routes ?? []} forms={configOptions.data?.forms ?? []} dataLogs={siteDataLogs} loading={scans.isLoading || patrols.isLoading || devices.isLoading || alerts.isLoading || incidents.isLoading || dataLogSubmissions.isLoading} />);
+      return addAssistant(reportTitle(action) + ' - ' + selectedSite, <AssistantReportPanel action={action} site={selectedSite} scans={siteScans} patrols={sitePatrols} alerts={siteAlerts} incidents={siteIncidents} devices={siteDevices} checkpoints={siteCheckpoints} routes={siteRoutes} forms={siteForms} dataLogs={siteDataLogs} loading={ownerScopedData.isLoading || scans.isLoading || patrols.isLoading || devices.isLoading || alerts.isLoading || incidents.isLoading || dataLogSubmissions.isLoading} />);
     }
     if (action === 'saved_reports') return addAssistant('SAVED REPORTS - ' + selectedSite, <SavedReports jobs={siteReportJobs} loading={reportJobs.isLoading} />);
     if (action === 'generate_report') {
@@ -510,12 +548,24 @@ export default function CommandCenter() {
           <div className='flex min-h-14 items-center justify-center rounded-md bg-black/50 px-3'>
             <TTechMxPatrolLogo variant='header' priority className='w-44' />
           </div>
-          <div className='grid gap-3 lg:grid-cols-[minmax(15rem,1fr)_minmax(13rem,0.8fr)_auto_auto] lg:items-center'>
+          <div className='grid gap-3 lg:grid-cols-[minmax(13rem,0.9fr)_minmax(15rem,1fr)_minmax(13rem,0.8fr)_auto_auto] lg:items-center'>
+            {isPlatformOwner ? <label className='flex min-w-0 items-center gap-3 rounded-md border border-emerald-400/20 bg-slate-950/70 px-3 py-2 text-sm text-slate-300'>
+              <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-400/25 text-emerald-300'><Users className='h-4 w-4' /></span>
+              <span className='min-w-0 flex-1'>
+                <span className='block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500'>Company</span>
+                <select value={selectedCompanyId ?? ''} onChange={(event) => { setSelectedCompanyId(event.target.value || null); setState((prev) => ({ ...prev, activeSiteId: null })); }} className='w-full bg-transparent text-base font-bold text-white outline-none'>
+                  <option value='' className='bg-slate-950'>Choose company</option>
+                  {(platformCompanies.data ?? []).map((company) => <option key={company.id} value={company.id} className='bg-slate-950'>{company.name}</option>)}
+                </select>
+              </span>
+              <ChevronDown className='h-4 w-4 text-slate-500' />
+            </label> : null}
             <label className='flex min-w-0 items-center gap-3 rounded-md border border-cyan-400/20 bg-slate-950/70 px-3 py-2 text-sm text-slate-300'>
               <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-400/25 text-cyan-300'><MapPin className='h-4 w-4' /></span>
               <span className='min-w-0 flex-1'>
                 <span className='block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500'>Active Site</span>
-                <select value={selectedSiteId ?? ''} onChange={(event) => setState((prev) => ({ ...prev, activeSiteId: event.target.value }))} className='w-full bg-transparent text-base font-bold text-white outline-none'>
+                <select value={selectedSiteId ?? ''} disabled={isPlatformOwner && !selectedCompanyId} onChange={(event) => setState((prev) => ({ ...prev, activeSiteId: event.target.value || null }))} className='w-full bg-transparent text-base font-bold text-white outline-none disabled:text-slate-500'>
+                  <option value='' className='bg-slate-950'>{isPlatformOwner && !selectedCompanyId ? 'Choose company first' : availableSites.length ? 'Choose site' : 'No sites'}</option>
                   {availableSites.map((site) => <option key={site.id} value={site.id} className='bg-slate-950'>{site.name}</option>)}
                 </select>
               </span>
@@ -761,7 +811,7 @@ function PatrolStatusOverview({ site, rows, node, loading }: { site: string; row
   return (
     <div>
       <p>Viewing: <b>{site}</b></p>
-      {loading ? <p className='mt-2'>Loading patrol status…</p> : (
+      {loading ? <p className='mt-2'>Loading patrol statusâ€¦</p> : (
         <div className='mt-3 flex flex-wrap gap-2'>
           {groups.map((group) => (
             <div key={group} className='min-w-[7.5rem] rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2'>
@@ -919,35 +969,35 @@ function PatrolList({ rows, variant }: { rows: AssistantPatrolRow[]; variant?: '
     const view = describePatrol(row);
     return <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
       <b>{view.patrol}</b>
-      <p className='text-slate-400'>{view.site} · {view.date}</p>
+      <p className='text-slate-400'>{view.site} Â· {view.date}</p>
       <p className='text-emerald-200'>Scheduled: {view.scheduledTime}{view.scheduledWindow ? ` (window ${view.scheduledWindow})` : ''}</p>
       <p className='text-slate-300'>Status: {variant === 'missed' ? 'Missed' : view.status}</p>
-      {variant === 'late' ? <p className='text-amber-200'>Actual start: {view.actualStart ?? 'not started'}{view.lateBy ? ` · Late by ${view.lateBy}` : ''}</p> : null}
-      {variant !== 'missed' ? <p className='text-slate-300'>Checkpoints: {view.checkpoints}{view.missedCheckpoints ? ` · ${view.missedCheckpoints} missed` : ''}</p> : null}
+      {variant === 'late' ? <p className='text-amber-200'>Actual start: {view.actualStart ?? 'not started'}{view.lateBy ? ` Â· Late by ${view.lateBy}` : ''}</p> : null}
+      {variant !== 'missed' ? <p className='text-slate-300'>Checkpoints: {view.checkpoints}{view.missedCheckpoints ? ` Â· ${view.missedCheckpoints} missed` : ''}</p> : null}
     </div>;
   })}</div>;
 }
 
 function MissedCheckpointList({ rows, loading }: { rows: MissedCheckpointRow[]; loading: boolean }) {
-  if (loading) return <p>Loading missed checkpoints…</p>;
+  if (loading) return <p>Loading missed checkpointsâ€¦</p>;
   if (!rows.length) return <p>No missed checkpoints for the active site.</p>;
   return <div className='space-y-2'>{rows.map((row) => {
     const session = row.patrol_sessions;
     return <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
       <b>{row.checkpoints?.name ?? row.checkpoint_name_snapshot ?? 'Checkpoint'}</b>
-      <p className='text-slate-400'>Patrol: {session?.patrol_routes?.name ?? 'Session'} · {session?.sites?.name ?? 'Site'}</p>
-      <p className='text-slate-300'>{assistantDate(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown date'} · Expected: {assistantTime(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown'}</p>
+      <p className='text-slate-400'>Patrol: {session?.patrol_routes?.name ?? 'Session'} Â· {session?.sites?.name ?? 'Site'}</p>
+      <p className='text-slate-300'>{assistantDate(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown date'} Â· Expected: {assistantTime(row.scheduled_at ?? session?.scheduled_start) ?? 'Unknown'}</p>
       <p className='text-rose-200'>Status: {String(row.status ?? 'missed')}</p>
     </div>;
   })}</div>;
 }
 
 function SavedReports({ jobs, loading }: { jobs: Array<{ id: string; report_type: string; status: string; date_range: string; created_at: string; sites?: { name: string } | null; ai_reports?: { summary_text: string | null; generated_at: string | null } | null }>; loading: boolean }) {
-  if (loading) return <p>Loading reports…</p>;
+  if (loading) return <p>Loading reportsâ€¦</p>;
   if (!jobs.length) return <p>No reports have been generated yet. Choose <b>Generate Patrol Report</b> to create one.</p>;
   return <div className='space-y-2'>{jobs.slice(0, 8).map((job) => <div key={job.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
     <b>{job.report_type.replace(/_/g, ' ')}</b>
-    <p className='text-slate-400'>{job.sites?.name ?? 'All sites'} · {job.date_range} · {job.status}</p>
+    <p className='text-slate-400'>{job.sites?.name ?? 'All sites'} Â· {job.date_range} Â· {job.status}</p>
     <p className='text-slate-400'>{assistantDate(job.ai_reports?.generated_at ?? job.created_at)} {assistantTime(job.ai_reports?.generated_at ?? job.created_at)}</p>
     {job.ai_reports?.summary_text ? <p className='mt-1 text-slate-200'>{job.ai_reports.summary_text.slice(0, 400)}</p> : null}
   </div>)}</div>;
@@ -971,10 +1021,13 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
       return (rows ?? []) as any[];
     },
   });
-  if (isLoading) return <p>Loading…</p>;
+  if (isLoading) return <p>Loadingâ€¦</p>;
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
-  return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` · ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` · ${row.frequency_type}` : ''}</p></div>)}</div>;
+  return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` Â· ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` Â· ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
+
+
 
 
 

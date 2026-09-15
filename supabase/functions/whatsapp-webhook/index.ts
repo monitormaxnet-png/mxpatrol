@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { normalizePhone, type Identity, type OutMessage, type SessionRow, type SiteRow } from "./lib/types.ts";
 import { emptyTwiml, parseInboundWhatsAppRequest, type InboundWhatsAppMessage } from "./lib/request.ts";
@@ -422,9 +422,12 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   }
 
   if (id.startsWith("report:")) {
-    const { siteId, ask } = await ensureSiteContext(ctx);
+    const { ask } = await ensureSiteContext(ctx);
     if (ask) return ask;
-    return await reportCategorySummary(ctx.client, ctx.identity, siteId, id);
+    ctx.session = await patchSession(ctx.client, ctx.session, {
+      temporary_data: { ...(ctx.session.temporary_data ?? {}), pending_report_action: id },
+    });
+    return reportDateRangeMenu(id);
   }
 
   if (id === "back") {
@@ -545,6 +548,15 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   if (id === "today" || id === "yesterday" || id === "week") {
     const { siteId, ask } = await ensureSiteContext(ctx);
     if (ask) return ask;
+    const pendingReportAction = typeof ctx.session.temporary_data?.pending_report_action === "string"
+      ? ctx.session.temporary_data.pending_report_action
+      : null;
+    if (pendingReportAction?.startsWith("report:")) {
+      const nextTemporary = { ...(ctx.session.temporary_data ?? {}) };
+      delete nextTemporary.pending_report_action;
+      ctx.session = await patchSession(ctx.client, ctx.session, { temporary_data: nextTemporary });
+      return await reportCategorySummary(ctx.client, ctx.identity, siteId, pendingReportAction, id as "today" | "yesterday" | "week");
+    }
     return await reportSummary(ctx.client, ctx.identity, siteId, id as "today" | "yesterday" | "week");
   }
 
@@ -650,6 +662,7 @@ serve(async (req) => {
     );
   }
 });
+
 
 
 

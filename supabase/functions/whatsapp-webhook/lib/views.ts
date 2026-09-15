@@ -39,6 +39,22 @@ function reportRootOptions(identity: Identity) {
 function reportMenu(title: string, menuKey: string, options: Array<{ id: string; label: string }>): OutMessage {
   return { title, menuKey, lines: ["Choose a report category."], options };
 }
+
+export function reportDateRangeMenu(action: string): OutMessage {
+  const [, category, report] = action.split(":");
+  const title = (category + " " + report).replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return {
+    title: title.toUpperCase(),
+    menuKey: "report_date_range",
+    lines: ["Choose a date range for this report."],
+    options: [
+      { id: "today", label: "Today" },
+      { id: "yesterday", label: "Yesterday" },
+      { id: "week", label: "This Week" },
+      { id: "back", label: "Back" },
+    ],
+  };
+}
 function siteFilter<T>(query: any, identity: Identity, siteId: string | null) {
   let next = query.eq("company_id", identity.company_id);
   if (siteId) next = next.eq("site_id", siteId);
@@ -868,15 +884,17 @@ export async function secureDeviceInfo(client: SupabaseClient, identity: Identit
 }
 
 
-export async function reportCategorySummary(client: SupabaseClient, identity: Identity, siteId: string | null, action: string): Promise<OutMessage> {
+export async function reportCategorySummary(client: SupabaseClient, identity: Identity, siteId: string | null, action: string, period: "today" | "yesterday" | "week" = "week"): Promise<OutMessage> {
   if (action.startsWith("report:device_security:") && identity.platformRole !== "owner") return ownerOnlyDenial();
   const [, category, report] = action.split(":");
   const title = (category + " " + report).replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
-  const windowFrom = periodStart("week").toISOString();
-  const { data: scans } = await siteFilter<any>(client.from("scan_logs").select("id, tag_status, device_identifier, scanned_at, checkpoints(name)").gte("scanned_at", windowFrom).order("scanned_at", { ascending: false }).limit(200), identity, siteId);
-  const { data: sessions } = await siteFilter<any>(client.from("patrol_sessions").select("id, status, scheduled_start, checkpoint_completed, checkpoint_total, patrol_routes(name)").gte("scheduled_start", windowFrom).order("scheduled_start", { ascending: false }).limit(100), identity, siteId);
-  const { data: alerts } = await siteFilter<any>(client.from("alerts").select("id, type, is_read, created_at, device_identifier").gte("created_at", windowFrom).order("created_at", { ascending: false }).limit(100), identity, siteId);
-  const { data: incidents } = await siteFilter<any>(client.from("incidents").select("id, resolved, severity, created_at, device_identifier").gte("created_at", windowFrom).order("created_at", { ascending: false }).limit(100), identity, siteId);
+  const windowFrom = periodStart(period).toISOString();
+  const windowTo = periodEnd(period).toISOString();
+  const periodLabel = period === "today" ? "today" : period === "yesterday" ? "yesterday" : "this week";
+  const { data: scans } = await siteFilter<any>(client.from("scan_logs").select("id, tag_status, device_identifier, scanned_at, checkpoints(name)").gte("scanned_at", windowFrom).lte("scanned_at", windowTo).order("scanned_at", { ascending: false }).limit(200), identity, siteId);
+  const { data: sessions } = await siteFilter<any>(client.from("patrol_sessions").select("id, status, scheduled_start, checkpoint_completed, checkpoint_total, patrol_routes(name)").gte("scheduled_start", windowFrom).lte("scheduled_start", windowTo).order("scheduled_start", { ascending: false }).limit(100), identity, siteId);
+  const { data: alerts } = await siteFilter<any>(client.from("alerts").select("id, type, is_read, created_at, device_identifier").gte("created_at", windowFrom).lte("created_at", windowTo).order("created_at", { ascending: false }).limit(100), identity, siteId);
+  const { data: incidents } = await siteFilter<any>(client.from("incidents").select("id, resolved, severity, created_at, device_identifier").gte("created_at", windowFrom).lte("created_at", windowTo).order("created_at", { ascending: false }).limit(100), identity, siteId);
   const { data: devices } = await siteFilter<any>(client.from("devices").select("id, status, device_identifier, app_version, minimum_app_version, secure_mode_enabled, secure_mode_status, kiosk_active, device_owner_active, developer_mode_detected, adb_detected"), identity, siteId);
   const scanRows = scans ?? [];
   const patrolRows = sessions ?? [];
@@ -910,7 +928,7 @@ export async function reportCategorySummary(client: SupabaseClient, identity: Id
   }
 
   if (category === "scan_investigations") {
-    const { data: investigations } = await siteFilter<any>(client.from("scan_investigations").select("id, investigation_type, registered_status, status, reason, scanned_at, device_identifier").order("scanned_at", { ascending: false }).limit(100), identity, siteId);
+    const { data: investigations } = await siteFilter<any>(client.from("scan_investigations").select("id, investigation_type, registered_status, status, reason, scanned_at, device_identifier").gte("scanned_at", windowFrom).lte("scanned_at", windowTo).order("scanned_at", { ascending: false }).limit(100), identity, siteId);
     const investigationRows = (investigations ?? []) as any[];
     const pending = investigationRows.filter((row: any) => row.status === "pending").length;
     const resolved = investigationRows.filter((row: any) => row.status === "resolved").length;
@@ -947,7 +965,7 @@ export async function reportCategorySummary(client: SupabaseClient, identity: Id
   };
 
   const lines = [
-    `Period: last 7 days`,
+    `Period: ${periodLabel}`,
     `Site: ${siteId ? "selected site" : "allowed sites"}`,
   ];
 
@@ -1242,6 +1260,8 @@ export function backTarget(session: SessionRow): string {
   }
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }
+
+
 
 
 

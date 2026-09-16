@@ -13,6 +13,8 @@ import {
   userModeMenu,
   patrolStatusOverview,
   reportPeriodMenu,
+  reportDateRangeMenu,
+  reportCategorySummary,
   resolveMenuChoice,
 } from "../../supabase/functions/whatsapp-webhook/lib/views";
 import { keywordIntent } from "../../supabase/functions/whatsapp-webhook/lib/askmx";
@@ -306,6 +308,69 @@ describe("WhatsApp reports category menus", () => {
 });
 
 
+
+describe("WhatsApp report date-range drill-downs", () => {
+  function reportClient(tables: Record<string, unknown[]>) {
+    const calls: Array<{ table: string; method: string; args: unknown[] }> = [];
+    const client = {
+      from(table: string) {
+        const query: any = {
+          select(...args: unknown[]) { calls.push({ table, method: "select", args }); return query; },
+          eq(...args: unknown[]) { calls.push({ table, method: "eq", args }); return query; },
+          in(...args: unknown[]) { calls.push({ table, method: "in", args }); return query; },
+          gte(...args: unknown[]) { calls.push({ table, method: "gte", args }); return query; },
+          lte(...args: unknown[]) { calls.push({ table, method: "lte", args }); return query; },
+          order(...args: unknown[]) { calls.push({ table, method: "order", args }); return query; },
+          limit(...args: unknown[]) { calls.push({ table, method: "limit", args }); return query; },
+          then(resolve: (value: { data: unknown[] }) => unknown) { return resolve({ data: tables[table] ?? [] }); },
+        };
+        return query;
+      },
+    };
+    return { client, calls };
+  }
+
+  it("asks for a date range and allows managers to change site before running a report", () => {
+    const menu = reportDateRangeMenu("report:patrols:summary");
+    expect(menu.menuKey).toBe("report_date_range");
+    expect((menu.options ?? []).map((option) => option.id)).toEqual(["today", "yesterday", "week", "change_site", "back"]);
+  });
+
+  it("builds checkpoint scan drill-downs from scan_logs for the selected date range and site", async () => {
+    const { client, calls } = reportClient({
+      scan_logs: [
+        { id: "scan-1", tag_status: "registered", device_identifier: "RG360-01", scanned_at: "2026-09-16T08:00:00Z", checkpoints: { name: "Main Gate" } },
+        { id: "scan-2", tag_status: "duplicate", device_identifier: "RG360-02", scanned_at: "2026-09-16T09:00:00Z", checkpoints: { name: "Warehouse" } },
+      ],
+    });
+
+    const view = await reportCategorySummary(client as any, identity, "site-1", "report:checkpoint_scans:site_time", "today");
+
+    expect(view.lines.join("\n")).toContain("Checkpoint scans: 2");
+    expect(view.lines.join("\n")).toContain("Main Gate");
+    expect(calls).toContainEqual({ table: "scan_logs", method: "gte", args: ["scanned_at", expect.any(String)] });
+    expect(calls).toContainEqual({ table: "scan_logs", method: "lte", args: ["scanned_at", expect.any(String)] });
+    expect(calls).toContainEqual({ table: "scan_logs", method: "eq", args: ["site_id", "site-1"] });
+  });
+
+  it("builds patrol report drill-downs from patrol_sessions for the selected date range and site", async () => {
+    const { client, calls } = reportClient({
+      patrol_sessions: [
+        { id: "p1", status: "completed", scheduled_start: "2026-09-16T08:00:00Z", checkpoint_completed: 4, checkpoint_total: 4, patrol_routes: { name: "Gate Patrol" } },
+        { id: "p2", status: "late_start", scheduled_start: "2026-09-16T09:00:00Z", checkpoint_completed: 2, checkpoint_total: 4, patrol_routes: { name: "Perimeter" } },
+        { id: "p3", status: "missed", scheduled_start: "2026-09-16T10:00:00Z", checkpoint_completed: 0, checkpoint_total: 4, patrol_routes: { name: "Warehouse" } },
+      ],
+    });
+
+    const view = await reportCategorySummary(client as any, identity, "site-1", "report:patrols:summary", "week");
+
+    expect(view.lines.join("\n")).toContain("Patrol sessions: 3 (1 completed, 1 late/delayed, 1 missed)");
+    expect(view.lines.join("\n")).toContain("Gate Patrol");
+    expect(calls).toContainEqual({ table: "patrol_sessions", method: "gte", args: ["scheduled_start", expect.any(String)] });
+    expect(calls).toContainEqual({ table: "patrol_sessions", method: "lte", args: ["scheduled_start", expect.any(String)] });
+    expect(calls).toContainEqual({ table: "patrol_sessions", method: "eq", args: ["site_id", "site-1"] });
+  });
+});
 
 describe("WhatsApp text encoding guardrails", () => {
   const whatsappSources = [

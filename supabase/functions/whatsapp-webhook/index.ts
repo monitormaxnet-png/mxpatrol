@@ -27,6 +27,7 @@ import {
   reportDateRangeMenu,
   reportSummary,
   reportCategorySummary,
+  reportDateRangeMenu,
   setupMenu,
   secureDeviceInfo,
   secureDeviceList,
@@ -449,11 +450,11 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   }
 
   if (id.startsWith("report:")) {
-    const { ask } = await ensureSiteContext(ctx);
-    if (ask) return ask;
     ctx.session = await patchSession(ctx.client, ctx.session, {
       temporary_data: { ...(ctx.session.temporary_data ?? {}), pending_report_action: id },
     });
+    const { ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
     return reportDateRangeMenu(id);
   }
 
@@ -478,6 +479,10 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
       current_site_name: site.name,
       site_scope: "single",
     });
+    const pendingReportAction = typeof ctx.session.temporary_data?.pending_report_action === "string"
+      ? ctx.session.temporary_data.pending_report_action
+      : null;
+    if (pendingReportAction?.startsWith("report:")) return reportDateRangeMenu(pendingReportAction);
     return await liveNow(ctx.client, ctx.identity, site.id);
   }
 

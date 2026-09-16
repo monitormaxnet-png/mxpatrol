@@ -51,6 +51,7 @@ export function reportDateRangeMenu(action: string): OutMessage {
       { id: "today", label: "Today" },
       { id: "yesterday", label: "Yesterday" },
       { id: "week", label: "This Week" },
+      { id: "change_site", label: "Change Site" },
       { id: "back", label: "Back" },
     ],
   };

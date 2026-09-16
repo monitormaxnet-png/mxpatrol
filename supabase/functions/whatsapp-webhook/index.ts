@@ -381,7 +381,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
 
     case "register_device":
     case "add_checkpoint":
-    case "create_patrol"
+    case "create_patrol":
     case "authorize_whatsapp":
     case "revoke_whatsapp_access": {
       if (!ctx.identity.canManage) {

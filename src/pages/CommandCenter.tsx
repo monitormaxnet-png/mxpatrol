@@ -297,7 +297,10 @@ export default function CommandCenter() {
     queryKey: ["assistant_live_patrol_checkpoints", selectedSiteId, livePatrolIds.join("|")],
     enabled: livePatrolIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Cast the client: the generated types make this chained query
+      // instantiate infinitely deep for TypeScript.
+      const client = supabase as any;
+      const { data, error } = await client
         .from("patrol_session_checkpoints")
         .select("id, patrol_session_id, status, scheduled_at, scheduled_order, checkpoint_name_snapshot, scanned_at, checkpoints(name)")
         .in("patrol_session_id", livePatrolIds)

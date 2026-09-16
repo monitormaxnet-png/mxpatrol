@@ -38,15 +38,15 @@ const baseSession: SessionRow = {
 };
 
 describe("WhatsApp assistant role menus", () => {
-  it("lands normal users directly in USER MODE with site-scoped operational choices", () => {
+  it("lands normal users directly in TODAY'S OPERATIONS with site-scoped operational choices", () => {
     const menu = mainMenu(baseIdentity, baseSession);
-    expect(menu.title).toBe("USER MODE");
+    expect(menu.title).toBe("TODAY'S OPERATIONS");
     expect(menu.lines.join("\n")).toContain("Site: Airport Junction");
     expect(menu.options?.map((option) => option.id)).toEqual([
       "patrol_status",
       "missed_checkpoints",
-      "reports_data_logs",
-      "report_incident",
+      "incidents",
+      "datalog_today",
       "reports",
       "back",
     ]);

@@ -278,7 +278,8 @@ export default function CommandCenter() {
 
   const ownerData = ownerScoped ? ownerScopedData.data : null;
   const siteDevices = (ownerData?.devices ?? devices.data ?? []) as DashboardDevice[];
-  const siteAlerts = ownerData ? (ownerData.alerts as DashboardAlert[]) : ((alerts.data ?? []) as DashboardAlert[]).filter((row) => !selectedSiteId || checkpoints.data.some((cp) => cp.id === row.checkpoint_id));
+  const siteCheckpointIdSet = new Set(((checkpoints.data ?? []) as any[]).map((cp) => cp.id));
+  const siteAlerts = ownerData ? (ownerData.alerts as DashboardAlert[]) : ((alerts.data ?? []) as DashboardAlert[]).filter((row) => !selectedSiteId || !row.checkpoint_id || siteCheckpointIdSet.has(row.checkpoint_id));
   const siteIncidents = ownerData ? (ownerData.incidents as DashboardIncident[]) : ((incidents.data ?? []) as DashboardIncident[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
   const sitePatrols = ownerData?.patrols ?? patrols.data ?? [];
   const siteScans = (ownerData?.scans ?? scans.data ?? []) as DashboardScan[];

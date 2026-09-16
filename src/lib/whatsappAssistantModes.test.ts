@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { keywordIntent } from "../../supabase/functions/whatsapp-webhook/lib/askmx";
-import { mainMenu, managementMenu, secureDeviceMenu } from "../../supabase/functions/whatsapp-webhook/lib/views";
+import { mainMenu, managementMenu, secureDeviceMenu, WA_SUBMENUS } from "../../supabase/functions/whatsapp-webhook/lib/views";
 import { startFlow, startSecureDeviceAction } from "../../supabase/functions/whatsapp-webhook/lib/flows";
 import { resolveIdentity } from "../../supabase/functions/whatsapp-webhook/lib/identity";
 import type { Identity, SessionRow } from "../../supabase/functions/whatsapp-webhook/lib/types";

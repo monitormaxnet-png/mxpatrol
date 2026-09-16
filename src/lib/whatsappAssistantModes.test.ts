@@ -38,20 +38,26 @@ const baseSession: SessionRow = {
 };
 
 describe("WhatsApp assistant role menus", () => {
-  it("renders the USER menu with site-scoped operational choices", () => {
+  it("lands normal users directly in USER MODE with site-scoped operational choices", () => {
     const menu = mainMenu(baseIdentity, baseSession);
-    expect(menu.title).toBe("MX PATROL");
+    expect(menu.title).toBe("USER MODE");
     expect(menu.lines.join("\n")).toContain("Site: Airport Junction");
     expect(menu.options?.map((option) => option.id)).toEqual([
-      "live",
-      "attention",
       "patrol_status",
-      "devices",
-      "incidents",
+      "missed_checkpoints",
+      "reports_data_logs",
+      "report_incident",
       "reports",
-      "change_site",
-      "management",
+      "back",
     ]);
+  });
+
+  it("offers mode selection with preserved site context for management identities", () => {
+    const manager: Identity = { ...baseIdentity, role: "supervisor", canManage: true, canAcknowledge: true };
+    const menu = mainMenu(manager, baseSession);
+    expect(menu.title).toBe("MX PATROL");
+    expect(menu.lines.join("\n")).toContain("Site: Airport Junction");
+    expect(menu.options?.map((option) => option.id)).toEqual(["user", "management", "change_site", "help"]);
   });
 
   it("does not render management actions for normal users", () => {
@@ -63,25 +69,25 @@ describe("WhatsApp assistant role menus", () => {
   it("renders MANAGEMENT menu only for authorized management identities", () => {
     const identity: Identity = { ...baseIdentity, role: "supervisor", canManage: true, canAcknowledge: true };
     const menu = managementMenu(identity, { ...baseSession, last_menu: "management" });
-    expect(menu.title).toContain("MANAGEMENT");
+    expect(menu.title).toBe("MANAGEMENT MODE");
     expect(menu.options?.map((option) => option.id)).toContain("management_devices");
     expect(menu.options?.map((option) => option.id)).toContain("management_checkpoints");
-    expect(menu.options?.map((option) => option.id)).toContain("management_incidents");
+    expect(menu.options?.map((option) => option.id)).toContain("management_reports");
     expect(menu.options?.map((option) => option.id)).not.toContain("secure_devices");
   });
 
-  it("exposes secure device mode only to platform owners", () => {
+  it("exposes the secure devices entry from the devices submenu while keeping owner enforcement when it opens", () => {
+    const manager: Identity = { ...baseIdentity, role: "admin", canManage: true, canAcknowledge: true };
     const owner: Identity = {
-      ...baseIdentity,
-      role: "admin",
-      canManage: true,
+      ...manager,
       canManageKiosk: true,
       canManageSecureDevices: true,
-      canAcknowledge: true,
       platformRole: "owner",
     };
-    const menu = managementMenu(owner, { ...baseSession, last_menu: "management" });
-    expect(menu.options?.map((option) => option.id)).toContain("secure_devices");
+    expect(WA_SUBMENUS.management_devices.options?.map((option) => option.id)).toContain("secure_devices");
+    expect(secureDeviceMenu(manager, baseSession).title).toBe("OWNER ACCESS REQUIRED");
+    expect(secureDeviceMenu(owner, baseSession).title).not.toBe("OWNER ACCESS REQUIRED");
+    expect(secureDeviceMenu(owner, baseSession).options?.map((option) => option.id)).toContain("secure_action:request_enable_kiosk_mode");
   });
 });
 

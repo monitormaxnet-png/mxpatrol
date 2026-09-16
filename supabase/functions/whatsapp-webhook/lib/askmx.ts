@@ -8,7 +8,9 @@ export type Intent =
   | { action: "devices"; filter?: "offline" | "online" | "all" }
   | { action: "device_detail"; device: string }
   | { action: "incidents" }
+  | { action: "datalog" }
   | { action: "reports"; period?: "today" | "yesterday" | "week"; problems_only?: boolean }
+  | { action: "active_patrols" }
   | { action: "completed_patrols" }
   | { action: "incomplete_patrols" }
   | { action: "late_patrols" }
@@ -44,7 +46,9 @@ const SCHEMA = `Return ONLY JSON matching one of these shapes:
 {"action":"devices","filter":"all|online|offline"}
 {"action":"device_detail","device":"RG360-08"}
 {"action":"incidents"}
+{"action":"datalog"}
 {"action":"reports","period":"today|yesterday|week","problems_only":true|false}
+{"action":"active_patrols"}
 {"action":"completed_patrols"}
 {"action":"incomplete_patrols"}
 {"action":"late_patrols"}
@@ -73,9 +77,12 @@ export function keywordIntent(text: string): Intent | null {
   if (!value) return null;
   if (/^(hi|hello|hey|menu|start|help|0)$/.test(value)) return { action: "menu" };
   if (/^(live|live now)$/.test(value)) return { action: "live" };
+  if (/^(status|site status|system status|whats status|what is the status|what\x27s the status)$/.test(value)) return { action: "live" };
   if (/^(attention|problems?|alerts?)$/.test(value)) return { action: "attention", filter: "all" };
   if (/^(devices?)$/.test(value)) return { action: "devices", filter: "all" };
   if (/^(incidents?)$/.test(value)) return { action: "incidents" };
+  if (/^(datalog|data log|data logs)$/.test(value)) return { action: "datalog" };
+  if (/(report|log|raise|submit).*(incident|issue)|incident report/.test(value)) return { action: "report_incident" };
   if (/^(patrol status|patrols? status)$/.test(value)) return { action: "patrol_status" };
   const reportPeriod = value.match(/(today|yesterday|this week|week)[a-z'\s]*report|report[a-z'\s]*(today|yesterday|this week|week)/);
   if (reportPeriod) {
@@ -115,6 +122,7 @@ export function keywordIntent(text: string): Intent | null {
     return { action: "secure_device_action", secureAction: action as any, device: secureAction[2] };
   }
   if (/^(user|user assistant)$/i.test(value)) return { action: "user" };
+  if (/active patrols?|patrols? in progress/.test(value)) return { action: "active_patrols" };
   if (/incomplete patrols?/.test(value)) return { action: "incomplete_patrols" };
   if (/completed patrols?|complete patrols?/.test(value)) return { action: "completed_patrols" };
   if (/^(late sessions?|show late sessions?)$/.test(value)) return { action: "late_sessions" };

@@ -38,13 +38,13 @@ describe("context-aware numeric menu routing", () => {
     });
   });
 
-  it("user home 3 opens Patrol Status and 6 opens Reports", () => {
-    expect(resolveAssistantInput(userState(), "3", guard)).toMatchObject({ kind: "menu", menuKey: "user_patrol_status" });
-    expect(resolveAssistantInput(userState(), "6", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
+  it("user home 1 opens Patrol Status and 5 opens Reports", () => {
+    expect(resolveAssistantInput(userState(), "1", guard)).toMatchObject({ kind: "menu", menuKey: "user_patrol_status" });
+    expect(resolveAssistantInput(userState(), "5", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
   });
 
-  it("user home 7 changes site", () => {
-    expect(resolveAssistantInput(userState(), "7", guard)).toMatchObject({ action: "change_site" });
+  it("user home 6 changes site", () => {
+    expect(resolveAssistantInput(userState(), "6", guard)).toMatchObject({ action: "change_site" });
   });
 
   it("numeric meaning changes after submenu navigation", () => {
@@ -127,14 +127,14 @@ describe("Patrol Status replaces the separate patrol outcome items", () => {
 
 describe("permission-checked mode switching", () => {
   it("switches an authorized user into management mode only", () => {
-    const result = resolveAssistantInput(userState(), "8", manager);
+    const result = resolveAssistantInput(userState(), "7", manager);
     expect(result.kind).toBe("menu");
     expect(result.state.mode).toBe("management");
     expect(result.state.activeMenu).toBe(MANAGEMENT_HOME);
   });
 
   it("denies management switching for unauthorized users", () => {
-    const result = resolveAssistantInput(userState(), "8", guard);
+    const result = resolveAssistantInput(userState(), "7", guard);
     expect(result).toMatchObject({ kind: "denied" });
     expect(result.state.mode).toBe("user");
   });
@@ -236,7 +236,7 @@ describe("Reports category menu", () => {
   const owner = { canManage: true, isPlatformOwner: true };
 
   it("shows report categories and hides Device Security Reports from non-owners", () => {
-    expect(resolveAssistantInput(userState(), "6", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
+    expect(resolveAssistantInput(userState(), "5", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
     expect(resolveAssistantInput(userState("user_reports"), "1", guard)).toMatchObject({ kind: "menu", menuKey: "reports_checkpoint_activity" });
     expect(resolveAssistantInput(userState("user_reports"), "2", guard)).toMatchObject({ kind: "menu", menuKey: "reports_patrols" });
     expect(resolveAssistantInput(userState("user_reports"), "3", guard)).toMatchObject({ kind: "menu", menuKey: "reports_scan_investigations" });

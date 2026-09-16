@@ -23,11 +23,11 @@ import {
   patrolSessionDrilldownView,
   patrolStatusOverview,
   missedCheckpointsView,
+  datalogTodayView,
   reportPeriodMenu,
   reportDateRangeMenu,
   reportSummary,
   reportCategorySummary,
-  reportDateRangeMenu,
   setupMenu,
   secureDeviceInfo,
   secureDeviceList,
@@ -281,7 +281,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
     case "missed_patrols": {
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
-      const group = intent.action === "completed_patrols" ? "completed" : intent.action === "incomplete_patrols" ? "incomplete" : intent.action === "late_patrols" ? "late" : "missed";
+      const group = intent.action === "active_patrols" ? "active" : intent.action === "completed_patrols" ? "completed" : intent.action === "incomplete_patrols" ? "incomplete" : intent.action === "late_patrols" ? "late" : "missed";
       return await patrolStatusView(ctx.client, ctx.identity, siteId, group);
     }
 
@@ -304,6 +304,12 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       return await patrolStatusOverview(ctx.client, ctx.identity, siteId, ctx.session.current_site_name);
     }
 
+
+    case "datalog": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return await datalogTodayView(ctx.client, ctx.identity, siteId);
+    }
 
     case "checkpoints": {
       const { siteId, ask } = await ensureSiteContext(ctx);
@@ -365,10 +371,17 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       }
       return setupMenu();
 
+    case "report_incident": {
+      const { ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      const result = await startFlow(ctx.client, ctx.identity, ctx.session, "REPORT_INCIDENT" as any);
+      ctx.session = result.session;
+      return result.message;
+    }
+
     case "register_device":
     case "add_checkpoint":
-    case "create_patrol":
-    case "report_incident":
+    case "create_patrol"
     case "authorize_whatsapp":
     case "revoke_whatsapp_access": {
       if (!ctx.identity.canManage) {
@@ -384,9 +397,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
             ? "CREATE_PATROL"
             : intent.action === "authorize_whatsapp"
               ? "AUTHORIZE_WHATSAPP"
-              : intent.action === "revoke_whatsapp_access"
-                ? "REVOKE_WHATSAPP"
-                : "REPORT_INCIDENT";
+              : "REVOKE_WHATSAPP";
       const result = await startFlow(ctx.client, ctx.identity, ctx.session, flow as any);
       ctx.session = result.session;
       return result.message;
@@ -408,6 +419,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
 /** Handles the ids that only exist as menu selections (site:, device:, ack, problems, periods). */
 async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   if (id === "reports") return reportPeriodMenu(ctx.identity);
+  if (id === "datalog_today") return await runIntent(ctx, { action: "datalog" } as Intent);
   if (id === "help") return optionMenu("HELP", ["Reply menu to return to the main assistant.", "Reply back to return to the previous menu.", "Use Change Site to switch your active site."], [{ id: "menu", label: "Main Menu" }]);
   if (id === "view_sites") {
     if (!ctx.identity.canManage) return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "User Mode" }]);

@@ -81,12 +81,12 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
   it("normal users only see User Mode options", () => {
     const userIdentity = { ...identity, canManage: false };
     const menu = mainMenu(userIdentity, session({ last_menu: "user" }));
-    expect(menu.title).toBe("USER MODE");
+    expect(menu.title).toBe("TODAY'S OPERATIONS");
     expect((menu.options ?? []).map((option) => option.id)).toEqual([
       "patrol_status",
       "missed_checkpoints",
-      "reports_data_logs",
-      "report_incident",
+      "incidents",
+      "datalog_today",
       "reports",
       "back",
     ]);
@@ -120,7 +120,8 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
   it("user home numbering stays on the user menu", () => {
     expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "1")).toBe("patrol_status");
     expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "2")).toBe("missed_checkpoints");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "3")).toBe("reports_data_logs");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "3")).toBe("incidents");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "4")).toBe("datalog_today");
     expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "5")).toBe("reports");
   });
 
@@ -188,19 +189,21 @@ describe("WhatsApp Patrol Status consolidates the four outcomes", () => {
     const view = await patrolStatusOverview(client, identity, "site-1", "Airport Junction");
     expect(captured).toContainEqual(["site_id", "site-1"]);
     expect(view.title).toContain("Airport Junction");
+    expect(view.lines).toContain("Active sessions: 0");
     expect(view.lines).toContain("Completed sessions: 2");
     expect(view.lines).toContain("Incomplete sessions: 1");
     expect(view.lines).toContain("Late sessions: 1");
     expect(view.lines).toContain("Missed sessions: 1");
 
     const options = (view.options ?? []).map((option) => option.id);
-    expect(options.slice(0, 4)).toEqual(removed);
+    expect(options.slice(0, 5)).toEqual(["active_patrols", ...removed]);
     const statusSession = session({ temporary_data: { last_options: view.options ?? [], last_menu_key: "patrol_status" } });
-    expect(resolveMenuChoice(statusSession, "1")).toBe("completed_patrols");
-    expect(resolveMenuChoice(statusSession, "2")).toBe("incomplete_patrols");
-    expect(resolveMenuChoice(statusSession, "3")).toBe("late_patrols");
-    expect(resolveMenuChoice(statusSession, "4")).toBe("missed_patrols");
-    expect(resolveMenuChoice(statusSession, "5")).toBe("back");
+    expect(resolveMenuChoice(statusSession, "1")).toBe("active_patrols");
+    expect(resolveMenuChoice(statusSession, "2")).toBe("completed_patrols");
+    expect(resolveMenuChoice(statusSession, "3")).toBe("incomplete_patrols");
+    expect(resolveMenuChoice(statusSession, "4")).toBe("late_patrols");
+    expect(resolveMenuChoice(statusSession, "5")).toBe("missed_patrols");
+    expect(resolveMenuChoice(statusSession, "6")).toBe("back");
   });
 });
 
@@ -279,6 +282,12 @@ describe("WhatsApp report language routing", () => {
 
   it("routes patrol status language", () => {
     expect(keywordIntent("patrol status")).toEqual({ action: "patrol_status" });
+  });
+
+  it("routes operational status and incident report requests without AI fallback", () => {
+    expect(keywordIntent("status")).toEqual({ action: "live" });
+    expect(keywordIntent("log incident")).toEqual({ action: "report_incident" });
+    expect(keywordIntent("report an issue")).toEqual({ action: "report_incident" });
   });
 });
 

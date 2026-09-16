@@ -50,7 +50,7 @@ export function reportDateRangeMenu(action: string): OutMessage {
     options: [
       { id: "today", label: "Today" },
       { id: "yesterday", label: "Yesterday" },
-      { id: "week", label: "This Week" },
+      { id: "week", label: "Last 7 Days" },
       { id: "change_site", label: "Change Site" },
       { id: "back", label: "Back" },
     ],
@@ -82,15 +82,15 @@ export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
 export function userModeMenu(_identity: Identity, session: SessionRow): OutMessage {
   const context = session.current_site_name ? 'Site: ' + session.current_site_name : 'Choose a site to continue.';
   return {
-    title: 'USER MODE',
+    title: "TODAY'S OPERATIONS",
     menuKey: 'user_home',
-    lines: [context, 'Choose an operational action.'],
+    lines: [context, 'Current operations only. Use Reports for history.'],
     options: [
       { id: 'patrol_status', label: 'Patrol Status' },
-      { id: 'missed_checkpoints', label: 'Missed Checkpoints' },
-      { id: 'reports_data_logs', label: 'Datalog' },
-      { id: 'report_incident', label: 'Report Incident' },
-      { id: 'reports', label: 'My Reports' },
+      { id: 'missed_checkpoints', label: 'Missed Checkpoints Today' },
+      { id: 'incidents', label: 'Incidents' },
+      { id: 'datalog_today', label: 'Datalog Today' },
+      { id: 'reports', label: 'Reports' },
       { id: 'back', label: 'Back' },
     ],
   };
@@ -413,11 +413,12 @@ export async function incidentsView(
   );
   const rows = (data ?? []) as any[];
 
+  const openRows = rows.filter((r) => !r.resolved);
   return {
-    title: "INCIDENTS",
-    lines: rows.length
-      ? [rows.map((r) => `${r.resolved ? "" : " "} ${r.title}\n${String(r.severity).toUpperCase()}  ${timeAgo(r.created_at)}`).join("\n\n")]
-      : ["No incidents recorded."],
+    title: "OPEN INCIDENTS",
+    lines: openRows.length
+      ? [openRows.map((r) => `${r.title}\n${String(r.severity).toUpperCase()}  ${timeAgo(r.created_at)}`).join("\n\n")]
+      : ["No open incidents recorded."],
     options: [
       { id: "report_incident", label: "Report Incident" },
       { id: "menu", label: "Main Menu" },
@@ -493,7 +494,7 @@ export async function reportSummary(
     0,
   );
   const sos = (alerts ?? []).filter((a: any) => a.type === "panic_button").length;
-  const label = period === "today" ? "TODAY" : period === "yesterday" ? "YESTERDAY" : "THIS WEEK";
+  const label = period === "today" ? "TODAY" : period === "yesterday" ? "YESTERDAY" : "LAST 7 DAYS";
 
   if (problemsOnly) {
     const problems: string[] = [];
@@ -576,6 +577,7 @@ export async function checkpointsView(client: SupabaseClient, identity: Identity
 }
 
 const PATROL_STATUS_GROUPS = {
+  active: ["active", "in_progress", "awaiting_start"],
   completed: ["completed", "completed_late"],
   incomplete: ["incomplete"],
   late: ["late", "delayed", "late_start", "completed_late"],
@@ -599,6 +601,7 @@ function waDate(iso: string | null | undefined): string | null {
 }
 
 const PATROL_STATUS_LABELS: Record<keyof typeof PATROL_STATUS_GROUPS, string> = {
+  active: "Active",
   completed: "Completed",
   incomplete: "Incomplete",
   late: "Late / Delayed",
@@ -629,6 +632,7 @@ export async function patrolStatusOverview(
     lines: [
       'Period: Today',
       'Expected sessions: ' + rows.length,
+      'Active sessions: ' + count('active'),
       'Completed sessions: ' + count('completed'),
       'Incomplete sessions: ' + count('incomplete'),
       'Late sessions: ' + count('late'),
@@ -637,6 +641,7 @@ export async function patrolStatusOverview(
       'Choose a status for a short session summary.',
     ],
     options: [
+      { id: 'active_patrols', label: PATROL_STATUS_LABELS.active },
       { id: 'completed_patrols', label: PATROL_STATUS_LABELS.completed },
       { id: 'incomplete_patrols', label: PATROL_STATUS_LABELS.incomplete },
       { id: 'late_patrols', label: PATROL_STATUS_LABELS.late },
@@ -834,11 +839,15 @@ export async function patrolSessionDrilldownView(
   return { title, menuKey: kind === 'late' ? 'late_sessions' : 'missed_sessions', lines, options };
 }
 export async function missedCheckpointsView(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
+  const from = periodStart("today").toISOString();
+  const to = periodEnd("today").toISOString();
   let query = client
     .from("patrol_session_checkpoints")
     .select("id, status, scheduled_order, scheduled_at, scanned_at, checkpoint_name_snapshot, checkpoints(name), patrol_sessions!inner(id, status, site_id, scheduled_start, patrol_routes(name), sites(name))")
     .eq("company_id", identity.company_id)
     .in("status", ["missed", "overdue"])
+    .gte("scheduled_at", from)
+    .lte("scheduled_at", to)
     .order("scheduled_at", { ascending: false })
     .limit(10);
   if (siteId) query = query.eq("patrol_sessions.site_id", siteId);
@@ -846,9 +855,9 @@ export async function missedCheckpointsView(client: SupabaseClient, identity: Id
   const { data, error } = await query;
   if (error) console.error("[WA] missed checkpoints query failed:", error.message);
   const rows = (data ?? []) as any[];
-  if (!rows.length) return { title: "MISSED CHECKPOINTS", lines: ["No missed checkpoints for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
+  if (!rows.length) return { title: "MISSED CHECKPOINTS TODAY", lines: ["No missed checkpoints today for the active site."], options: [{ id: "menu", label: "Main Menu" }] };
   return {
-    title: "MISSED CHECKPOINTS",
+    title: "MISSED CHECKPOINTS TODAY",
     lines: [rows.map((row, index) => {
       const checkpoint = Array.isArray(row.checkpoints) ? row.checkpoints[0] : row.checkpoints;
       const session = Array.isArray(row.patrol_sessions) ? row.patrol_sessions[0] : row.patrol_sessions;
@@ -862,6 +871,42 @@ export async function missedCheckpointsView(client: SupabaseClient, identity: Id
         `Date: ${waDate(expected) ?? "unknown"}`,
         `Expected: ${waTime(expected) ?? "unknown"}`,
         `Status: ${String(row.status ?? "missed")}`,
+      ].join("\n");
+    }).join("\n\n")],
+    options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
+  };
+}
+
+
+export async function datalogTodayView(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
+  const from = periodStart("today").toISOString();
+  const to = periodEnd("today").toISOString();
+  const { data, error } = await siteFilter<any>(
+    client
+      .from("data_log_submissions")
+      .select("id, site_id, checkpoint_id, submitted_at, datalog_value, responses_json, checkpoints(name, data_log_label)")
+      .gte("submitted_at", from)
+      .lte("submitted_at", to)
+      .order("submitted_at", { ascending: false })
+      .limit(10),
+    identity,
+    siteId,
+  );
+  if (error) console.error("[WA] datalog today query failed:", error.message);
+  const rows = (data ?? []) as any[];
+  if (!rows.length) {
+    return { title: "DATALOG TODAY", lines: ["No Datalog entries captured today for the active site."], options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }] };
+  }
+  return {
+    title: "DATALOG TODAY",
+    lines: [rows.map((entry, index) => {
+      const checkpoint = Array.isArray(entry.checkpoints) ? entry.checkpoints[0] : entry.checkpoints;
+      const label = String(checkpoint?.data_log_label ?? entry.responses_json?.label ?? "Datalog");
+      const value = String(entry.datalog_value ?? entry.responses_json?.datalog_value ?? "-");
+      return [
+        `${index + 1}. ${checkpoint?.name ?? "Checkpoint"}`,
+        `Time: ${waTime(entry.submitted_at) ?? "unknown"}`,
+        `${label}: ${value}`,
       ].join("\n");
     }).join("\n\n")],
     options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],

@@ -63,6 +63,7 @@ type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | nu
 type DashboardIncident = { id: string; resolved?: boolean | null; severity?: string | null; title?: string | null; incident_type?: string | null; created_at?: string | null; site_id?: string | null };
 type DashboardScan = { id: string; scanned_at?: string | null; tag_status?: string | null; device_identifier?: string | null; checkpoints?: { name?: string | null } | null; guards?: { full_name?: string | null } | null };
 type DatalogSubmission = { id: string; submitted_at?: string | null; datalog_value?: string | null; responses_json?: any; site_id?: string | null; checkpoint_id?: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
+type LiveCheckpointRow = { id: string; patrol_session_id?: string | null; status?: string | null; scheduled_at?: string | null; scheduled_order?: number | null; checkpoint_name_snapshot?: string | null; scanned_at?: string | null; checkpoints?: { name?: string | null } | null };
 type AssistantCompany = { id: string; name: string; status?: string | null; site_count?: number; reference?: string | null };
 type AssistantSite = { id: string; company_id: string; company_name?: string | null; name: string; address?: string | null; gps_lat?: number | null; gps_lng?: number | null; status?: string | null; created_at?: string | null };
 
@@ -218,6 +219,8 @@ export default function CommandCenter() {
         .from('patrol_session_checkpoints')
         .select('id, status, scheduled_at, scheduled_order, checkpoint_name_snapshot, checkpoints(name), patrol_sessions!inner(id, status, scheduled_start, site_id, patrol_routes(name), sites(name))')
         .in('status', ['missed', 'overdue'])
+        .gte('scheduled_at', startOfDay(0).toISOString())
+        .lte('scheduled_at', new Date().toISOString())
         .eq('patrol_sessions.site_id', selectedSiteId!)
         .order('scheduled_at', { ascending: false })
         .limit(25);
@@ -288,6 +291,24 @@ export default function CommandCenter() {
   const siteForms = (ownerData?.forms ?? configOptions.data?.forms ?? []) as any[];
   const siteReportJobs = (reportJobs.data ?? []).filter((job) => !selectedSiteId || job.site_id === selectedSiteId || job.site_id === null);
   const siteDataLogs = (ownerData?.dataLogs ?? dataLogSubmissions.data ?? []) as DatalogSubmission[];
+  const livePatrolRows = sitePatrols.filter((row) => ["active", "in_progress", "late_start", "awaiting_start"].includes(String(row.status)));
+  const livePatrolIds = livePatrolRows.map((row) => row.id).filter(Boolean);
+  const livePatrolCheckpoints = useQuery({
+    queryKey: ["assistant_live_patrol_checkpoints", selectedSiteId, livePatrolIds.join("|")],
+    enabled: livePatrolIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("patrol_session_checkpoints")
+        .select("id, patrol_session_id, status, scheduled_at, scheduled_order, checkpoint_name_snapshot, scanned_at, checkpoints(name)")
+        .in("patrol_session_id", livePatrolIds)
+        .in("status", ["pending", "scheduled", "due", "overdue"])
+        .order("scheduled_at", { ascending: true })
+        .order("scheduled_order", { ascending: true })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []) as unknown as LiveCheckpointRow[];
+    },
+  });
 
   useEffect(() => {
     if (!shouldAutoScrollRef.current && !forceNextScrollRef.current) return;
@@ -383,7 +404,7 @@ export default function CommandCenter() {
   const showMenu = (key: string) => {
     const node = menuNode(key);
     if (key === 'user_patrol_status' || key === 'management_patrol_status') {
-      return addAssistant(`PATROL STATUS - ${selectedSite}`, <PatrolStatusOverview site={selectedSite} rows={sitePatrols} node={node} loading={patrols.isLoading} />);
+      return addAssistant(`PATROL STATUS TODAY - ${selectedSite}`, <PatrolStatusOverview site={selectedSite} rows={periodRows('today').sessions} node={node} loading={patrols.isLoading} />);
     }
     addAssistant(node.title, <MenuView site={selectedSite} node={node} isPlatformOwner={isPlatformOwner} />);
   };
@@ -420,8 +441,8 @@ export default function CommandCenter() {
 
   const runAction = (action: string) => {
     if (action === 'change_site') return addAssistant('CHANGE SITE', <SitePicker sites={availableSites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
-    if (action === 'live') return addAssistant('LIVE NOW - ' + selectedSite, <Summary devices={siteDevices} alerts={siteAlerts} incidents={siteIncidents} patrols={sitePatrols} scans={siteScans} />);
-    if (action === 'attention') return addAssistant('ATTENTION - ' + selectedSite, <Attention devices={siteDevices} alerts={siteAlerts} patrols={sitePatrols} />);
+    if (action === 'live') return addAssistant('LIVE NOW - ' + selectedSite, <Summary devices={siteDevices} alerts={todayRows.alerts} incidents={openIncidents} patrols={operationPatrolRows} scans={todayRows.scans} />);
+    if (action === 'attention') return addAssistant('ATTENTION TODAY - ' + selectedSite, <Attention devices={siteDevices} alerts={todayRows.alerts} patrols={todayPatrolRows} />);
     if (action === 'devices') return addAssistant('DEVICES - ' + selectedSite, <DeviceList devices={siteDevices} />);
     if (action === 'devices_offline') return addAssistant('OFFLINE DEVICES - ' + selectedSite, <DeviceList devices={siteDevices} offlineOnly />);
     if (action === 'incidents') return addAssistant('INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents} />);
@@ -437,7 +458,8 @@ export default function CommandCenter() {
     if (action === 'missed_patrols') return addAssistant('MISSED PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='missed' site={selectedSite} />);
     if (action === 'late_sessions') return addAssistant('LATE SESSIONS - ' + selectedSite, <PatrolSessionDrilldown rows={periodRows('today').sessions} kind='late' />);
     if (action === 'missed_sessions') return addAssistant('MISSED SESSIONS - ' + selectedSite, <PatrolSessionDrilldown rows={periodRows('today').sessions} kind='missed' />);
-    if (action === 'missed_checkpoints') return addAssistant('MISSED CHECKPOINTS - ' + selectedSite, <MissedCheckpointList rows={missedCheckpoints.data ?? []} loading={missedCheckpoints.isLoading} />);
+    if (action === 'missed_checkpoints') return addAssistant('MISSED CHECKPOINTS TODAY - ' + selectedSite, <MissedCheckpointList rows={missedCheckpoints.data ?? []} loading={missedCheckpoints.isLoading} />);
+    if (action === 'datalog_today') return addAssistant('DATALOG TODAY - ' + selectedSite, <CurrentDatalogEntries rows={todayDataLogs} />);
     if (action === 'view_companies') {
       if (!isPlatformOwner) return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can view all companies.</p>);
       return addAssistant('COMPANIES', <CompanyList rows={platformCompanies.data ?? []} loading={platformCompanies.isLoading} selectedId={selectedCompanyId} onSelect={(company) => { setSelectedCompanyId(company.id); setState((prev) => ({ ...prev, activeSiteId: null })); addAssistant('COMPANY CONTEXT UPDATED', <p>Now managing <b>{company.name}</b>. Choose <b>View Sites</b> or <b>Register Site</b> next.</p>); }} />);
@@ -527,27 +549,34 @@ export default function CommandCenter() {
 
   const switchMode = () => submit(mode === 'management' ? 'user' : 'management');
   const homeNode = menuNode(homeMenu(mode));
+  const todayRows = periodRows('today');
+  const todayPatrolRows = todayRows.sessions;
+  const todayDataLogs = siteDataLogs.filter((row) => {
+    const value = new Date(row.submitted_at ?? 0).getTime();
+    return Number.isFinite(value) && value >= startOfDay(0).getTime() && value <= Date.now();
+  });
+  const openIncidents = siteIncidents.filter((row) => !row.resolved);
+  const operationPatrolRows = [...livePatrolRows, ...todayPatrolRows.filter((row) => !livePatrolRows.some((live) => live.id === row.id))];
   const onlineDevices = siteDevices.filter((device) => device.status === 'online').length;
-  const activePatrolCount = sitePatrols.filter((row) => ['active', 'in_progress'].includes(String(row.status))).length;
-  const sosAlertCount = siteAlerts.filter((row) => row.type === 'panic_button' && !row.is_read).length;
-  const openIncidentCount = siteIncidents.filter((row) => !row.resolved).length;
-  const highPriorityIncidentCount = siteIncidents.filter((row) => ['high', 'critical'].includes(String(row.severity))).length;
-  const loadedScansToday = siteScans.filter((row) => new Date(row.scanned_at ?? 0) >= startOfDay(0)).length;
+  const activePatrolCount = livePatrolRows.length;
+  const sosAlertCount = todayRows.alerts.filter((row) => row.type === 'panic_button' && !row.is_read).length;
+  const openIncidentCount = openIncidents.length;
+  const todayIncidentCount = todayRows.incidents.length;
+  const highPriorityIncidentCount = openIncidents.filter((row) => ['high', 'critical'].includes(String(row.severity))).length;
+  const loadedScansToday = todayRows.scans.length;
   const scanCountValue = scanCountToday.data ?? loadedScansToday;
-  const patrolCounts = patrolStatusCounts(sitePatrols);
-  const totalPatrols = Object.values(patrolCounts).reduce((total, value) => total + value, 0) || sitePatrols.length;
+  const patrolCounts = patrolStatusCounts(todayPatrolRows);
+  const totalPatrols = Object.values(patrolCounts).reduce((total, value) => total + value, 0) || todayPatrolRows.length;
   const activityBuckets = Array.from({ length: 12 }, (_, index) => {
     const hour = index * 2;
     return {
       label: String(hour).padStart(2, '0'),
-      patrols: siteScans.filter((row) => new Date(row.scanned_at ?? 0).getHours() >= hour && new Date(row.scanned_at ?? 0).getHours() < hour + 2).length,
-      alerts: siteAlerts.filter((row) => new Date(row.created_at ?? 0).getHours() >= hour && new Date(row.created_at ?? 0).getHours() < hour + 2).length,
+      patrols: todayRows.scans.filter((row) => new Date(row.scanned_at ?? 0).getHours() >= hour && new Date(row.scanned_at ?? 0).getHours() < hour + 2).length,
+      alerts: todayRows.alerts.filter((row) => new Date(row.created_at ?? 0).getHours() >= hour && new Date(row.created_at ?? 0).getHours() < hour + 2).length,
     };
   });
-  const topPatrols = (sitePatrols.filter((row) => ['active', 'in_progress'].includes(String(row.status))).length
-    ? sitePatrols.filter((row) => ['active', 'in_progress'].includes(String(row.status)))
-    : sitePatrols).slice(0, 3);
-  const recentIncidents = siteIncidents.slice(0, 3);
+  const topPatrols = (livePatrolRows.length ? livePatrolRows : todayPatrolRows).slice(0, 3);
+  const recentIncidents = openIncidents.slice(0, 3);
 
   return (
     <div className='min-h-screen overflow-x-hidden bg-[#030811] text-white'>
@@ -594,21 +623,28 @@ export default function CommandCenter() {
           </div>
         </header>
 
+        <section className='rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-4 py-3 text-sm text-emerald-100'>
+          <b>Today&apos;s Operations</b> - {selectedSite}. Current patrols, today&apos;s scans, today&apos;s SOS activity, and currently open incidents. Historical trends live under Reports.
+        </section>
+
         <section className='grid gap-3 md:grid-cols-2 xl:grid-cols-5'>
           <KpiCard title='Active Patrols' value={activePatrolCount} total={totalPatrols || undefined} note='Live sessions' icon={Users} tone='emerald' />
           <KpiCard title='Devices Online' value={onlineDevices} total={siteDevices.length || undefined} note='Reporting devices' icon={Smartphone} tone='cyan' />
           <KpiCard title='SOS Alerts' value={sosAlertCount} note='Active alerts' icon={ShieldAlert} tone='rose' />
-          <KpiCard title='Incidents' value={openIncidentCount} note={`${highPriorityIncidentCount} high priority`} icon={Shield} tone='amber' />
-          <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${siteScans.length} recent loaded`} icon={ScanLine} tone='blue' />
+          <KpiCard title='Open Incidents' value={openIncidentCount} note={`${todayIncidentCount} today, ${highPriorityIncidentCount} high priority`} icon={Shield} tone='amber' />
+          <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${loadedScansToday} loaded today`} icon={ScanLine} tone='blue' />
         </section>
 
         <main className='grid flex-1 gap-3 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
           <div className='flex min-h-0 flex-col gap-3'>
-            <DashboardPanel title='Patrol Status' icon={ShieldCheck} action='Today'>
+            <DashboardPanel title="Today's Patrol Status" icon={ShieldCheck} action='Today'>
               <PatrolStatusDonut counts={patrolCounts} total={totalPatrols} />
             </DashboardPanel>
+            <DashboardPanel title="Live Patrol Tracker" icon={Route} action={livePatrolRows.length ? "In progress" : "Idle"}>
+              <LivePatrolTracker rows={livePatrolRows} checkpoints={livePatrolCheckpoints.data ?? []} loading={patrols.isLoading || livePatrolCheckpoints.isLoading} />
+            </DashboardPanel>
             <DashboardPanel title='Device Feedback' icon={Cpu} action='View all' className='flex-1'>
-              <DeviceFeedbackRows devices={siteDevices} scans={siteScans} alerts={siteAlerts} />
+              <DeviceFeedbackRows devices={siteDevices} scans={todayRows.scans} alerts={todayRows.alerts} />
             </DashboardPanel>
           </div>
 
@@ -658,10 +694,10 @@ export default function CommandCenter() {
           <DashboardPanel title="Today's Activity Timeline" icon={Activity}>
             <ActivityTimeline buckets={activityBuckets} />
           </DashboardPanel>
-          <DashboardPanel title='Top Active Patrols' icon={Route} action='View all'>
+          <DashboardPanel title='Current Patrols' icon={Route} action={livePatrolRows.length ? 'Live' : 'Today'}>
             <ActivePatrolRows rows={topPatrols} />
           </DashboardPanel>
-          <DashboardPanel title='Recent Incidents' icon={AlertTriangle} action='View all'>
+          <DashboardPanel title='Open Incidents' icon={AlertTriangle} action='Current'>
             <RecentIncidentRows rows={recentIncidents} />
           </DashboardPanel>
         </section>
@@ -781,6 +817,47 @@ function ActivityTimeline({ buckets }: { buckets: Array<{ label: string; patrols
       <div className='mt-4 flex gap-5 text-xs text-slate-400'><span className='flex items-center gap-2'><span className='h-2 w-2 rounded-full bg-emerald-400' />Patrols</span><span className='flex items-center gap-2'><span className='h-2 w-2 rounded-full bg-rose-400' />Alerts</span></div>
     </div>
   );
+}
+
+function patrolTimeRemaining(row: AssistantPatrolRow) {
+  if (!row.scheduled_end) return row.status === "awaiting_start" ? "Awaiting start" : "No end time";
+  const diff = new Date(row.scheduled_end).getTime() - Date.now();
+  if (!Number.isFinite(diff)) return "No end time";
+  const minutes = Math.ceil(Math.abs(diff) / 60000);
+  if (diff >= 0) return minutes + " min left";
+  return minutes + " min over";
+}
+
+function checkpointLabel(row?: LiveCheckpointRow) {
+  if (!row) return "No pending checkpoint";
+  return row.checkpoints?.name ?? row.checkpoint_name_snapshot ?? "Next checkpoint";
+}
+
+function LivePatrolTracker({ rows, checkpoints, loading }: { rows: AssistantPatrolRow[]; checkpoints: LiveCheckpointRow[]; loading: boolean }) {
+  if (loading) return <p className="text-sm text-slate-400">Loading live patrol sessions...</p>;
+  if (!rows.length) return <p className="text-sm text-slate-400">No patrol sessions are currently in progress for this site.</p>;
+  return <div className="space-y-3">{rows.slice(0, 5).map((row) => {
+    const next = checkpoints.find((checkpoint) => checkpoint.patrol_session_id === row.id);
+    const total = Math.max(row.checkpoint_total ?? 0, 0);
+    const completed = Math.max(row.checkpoint_completed ?? 0, 0);
+    const pct = total ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+    return <div key={row.id} className="rounded-md border border-white/10 bg-slate-950/70 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black text-white">{row.patrol_name ?? "Patrol"}</p>
+          <p className="mt-1 truncate text-xs text-slate-400">Next: {checkpointLabel(next)}</p>
+        </div>
+        <span className="shrink-0 rounded-md border border-emerald-400/25 px-2 py-1 font-mono text-xs font-bold text-emerald-300">{patrolTimeRemaining(row)}</span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+        <div className="h-full rounded-full bg-emerald-400" style={{ width: pct + "%" }} />
+      </div>
+      <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+        <span>{completed}/{total || "?"} checkpoints</span>
+        <span>{formatStatusText(String(row.status ?? "active"))}</span>
+      </div>
+    </div>;
+  })}</div>;
 }
 
 function ActivePatrolRows({ rows }: { rows: AssistantPatrolRow[] }) {
@@ -965,6 +1042,15 @@ function CompanyList({ rows, loading, selectedId, onSelect }: { rows: AssistantC
   return <div className='space-y-2'>{rows.slice(0, 20).map((company, index) => <button key={company.id} type='button' onClick={() => onSelect(company)} className={(company.id === selectedId ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-slate-950/70 text-slate-300') + ' grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3 py-2 text-left'}><span className='font-mono text-emerald-300'>{index + 1}.</span><span className='min-w-0'><span className='block truncate font-bold'>{company.name}</span><span className='block text-xs text-slate-400'>{company.status ?? 'active'}</span></span><span className='text-xs text-slate-400'>Sites: {company.site_count ?? 0}</span></button>)}</div>;
 }
 function MetricGrid({ items }: { items: Array<[string, number | string]> }) { return <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>{items.map(([label, value]) => <div key={label} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><p className='text-2xl font-black text-emerald-300'>{value}</p><p className='text-xs text-slate-400'>{label}</p></div>)}</div>; }
+function CurrentDatalogEntries({ rows }: { rows: DatalogSubmission[] }) {
+  const entries = rows.map((entry) => {
+    const label = String(entry.checkpoints?.data_log_label ?? entry.responses_json?.label ?? 'Datalog');
+    const value = String(entry.datalog_value ?? entry.responses_json?.datalog_value ?? '-');
+    const when = assistantTime(entry.submitted_at) ?? '--:--';
+    return { label: `${entry.checkpoints?.name ?? 'Checkpoint'} - ${when}`, value: `${label}: ${value}` };
+  });
+  return <div><MetricGrid items={[["Entries today", rows.length], ["Checkpoints", new Set(rows.map((row) => row.checkpoint_id).filter(Boolean)).size]]} /><ReportRows rows={entries} empty='No Datalog entries captured today for this site.' /></div>;
+}
 function Summary({ devices, alerts, incidents, patrols, scans }: { devices: any[]; alerts: any[]; incidents: any[]; patrols: AssistantPatrolRow[]; scans: any[] }) { return <MetricGrid items={[['Devices Online', devices.filter((row) => row.status === 'online').length], ['Devices Offline', devices.filter((row) => row.status === 'offline').length], ['Active Patrols', patrols.filter((row) => ['active', 'in_progress'].includes(String(row.status))).length], ['Completed', filterPatrols(patrols, 'completed').length], ['Incidents', incidents.length], ['SOS', alerts.filter((row: any) => row.type === 'panic_button').length], ['Scans', scans.length]]} />; }
 function Attention({ devices, alerts, patrols }: { devices: any[]; alerts: any[]; patrols: AssistantPatrolRow[] }) { return <MetricGrid items={[['Open Alerts', alerts.filter((row: any) => !row.is_read).length], ['SOS Alerts', alerts.filter((row: any) => row.type === 'panic_button').length], ['Offline Devices', devices.filter((row) => row.status === 'offline').length], ['Missed Patrols', filterPatrols(patrols, 'missed').length]]} />; }
 function DeviceList({ devices, offlineOnly }: { devices: any[]; offlineOnly?: boolean }) { const rows = offlineOnly ? devices.filter((row) => row.status === 'offline') : devices; if (!rows.length) return <p>{offlineOnly ? 'All devices are online.' : 'No devices found for this site.'}</p>; return <div className='space-y-2'>{rows.slice(0, 10).map((device) => <div key={device.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{device.device_identifier ?? device.device_name ?? 'Device'}</b><p className='text-slate-400'>{device.status ?? 'unknown'}</p></div>)}</div>; }

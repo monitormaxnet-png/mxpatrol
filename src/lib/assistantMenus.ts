@@ -22,14 +22,13 @@ export const MANAGEMENT_HOME = 'management_home';
 export const ASSISTANT_MENUS: Record<string, MenuNode> = {
   [USER_HOME]: {
     key: USER_HOME,
-    title: 'MX PATROL',
+    title: "TODAY'S OPERATIONS",
     parent: null,
     items: [
-      { label: 'Live Now', action: 'live' },
-      { label: 'Attention', action: 'attention' },
       { label: 'Patrol Status', action: 'menu:patrol_status' },
-      { label: 'Devices', action: 'devices' },
+      { label: 'Missed Checkpoints Today', action: 'missed_checkpoints' },
       { label: 'Incidents', action: 'incidents' },
+      { label: 'Datalog Today', action: 'datalog_today' },
       { label: 'Reports', action: 'menu:user_reports' },
       { label: 'Change Site', action: 'change_site' },
       { label: 'Management', action: 'switch_management' },
@@ -244,6 +243,7 @@ const NL_INTENTS: Array<[RegExp, string]> = [
   [/patrol.*report/, 'menu:reports_patrols'],
   [/sos.*report/, 'menu:reports_sos'],
   [/incident.*report/, 'menu:reports_incidents'],
+  [/^(datalog|data log|data logs)$/, 'datalog_today'],
   [/data log.*report/, 'menu:reports_data_logs'],
   [/device security.*report/, 'menu:reports_device_security'],
   [/device.*report/, 'menu:reports_devices'],

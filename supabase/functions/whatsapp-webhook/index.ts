@@ -24,6 +24,7 @@ import {
   patrolStatusOverview,
   missedCheckpointsView,
   reportPeriodMenu,
+  reportDateRangeMenu,
   reportSummary,
   reportCategorySummary,
   setupMenu,

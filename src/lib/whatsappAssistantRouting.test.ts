@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  ASSISTANT_ROOT_KEY,
   MANAGEMENT_HOME_KEY,
   USER_HOME_KEY,
   WA_SUBMENUS,
@@ -9,6 +10,7 @@ import {
   patrolSessionDrilldownView,
   mainMenu,
   managementMenu,
+  userModeMenu,
   patrolStatusOverview,
   reportPeriodMenu,
   resolveMenuChoice,
@@ -51,7 +53,14 @@ const session = (patch: Partial<SessionRow> = {}): SessionRow => ({
 });
 
 function withMenu(menuKey: string, last_menu = "management"): SessionRow {
-  const menu = menuKey === MANAGEMENT_HOME_KEY ? managementMenu(identity, session({ last_menu })) : WA_SUBMENUS[menuKey];
+  const baseSession = session({ last_menu });
+  const menu = menuKey === ASSISTANT_ROOT_KEY
+    ? mainMenu(identity, baseSession)
+    : menuKey === MANAGEMENT_HOME_KEY
+      ? managementMenu(identity, baseSession)
+      : menuKey === USER_HOME_KEY
+        ? userModeMenu(identity, baseSession)
+        : WA_SUBMENUS[menuKey];
   return session({
     last_menu,
     temporary_data: { last_options: menu.options ?? [], last_menu_key: menuKey },
@@ -59,46 +68,84 @@ function withMenu(menuKey: string, last_menu = "management"): SessionRow {
 }
 
 describe("WhatsApp nested menu numbering uses the current conversation state", () => {
-  it("management home 1 selects Operations", () => {
-    expect(resolveMenuChoice(withMenu(MANAGEMENT_HOME_KEY), "1")).toBe("management_operations");
+  it("management users see the mode picker first", () => {
+    const menu = mainMenu(identity, session({ last_menu: "management" }));
+    expect(menu.title).toBe("MX PATROL");
+    expect((menu.options ?? []).map((option) => option.id)).toEqual(["user", "management", "change_site", "help"]);
+    expect(resolveMenuChoice(withMenu(ASSISTANT_ROOT_KEY), "1")).toBe("user");
+    expect(resolveMenuChoice(withMenu(ASSISTANT_ROOT_KEY), "2")).toBe("management");
   });
 
-  it("operations 2 selects Patrol Status and 3 missed checkpoints", () => {
-    expect(resolveMenuChoice(withMenu("management_operations"), "2")).toBe("patrol_status");
-    expect(resolveMenuChoice(withMenu("management_operations"), "3")).toBe("missed_checkpoints");
+  it("normal users only see User Mode options", () => {
+    const userIdentity = { ...identity, canManage: false };
+    const menu = mainMenu(userIdentity, session({ last_menu: "user" }));
+    expect(menu.title).toBe("USER MODE");
+    expect((menu.options ?? []).map((option) => option.id)).toEqual([
+      "patrol_status",
+      "missed_checkpoints",
+      "reports_data_logs",
+      "report_incident",
+      "reports",
+      "back",
+    ]);
+  });
+
+  it("management access is rejected server-side for normal users", () => {
+    const userIdentity = { ...identity, canManage: false };
+    const denied = managementMenu(userIdentity, session());
+    expect(denied.title).toBe("MANAGEMENT ACCESS UNAVAILABLE");
+    expect(denied.lines.join("\n")).toContain("does not have permission");
+  });
+
+  it("company and site context survives mode switching menus", () => {
+    const active = session({ current_site_id: "site-1", current_site_name: "Airport Junction" });
+    expect(mainMenu(identity, active).lines.join("\n")).toContain("Site: Airport Junction");
+    expect(userModeMenu(identity, active).lines.join("\n")).toContain("Site: Airport Junction");
+    expect(managementMenu(identity, active).lines.join("\n")).toContain("Site: Airport Junction");
+  });
+
+  it("management home routes to management-only setup menus", () => {
+    expect(resolveMenuChoice(withMenu(MANAGEMENT_HOME_KEY), "1")).toBe("management_patrols");
+    expect(resolveMenuChoice(withMenu(MANAGEMENT_HOME_KEY), "2")).toBe("management_routes");
+    expect(resolveMenuChoice(withMenu(MANAGEMENT_HOME_KEY), "7")).toBe("management_reports");
+  });
+
+  it("management patrol submenu does not duplicate user patrol status actions", () => {
+    expect(resolveMenuChoice(withMenu("management_patrols"), "1")).toBe("create_patrol");
+    expect(resolveMenuChoice(withMenu("management_patrols"), "2")).toBe("patrols");
   });
 
   it("user home numbering stays on the user menu", () => {
-    const userSession = session({ temporary_data: { last_options: mainMenu(identity, session()).options ?? [], last_menu_key: USER_HOME_KEY } });
-    expect(resolveMenuChoice(userSession, "3")).toBe("patrol_status");
-    expect(resolveMenuChoice(userSession, "6")).toBe("reports");
-    expect(resolveMenuChoice(userSession, "7")).toBe("change_site");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "1")).toBe("patrol_status");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "2")).toBe("missed_checkpoints");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "3")).toBe("reports_data_logs");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "5")).toBe("reports");
   });
 
   it("back resolves to the parent of the displayed menu", () => {
-    expect(backTarget(withMenu("management_operations"))).toBe(MANAGEMENT_HOME_KEY);
+    expect(backTarget(withMenu("management_patrols"))).toBe(MANAGEMENT_HOME_KEY);
     expect(backTarget(withMenu("management_reports"))).toBe(MANAGEMENT_HOME_KEY);
     expect(backTarget(session({ last_menu: "user" }))).toBe(USER_HOME_KEY);
   });
 
-  it("back from Patrol Status returns to the right parent per mode", () => {
-    expect(backTarget(session({ last_menu: "management", temporary_data: { last_menu_key: "patrol_status" } }))).toBe("management_operations");
+  it("back from Patrol Status returns to the right mode home", () => {
+    expect(backTarget(session({ last_menu: "management", temporary_data: { last_menu_key: "patrol_status" } }))).toBe(MANAGEMENT_HOME_KEY);
     expect(backTarget(session({ last_menu: "user", temporary_data: { last_menu_key: "patrol_status" } }))).toBe(USER_HOME_KEY);
   });
 
   it("ignores numbers with no menu context instead of guessing", () => {
     expect(resolveMenuChoice(session(), "6")).toBeNull();
-    expect(resolveMenuChoice(withMenu("management_operations"), "99")).toBeNull();
+    expect(resolveMenuChoice(withMenu("management_patrols"), "99")).toBeNull();
   });
 
-  it('keeps the active site name in empty drill-down headings', async () => {
+  it("keeps the active site name in empty drill-down headings", async () => {
     const emptyClient = { from: () => ({ select() { return this; }, in() { return this; }, gte() { return this; }, lte() { return this; }, order() { return this; }, limit() { return this; }, eq() { return this; }, then(resolve: (value: { data: unknown[] }) => unknown) { return resolve({ data: [] }); } }) } as any;
-    const late = await patrolSessionDrilldownView(emptyClient, identity, 'site-1', 'late', 'Airport Junction');
-    expect(late.title).toBe('LATE SESSIONS - Airport Junction');
-    expect(late.lines.join('\n')).toContain('No late patrol sessions found for the selected period.');
+    const late = await patrolSessionDrilldownView(emptyClient, identity, "site-1", "late", "Airport Junction");
+    expect(late.title).toBe("LATE SESSIONS - Airport Junction");
+    expect(late.lines.join("\n")).toContain("No late patrol sessions found for the selected period.");
 
-    const missed = await patrolSessionDrilldownView(emptyClient, identity, 'site-1', 'missed', 'Airport Junction');
-    expect(missed.title).toBe('MISSED SESSIONS - Airport Junction');
+    const missed = await patrolSessionDrilldownView(emptyClient, identity, "site-1", "missed", "Airport Junction");
+    expect(missed.title).toBe("MISSED SESSIONS - Airport Junction");
   });
 });
 
@@ -106,13 +153,14 @@ describe("WhatsApp Patrol Status consolidates the four outcomes", () => {
   const removed = ["completed_patrols", "incomplete_patrols", "late_patrols", "missed_patrols"];
 
   it("removes the individual outcome options from the parent menus", () => {
-    const operations = (WA_SUBMENUS["management_operations"].options ?? []).map((option) => option.id);
-    const userHome = (mainMenu(identity, session()).options ?? []).map((option) => option.id);
+    const managementHome = (managementMenu(identity, session()).options ?? []).map((option) => option.id);
+    const userHome = (userModeMenu(identity, session()).options ?? []).map((option) => option.id);
     for (const id of removed) {
-      expect(operations).not.toContain(id);
+      expect(managementHome).not.toContain(id);
       expect(userHome).not.toContain(id);
     }
-    expect(operations).toContain("patrol_status");
+    expect(managementHome).toContain("management_patrols");
+    expect(managementHome).not.toContain("patrol_status");
     expect(userHome).toContain("patrol_status");
   });
 

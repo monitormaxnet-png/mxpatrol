@@ -63,54 +63,60 @@ function siteFilter<T>(query: any, identity: Identity, siteId: string | null) {
 }
 
 export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
-  const context = session.current_site_name ? `Site: ${session.current_site_name}` : "Choose a site to continue.";
+  if (!identity.canManage) return userModeMenu(identity, session);
+  const context = session.current_site_name ? 'Site: ' + session.current_site_name : 'Choose a site to continue.';
   return {
-    title: "MX PATROL",
-    menuKey: "user_home",
-    lines: [
-      greeting(),
-      context,
-      "What would you like to do?",
-    ],
+    title: 'MX PATROL',
+    menuKey: 'assistant_root',
+    lines: [context, 'Choose a mode.'],
     options: [
-      { id: "live", label: "Live Now" },
-      { id: "attention", label: "Attention" },
-      { id: "patrol_status", label: "Patrol Status" },
-      { id: "devices", label: "Devices" },
-      { id: "incidents", label: "Incidents" },
-      { id: "reports", label: "Reports" },
-      { id: "change_site", label: "Change Site" },
-      { id: "management", label: "Management" },
+      { id: 'user', label: 'User Mode' },
+      { id: 'management', label: 'Management Mode' },
+      { id: 'change_site', label: 'Change Site' },
+      { id: 'help', label: 'Help' },
     ],
-
-    footer: "Or ask me: \"Which devices are offline?\"",
   };
 }
+
+export function userModeMenu(_identity: Identity, session: SessionRow): OutMessage {
+  const context = session.current_site_name ? 'Site: ' + session.current_site_name : 'Choose a site to continue.';
+  return {
+    title: 'USER MODE',
+    menuKey: 'user_home',
+    lines: [context, 'Choose an operational action.'],
+    options: [
+      { id: 'patrol_status', label: 'Patrol Status' },
+      { id: 'missed_checkpoints', label: 'Missed Checkpoints' },
+      { id: 'reports_data_logs', label: 'Datalog' },
+      { id: 'report_incident', label: 'Report Incident' },
+      { id: 'reports', label: 'My Reports' },
+      { id: 'back', label: 'Back' },
+    ],
+  };
+}
+
 export function managementMenu(identity: Identity, session: SessionRow): OutMessage {
   if (!identity.canManage) {
     return {
-      title: "MANAGEMENT ACCESS UNAVAILABLE",
-      lines: ["Your account does not have permission to use management actions."],
-      options: [{ id: "menu", label: "User Assistant" }],
+      title: 'MANAGEMENT ACCESS UNAVAILABLE',
+      lines: ['Your account does not have permission to use management actions.'],
+      options: [{ id: 'menu', label: 'User Mode' }],
     };
   }
+  const context = session.current_site_name ? 'Site: ' + session.current_site_name : 'Choose a site before making changes.';
   return {
-    title: "MX PATROL - MANAGEMENT",
-    menuKey: "management_home",
-    lines: [session.current_site_name ? `Viewing: ${session.current_site_name}` : "Choose a site before making changes.", "What would you like to manage?"],
+    title: 'MANAGEMENT MODE',
+    menuKey: 'management_home',
+    lines: [context, 'Choose a management area.'],
     options: [
-      { id: "management_operations", label: "Operations" },
-      { id: "management_devices", label: "Devices" },
-      { id: "management_checkpoints", label: "Checkpoints" },
-      { id: "management_incidents", label: "Incidents" },
-      { id: "management_patrol_config", label: "Patrol Configuration" },
-      { id: "management_reports", label: "Reports" },
-      { id: "management_whatsapp", label: "WhatsApp Management" },
-      ...(identity.canManageSecureDevices && identity.platformRole === "owner"
-        ? [{ id: "secure_devices", label: "Secure Patrol Devices" }]
-        : []),
-      { id: "change_site", label: "Change Site" },
-      { id: "user", label: "User Assistant" },
+      { id: 'management_patrols', label: 'Patrols' },
+      { id: 'management_routes', label: 'Routes' },
+      { id: 'management_schedules', label: 'Schedules' },
+      { id: 'management_checkpoints', label: 'Checkpoints' },
+      { id: 'management_devices', label: 'Devices' },
+      { id: 'management_sites', label: 'Sites' },
+      { id: 'management_reports', label: 'Management Reports' },
+      { id: 'back', label: 'Back' },
     ],
   };
 }
@@ -1145,6 +1151,7 @@ export async function reportCategorySummary(client: SupabaseClient, identity: Id
 }
 // ===== Context-aware menu state (kept here so it deploys with the function bundle) =====
 
+export const ASSISTANT_ROOT_KEY = "assistant_root";
 export const USER_HOME_KEY = "user_home";
 export const MANAGEMENT_HOME_KEY = "management_home";
 
@@ -1153,70 +1160,70 @@ export const MANAGEMENT_HOME_KEY = "management_home";
  * so a number typed inside a submenu can only ever resolve to that submenu's actions.
  */
 export const WA_SUBMENUS: Record<string, OutMessage> = {
-  management_operations: {
-    title: "OPERATIONS",
-    menuKey: "management_operations",
-    lines: ["Choose an operations view."],
+  management_patrols: {
+    title: 'PATROLS',
+    menuKey: 'management_patrols',
+    lines: ['Configure and supervise patrol execution.'],
     options: [
-      { id: "patrols", label: "Live Patrol" },
-      { id: "patrol_status", label: "Patrol Status" },
-      { id: "missed_checkpoints", label: "Missed Checkpoints" },
-      { id: "back", label: "Back" },
+      { id: 'create_patrol', label: 'Create Patrol' },
+      { id: 'patrols', label: 'Manage Patrols' },
+      { id: 'back', label: 'Back' },
     ],
-
   },
-  management_devices: {
-    title: "DEVICES",
-    menuKey: "management_devices",
-    lines: ["Choose a device management action."],
+  management_routes: {
+    title: 'ROUTES',
+    menuKey: 'management_routes',
+    lines: ['Manage patrol routes.'],
     options: [
-      { id: "devices", label: "View Devices" },
-      { id: "offline", label: "Offline Devices" },
-      { id: "register_device", label: "Register Device" },
-      { id: "back", label: "Back" },
+      { id: 'routes', label: 'View/Edit Routes' },
+      { id: 'back', label: 'Back' },
+    ],
+  },
+  management_schedules: {
+    title: 'SCHEDULES',
+    menuKey: 'management_schedules',
+    lines: ['Manage patrol schedules.'],
+    options: [
+      { id: 'schedules', label: 'View/Edit Schedules' },
+      { id: 'back', label: 'Back' },
     ],
   },
   management_checkpoints: {
-    title: "CHECKPOINTS",
-    menuKey: "management_checkpoints",
-    lines: ["Choose a checkpoint management action."],
+    title: 'CHECKPOINTS',
+    menuKey: 'management_checkpoints',
+    lines: ['Manage checkpoint configuration.'],
     options: [
-      { id: "checkpoints", label: "View Checkpoints" },
-      { id: "missed_checkpoints", label: "Missed Checkpoints" },
-      { id: "add_checkpoint", label: "Register Checkpoint" },
-      { id: "back", label: "Back" },
+      { id: 'add_checkpoint', label: 'Register Checkpoint' },
+      { id: 'checkpoints', label: 'View Checkpoints' },
+      { id: 'back', label: 'Back' },
     ],
   },
-  management_incidents: {
-    title: "INCIDENTS",
-    menuKey: "management_incidents",
-    lines: ["Choose an incident management action."],
+  management_devices: {
+    title: 'DEVICES',
+    menuKey: 'management_devices',
+    lines: ['Manage patrol devices.'],
     options: [
-      { id: "incidents", label: "Open Incidents" },
-      { id: "report_incident", label: "Register Incident" },
-      { id: "back", label: "Back" },
+      { id: 'register_device', label: 'Register Device' },
+      { id: 'devices', label: 'View Devices' },
+      { id: 'secure_devices', label: 'Activate/Suspend Device' },
+      { id: 'back', label: 'Back' },
     ],
   },
-  management_patrol_config: {
-    title: "PATROL CONFIGURATION",
-    menuKey: "management_patrol_config",
-    lines: ["Choose a patrol configuration action."],
+  management_sites: {
+    title: 'SITES',
+    menuKey: 'management_sites',
+    lines: ['Manage site access and registration.'],
     options: [
-      { id: "patrol_status", label: "View Patrol Status" },
-      { id: "create_patrol", label: "Create Patrol" },
-      { id: "back", label: "Back" },
+      { id: 'register_site', label: 'Register Site' },
+      { id: 'view_sites', label: 'View Sites' },
+      { id: 'back', label: 'Back' },
     ],
   },
-  management_whatsapp: {
-    title: "WHATSAPP MANAGEMENT",
-    menuKey: "management_whatsapp",
-    lines: ["Manage WhatsApp assistant access."],
-    options: [
-      { id: "authorize_whatsapp", label: "Authorize WhatsApp Number" },
-      { id: "view_whatsapp_numbers", label: "View Authorized Numbers" },
-      { id: "revoke_whatsapp_access", label: "Revoke WhatsApp Access" },
-      { id: "back", label: "Back" },
-    ],
+  management_reports: {
+    title: 'MANAGEMENT REPORTS',
+    menuKey: 'management_reports',
+    lines: ['Please choose a report category:'],
+    options: reportRootOptions({ platformRole: 'owner' } as Identity),
   },
   reports_period: {
     title: "DAILY / WEEKLY SUMMARY",
@@ -1329,38 +1336,34 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     { id: "report:device_security:maintenance", label: "Maintenance Sessions" },
     { id: "back", label: "Back" },
   ]),
-  management_reports: {
-    title: "REPORTS",
-    menuKey: "management_reports",
-    lines: ["Please choose a report category:"],
-    options: reportRootOptions({ platformRole: "owner" } as Identity),
-  },
 };
 
 export const WA_MENU_PARENTS: Record<string, string> = {
-  management_operations: MANAGEMENT_HOME_KEY,
-  management_devices: MANAGEMENT_HOME_KEY,
+  management_patrols: MANAGEMENT_HOME_KEY,
+  management_routes: MANAGEMENT_HOME_KEY,
+  management_schedules: MANAGEMENT_HOME_KEY,
   management_checkpoints: MANAGEMENT_HOME_KEY,
-  management_incidents: MANAGEMENT_HOME_KEY,
-  management_patrol_config: MANAGEMENT_HOME_KEY,
+  management_devices: MANAGEMENT_HOME_KEY,
+  management_sites: MANAGEMENT_HOME_KEY,
   management_reports: MANAGEMENT_HOME_KEY,
   management_whatsapp: MANAGEMENT_HOME_KEY,
-  reports_period: "report_period",
-  reports_checkpoint_activity: "report_period",
-  reports_scan_investigations: "report_period",
-  reports_checkpoint_scans: "report_period",
-  reports_patrols: "report_period",
-  reports_sos: "report_period",
-  reports_incidents: "report_period",
-  reports_data_logs: "report_period",
-  reports_devices: "report_period",
-  reports_checkpoint_performance: "report_period",
-  reports_schedules: "report_period",
-  reports_routes: "report_period",
-  reports_device_security: "report_period",
+  reports_period: USER_HOME_KEY,
+  reports_checkpoint_activity: 'report_period',
+  reports_scan_investigations: 'report_period',
+  reports_checkpoint_scans: 'report_period',
+  reports_patrols: 'report_period',
+  reports_sos: 'report_period',
+  reports_incidents: 'report_period',
+  reports_data_logs: 'report_period',
+  reports_devices: 'report_period',
+  reports_checkpoint_performance: 'report_period',
+  reports_schedules: 'report_period',
+  reports_routes: 'report_period',
+  reports_device_security: 'report_period',
   report_period: USER_HOME_KEY,
-  [MANAGEMENT_HOME_KEY]: MANAGEMENT_HOME_KEY,
-  [USER_HOME_KEY]: USER_HOME_KEY,
+  [ASSISTANT_ROOT_KEY]: ASSISTANT_ROOT_KEY,
+  [MANAGEMENT_HOME_KEY]: ASSISTANT_ROOT_KEY,
+  [USER_HOME_KEY]: ASSISTANT_ROOT_KEY,
 };
 
 /** Maps numeric/keyword replies against the options we last showed, never against a different menu. */
@@ -1381,7 +1384,7 @@ export function resolveMenuChoice(session: SessionRow, input: string): string | 
 export function backTarget(session: SessionRow): string {
   const current = String(session.temporary_data?.["last_menu_key"] ?? "");
   if (current === "patrol_status") {
-    return session.last_menu === "management" ? "management_operations" : USER_HOME_KEY;
+    return session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY;
   }
   if (current === "late_sessions") return "late_patrols";
   if (current === "missed_sessions") return "missed_patrols";

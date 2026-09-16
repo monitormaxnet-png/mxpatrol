@@ -16,6 +16,7 @@ import {
   incidentsView,
   liveNow,
   mainMenu,
+  userModeMenu,
   managementMenu,
   checkpointsView,
   patrolStatusView,
@@ -197,15 +198,11 @@ async function ensureSiteContext(ctx: Ctx): Promise<{ siteId: string | null; ask
 async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
   switch (intent.action) {
     case "menu":
-      if (ctx.session.last_menu === "management" && ctx.identity.canManage) {
-        return managementMenu(ctx.identity, ctx.session);
-      }
-      ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "user" });
       return mainMenu(ctx.identity, ctx.session);
 
     case "user":
       ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "user" });
-      return mainMenu(ctx.identity, ctx.session);
+      return userModeMenu(ctx.identity, ctx.session);
 
     case "management":
       ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: ctx.identity.canManage ? "management" : "user" });
@@ -409,6 +406,14 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
 /** Handles the ids that only exist as menu selections (site:, device:, ack, problems, periods). */
 async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   if (id === "reports") return reportPeriodMenu(ctx.identity);
+  if (id === "help") return optionMenu("HELP", ["Reply menu to return to the main assistant.", "Reply back to return to the previous menu.", "Use Change Site to switch your active site."], [{ id: "menu", label: "Main Menu" }]);
+  if (id === "view_sites") {
+    if (!ctx.identity.canManage) return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "User Mode" }]);
+    const sites = await allowedSites(ctx.client, ctx.identity);
+    return optionMenu("SITES", sites.length ? sites.map((site, index) => String(index + 1) + ". " + site.name + " - " + (site.status ?? "active")) : ["No sites are assigned to this account."], [{ id: "management_sites", label: "Sites" }, { id: "back", label: "Back" }]);
+  }
+  if (id === "register_site") return optionMenu("REGISTER SITE", ["Site registration uses the guided Web AI flow for now."], [{ id: "management_sites", label: "Sites" }, { id: "back", label: "Back" }]);
+  if (id === "routes" || id === "schedules") return optionMenu(id === "routes" ? "ROUTES" : "SCHEDULES", ["This management view is available in the MX Patrol web Command Center."], [{ id: id === "routes" ? "management_routes" : "management_schedules", label: "Back" }]);
 
   if (id === "management_reports") {
     if (!ctx.identity.canManage) {
@@ -454,6 +459,8 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   if (id === "back") {
     const target = backTarget(ctx.session);
     if (target === "report_period") return reportPeriodMenu(ctx.identity);
+    if (target === "assistant_root") return mainMenu(ctx.identity, ctx.session);
+    if (target === "user_home") return userModeMenu(ctx.identity, ctx.session);
     if (WA_SUBMENUS[target]) return WA_SUBMENUS[target];
     if (target === MANAGEMENT_HOME_KEY && ctx.identity.canManage) return managementMenu(ctx.identity, ctx.session);
     ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "user" });

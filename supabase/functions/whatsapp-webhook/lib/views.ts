@@ -738,11 +738,11 @@ export async function patrolStatusView(
   const countKey = group === 'active' ? 'active' : group === 'completed' ? 'completed' : group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
   const visible = rows.filter((row) => row[countKey] > 0);
   const siteLabel = siteId ? ((visible[0]?.siteName) ?? 'Selected site') : 'ALL SITES';
-  const title = (group === 'completed' ? 'COMPLETED' : group === 'incomplete' ? 'INCOMPLETE' : group === 'late' ? 'LATE' : 'MISSED') + ' PATROLS - ' + siteLabel;
+  const title = (group === 'active' ? 'ACTIVE' : group === 'completed' ? 'COMPLETED' : group === 'incomplete' ? 'INCOMPLETE' : group === 'late' ? 'LATE' : 'MISSED') + ' PATROLS - ' + siteLabel;
   const options = [{ id: 'reports', label: 'Reports' }, { id: 'back', label: 'Back' }];
 
   if (!visible.length) {
-    const empty = group === 'completed' ? 'No completed patrol sessions found for the selected period.' : group === 'incomplete' ? 'No incomplete patrol sessions.' : group === 'late' ? 'No late patrol sessions.' : 'No missed patrol sessions.';
+    const empty = group === 'active' ? 'No active patrol sessions right now.' : group === 'completed' ? 'No completed patrol sessions found for the selected period.' : group === 'incomplete' ? 'No incomplete patrol sessions.' : group === 'late' ? 'No late patrol sessions.' : 'No missed patrol sessions.';
     return { title, lines: ['Period: Today', '', empty, '', 'Type reports for details.', 'Type back to return.'], options };
   }
 
@@ -761,8 +761,8 @@ export async function patrolStatusView(
     const expected = visible.reduce((sum, row) => sum + row.expected, 0);
     lines.push('Total: ' + completed + ' / ' + expected + ' sessions completed');
   } else {
-    const total = visible.reduce((sum, row) => sum + (group === 'incomplete' ? row.incomplete : group === 'late' ? row.late : row.missed), 0);
-    const label = group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
+    const total = visible.reduce((sum, row) => sum + (group === 'active' ? row.active : group === 'incomplete' ? row.incomplete : group === 'late' ? row.late : row.missed), 0);
+    const label = group === 'active' ? 'active' : group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
     lines.push('Total ' + label + ' sessions: ' + total);
   }
   if (group === 'late') lines.push('', 'Type late sessions to view late session details.', 'Type reports for full details.', 'Type back to return.');

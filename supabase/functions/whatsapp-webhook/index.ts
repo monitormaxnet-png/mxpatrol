@@ -283,7 +283,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
       const group = intent.action === "active_patrols" ? "active" : intent.action === "completed_patrols" ? "completed" : intent.action === "incomplete_patrols" ? "incomplete" : intent.action === "late_patrols" ? "late" : "missed";
-      return await patrolStatusView(ctx.client, ctx.identity, siteId, group);
+      return await patrolStatusView(ctx.client, ctx.identity, siteId, group, ctx.session.current_site_name);
     }
 
     case "late_sessions":
@@ -459,7 +459,7 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
     const { siteId, ask } = await ensureSiteContext(ctx);
     if (ask) return ask;
     const group = id === "active_patrols" ? "active" : id === "completed_patrols" ? "completed" : id === "incomplete_patrols" ? "incomplete" : id === "late_patrols" ? "late" : "missed";
-    return await patrolStatusView(ctx.client, ctx.identity, siteId, group);
+    return await patrolStatusView(ctx.client, ctx.identity, siteId, group, ctx.session.current_site_name);
   }
 
   if (id.startsWith("report:")) {

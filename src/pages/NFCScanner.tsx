@@ -760,7 +760,15 @@ const NFCScanner = () => {
     })();
   };
 
-  const scannerStatusForDisplay = scannerBlocked ? scannerBlockedStatus : scannerStatus;
+  const scannerStatusForDisplay = getScannerDisplayStatus({
+    status: scannerBlocked ? scannerBlockedStatus : scannerStatus,
+    syncing,
+    batteryLevel: battery?.level,
+    gpsStatus,
+    scannerBlocked,
+    pendingDataLog: Boolean(pendingDataLog),
+    pendingFaceScan: Boolean(pendingFaceScan),
+  });
   const scannerShellState = getScannerShellState(scannerStatusForDisplay);
   const gpsLabel = getScannerGpsLabel(gpsStatus);
   const nfcLabel = getScannerNfcLabel(nfcSupported, scannerStatusForDisplay);
@@ -1098,6 +1106,14 @@ const classifyFailureState = (reason?: string | null, locallyQueued = false): Sc
   return "save_failed";
 };
 
+const getScannerDisplayStatus = (input: { status: ScannerUiState; syncing: boolean; batteryLevel?: number | null; gpsStatus: "idle" | "capturing" | "available" | "pending" | "unavailable"; scannerBlocked: boolean; pendingDataLog: boolean; pendingFaceScan: boolean; }): ScannerUiState => {
+  const passive = ["idle", "scanning", "initializing"].includes(input.status);
+  if (input.syncing && !input.scannerBlocked && !input.pendingDataLog && !input.pendingFaceScan) return "syncing";
+  if (passive && input.gpsStatus === "pending") return "gps_warning";
+  if (passive && typeof input.batteryLevel === "number" && input.batteryLevel > 0 && input.batteryLevel <= 15) return "low_battery";
+  return input.status;
+};
+
 const getScannerShellState = (status: ScannerUiState) => {
   if (status === "idle" || status === "scanning" || status === "initializing") return "ready";
   if (status === "acquiring_gps" || status === "verifying" || status === "saving") return "verifying";
@@ -1170,6 +1186,8 @@ const formatScannerTime = (iso: string | null) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 };
 export default NFCScanner;
+
+
 
 
 

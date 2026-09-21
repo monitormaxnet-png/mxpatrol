@@ -32,11 +32,14 @@ import { realtimeStatusLabel, useRealtimeConnectionStatus } from "@/hooks/useRea
 import { SocPageShell } from "@/components/dashboard/SocComponents";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
 import { usePatrolSessionReports, usePatrolSessions, usePatrolTemplates } from "@/hooks/useScheduledPatrols";
+import { buildIncidentEvidencePackage, downloadBlob } from "@/lib/incidentEvidencePackage";
+import { MX_PDF_REPORT_TYPES, openMxPdfReport, type MxPdfIncidentEvidence, type MxPdfReportInput, type MxPdfReportType } from "@/lib/mxPdfReports";
 
 type DateRange = "today" | "7d" | "30d";
 type ReportTab = "all" | "generated" | "scheduled" | "pending" | "failed";
 type DatalogReportRow = { id: string; submitted_at: string | null; datalog_value: string | null; responses_json: any; site_id: string | null; checkpoint_id: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
 type DatalogCheckpointOption = { id: string; name: string; site_id: string | null };
+type IncidentPhotoEvidenceRow = { id: string; site_id: string | null; device_identifier: string | null; storage_path: string; captured_at: string | null; created_at?: string | null; signed_url?: string | null };
 
 type ReportData = {
   title?: string;
@@ -86,12 +89,7 @@ type SupabaseQueryClient = { from: <T = unknown>(table: string) => QueryLike<T> 
 
 const db = supabase as unknown as SupabaseQueryClient;
 
-const reportTypeLabels: Record<string, string> = {
-  daily: "Daily Patrol Report",
-  weekly: "Weekly Security Summary",
-  monthly: "Monthly Compliance Report",
-  quarterly: "Quarterly Analytics Report",
-};
+const reportTypeLabels: Record<string, string> = Object.fromEntries(MX_PDF_REPORT_TYPES.map((report) => [report.type, report.label]));
 
 const dateRangeStart = (range: DateRange) => {
   const date = new Date();
@@ -105,6 +103,8 @@ const titleCase = (value: string) => value.replace(/_/g, " ").replace(/\b\w/g, (
 const reportLabel = (type?: string | null) => reportTypeLabels[type ?? ""] ?? `${titleCase(type ?? "custom")} Report`;
 const formatTime = (value?: string | null) => value ? format(new Date(value), "dd MMM yyyy HH:mm") : "Not available";
 const rangeLabel = (range: DateRange) => range === "today" ? "Today" : range === "7d" ? "Last 7 Days" : "Last 30 Days";
+const incidentNo = (incident: any) => `INC-${String(incident?.id ?? "UNKNOWN").slice(0, 8).toUpperCase()}`;
+const incidentEvidencePaths = (incident: any) => (incident?.description ?? "").split("`n").map((line: string) => line.split("|").pop()?.trim() ?? "").filter((value: string) => /\\.(jpe?g|png|webp|m4a|mp3|wav|aac)$/i.test(value));
 
 function matchesTemplate(row: Record<string, unknown>, templateId: string) {
   if (templateId === "all") return true;
@@ -137,7 +137,7 @@ const Reports = () => {
   const reports = reportRows as ReportRecord[];
   const [siteId, setSiteId] = useState("all");
   const [dateRange, setDateRange] = useState<DateRange>("7d");
-  const [reportType, setReportType] = useState("all");
+  const [reportType, setReportType] = useState<MxPdfReportType>("checkpoint_scan");
   const [patrolTemplateId, setPatrolTemplateId] = useState("all");
   const [datalogCheckpointId, setDatalogCheckpointId] = useState("all");
   const [activeTab, setActiveTab] = useState<ReportTab>("all");
@@ -179,6 +179,51 @@ const Reports = () => {
       const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as unknown as DatalogReportRow[];
+    },
+  });
+
+  const { data: incidentRows = [] } = useQuery({
+    queryKey: ["reports_incident_rows", companyId, siteId, since],
+    enabled: !!companyId,
+    queryFn: async () => {
+      let query = supabase.from("incidents").select("*, sites(name)").eq("company_id", companyId!).gte("created_at", since).order("created_at", { ascending: false }).limit(250);
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: incidentPhotoRows = [] } = useQuery({
+    queryKey: ["reports_incident_photo_evidence", companyId, siteId, since],
+    enabled: !!companyId,
+    queryFn: async () => {
+      let query = supabase
+        .from("incident_report_photos" as never)
+        .select("id, site_id, device_identifier, storage_path, captured_at, created_at")
+        .eq("company_id", companyId!)
+        .gte("captured_at", since)
+        .order("captured_at", { ascending: false })
+        .limit(300);
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { data, error } = await query;
+      if (error) throw error;
+      const rows = (data ?? []) as unknown as IncidentPhotoEvidenceRow[];
+      return Promise.all(rows.map(async (photo) => {
+        const { data: signed } = await supabase.storage.from("incident-reports").createSignedUrl(photo.storage_path, 60 * 20);
+        return { ...photo, signed_url: signed?.signedUrl ?? null };
+      }));
+    },
+  });
+  const { data: sosRows = [] } = useQuery({
+    queryKey: ["reports_sos_rows", companyId, siteId, since],
+    enabled: !!companyId,
+    queryFn: async () => {
+      let query = supabase.from("alerts").select("*, sites(name)").eq("company_id", companyId!).eq("type", "panic_button").gte("created_at", since).order("created_at", { ascending: false }).limit(250);
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data ?? [];
     },
   });
 
@@ -227,14 +272,14 @@ const Reports = () => {
   const templateOptions = useMemo(() => buildTemplateOptions(patrolTemplates, sessionReportRows, reportSessions), [patrolTemplates, reportSessions, sessionReportRows]);
   const selectedTemplateName = useMemo(() => templateOptions.find((template) => template.id === patrolTemplateId)?.name ?? "All Patrol Templates", [patrolTemplateId, templateOptions]);
   const periodScans = useMemo(() => registeredScans.filter((scan) => scan.scanned_at >= since && matchesTemplate(scan, patrolTemplateId)), [patrolTemplateId, registeredScans, since]);
-  const reportTypes = useMemo(() => Array.from(new Set([...reports.map((report) => report.report_type), ...reportJobs.map((job) => job.report_type)])).sort(), [reportJobs, reports]);
+  const reportTypes = MX_PDF_REPORT_TYPES;
 
   const filteredReports = useMemo(() => reports.filter((report) => {
     const data = report.data as ReportData | null;
     const title = data?.title ?? reportLabel(report.report_type);
     const text = `${title} ${report.report_type} ${report.summary_text ?? ""}`.toLowerCase();
     return report.generated_at >= since
-      && (reportType === "all" || report.report_type === reportType)
+      && report.report_type === reportType
       && (activeTab === "all" || activeTab === "generated")
       && (!search || text.includes(search.toLowerCase()));
   }), [activeTab, reportType, reports, search, since]);
@@ -252,7 +297,7 @@ const Reports = () => {
     return statusMatch
       && time >= since
       && siteMatch
-      && (reportType === "all" || job.report_type === reportType)
+      && job.report_type === reportType
       && (!search || text.includes(search.toLowerCase()));
   }), [activeTab, reportJobs, reportType, search, since, siteId]);
 
@@ -267,25 +312,65 @@ const Reports = () => {
     return Math.round((times[times.length - 1] - times[0]) / 60000);
   }, [periodScans]);
 
+  const incidentEvidence = useMemo<Record<string, MxPdfIncidentEvidence>>(() => {
+    const photosByPath = new Map(incidentPhotoRows.map((photo) => [photo.storage_path, photo]));
+    return incidentRows.reduce<Record<string, MxPdfIncidentEvidence>>((acc, incident: any) => {
+      const photos = incidentEvidencePaths(incident)
+        .map((path) => photosByPath.get(path))
+        .filter(Boolean)
+        .map((photo) => ({
+          id: photo!.id,
+          incident_id: incident.id,
+          storage_path: photo!.storage_path,
+          signed_url: photo!.signed_url,
+          device_identifier: photo!.device_identifier,
+          captured_at: photo!.captured_at,
+          created_at: photo!.created_at,
+        }));
+      acc[String(incident.id)] = { photos, audio: [] };
+      acc[incidentNo(incident)] = acc[String(incident.id)];
+      return acc;
+    }, {});
+  }, [incidentPhotoRows, incidentRows]);
+
+  const buildPdfInput = (overrideType?: MxPdfReportType): MxPdfReportInput => ({
+    type: overrideType ?? reportType,
+    companyName,
+    siteName: siteId === "all" ? "All Sites" : "Selected site",
+    periodLabel: rangeLabel(dateRange),
+    scans: periodScans,
+    patrols: sessionReports.length ? sessionReports : expectedSessions,
+    alerts: sosRows,
+    incidents: incidentRows,
+    datalogs: datalogRows,
+    incidentEvidence,
+  });
   const reportsByType = useMemo(() => {
     const counts = new Map<string, number>();
     filteredReports.forEach((report) => counts.set(report.report_type, (counts.get(report.report_type) ?? 0) + 1));
     return Array.from(counts.entries());
   }, [filteredReports]);
 
-  const handleGenerate = async (overrideType?: string) => {
+  const handleGenerate = (overrideType?: MxPdfReportType) => {
     setGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-report", {
-        body: { report_type: overrideType ?? (reportType === "all" ? "daily" : reportType), site_id: siteId === "all" ? null : siteId, date_range: dateRange },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      toast.success("Report generated");
-      void queryClient.invalidateQueries({ queryKey: ["ai_reports", companyId] });
-      void queryClient.invalidateQueries({ queryKey: ["report_jobs", companyId] });
+      openMxPdfReport(buildPdfInput(overrideType));
+      toast.success("PDF report opened");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to generate report");
+      toast.error(error instanceof Error ? error.message : "Failed to open PDF report");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleDownloadIncidentPackage = async () => {
+    setGenerating(true);
+    try {
+      const blob = await buildIncidentEvidencePackage(buildPdfInput("incident"));
+      downloadBlob(blob, `MX-Patrol-Incident-Package-${format(new Date(), "yyyyMMdd-HHmmss")}.zip`);
+      toast.success("Incident package downloaded");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to download incident package");
     } finally {
       setGenerating(false);
     }
@@ -315,14 +400,14 @@ const Reports = () => {
     URL.revokeObjectURL(url);
   };
   return (
-    <SocPageShell title="Reports" subtitle="Generate and manage patrol, incident and activity reports" realtime={realtime}>
+    <SocPageShell title="Reports" subtitle="Generate simplified MX Patrol PDF reports" realtime={realtime}>
       <div className="space-y-5 text-white">
         <section className="grid gap-2 rounded-xl border border-white/10 bg-slate-950/72 p-3 md:grid-cols-5">
           <CategoryLink to="/reports" label="Patrol Reports" />
           <CategoryLink to="/reports/checkpoint-activity" label="Checkpoint Reports" />
-          <CategoryLink to="/scan-investigations" label="Scan Investigations" />
+          <CategoryLink to="/reports" label="Device Scan Report" />
           <CategoryLink to="/sos-alerts" label="Incidents" />
-          <CategoryLink to="/reports" label="Custom Reports" muted />
+          <CategoryLink to="/reports" label="Datalog Report" muted />
         </section>
         <section className="grid gap-3 xl:grid-cols-4">
           <div className="grid gap-3 md:grid-cols-5 xl:col-span-3">
@@ -332,8 +417,7 @@ const Reports = () => {
               <Select value={reportType} onValueChange={setReportType}>
                 <SelectTrigger className="h-9 border-white/10 bg-slate-950/70 text-white"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  {reportTypes.map((type) => <SelectItem key={type} value={type}>{reportLabel(type)}</SelectItem>)}
+                  {reportTypes.map((type) => <SelectItem key={type.type} value={type.type}>{type.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </FilterBox>
@@ -359,10 +443,10 @@ const Reports = () => {
           </div>
           <div className="flex gap-2">
             <button onClick={() => void handleGenerate()} disabled={generating} className="inline-flex h-11 items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 text-sm font-bold text-sky-200 disabled:opacity-50">
-              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Generate Report
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Generate PDF
             </button>
             <button onClick={() => void handleGenerate()} disabled={generating} className="inline-flex h-11 items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 text-sm font-bold text-emerald-100 disabled:opacity-50">
-              <Plus className="h-4 w-4" /> New Report
+              <Plus className="h-4 w-4" /> Open PDF
             </button>
           </div>
         </section>
@@ -393,16 +477,13 @@ const Reports = () => {
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search reports..." className="h-10 w-56 rounded-lg border border-white/10 bg-slate-950/80 pl-9 pr-3 text-sm text-white outline-none" />
                 </div>
-                <button onClick={exportCsv} disabled={periodScans.length === 0} className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 px-3 text-sm font-semibold text-slate-200 disabled:opacity-50">
-                  <Download className="h-4 w-4" /> Export CSV
-                </button>
               </div>
             </div>
             <ReportTableState loading={isLoading} error={reportsError} jobsLoading={jobsLoading} jobsError={jobsError} activeTab={activeTab} reports={filteredReports} jobs={filteredJobs} selectedId={selected?.id ?? null} companyName={companyName} siteLabel={siteId === "all" ? "All Sites" : "Selected site"} onSelect={setSelectedId} onExport={exportCsv} />
           </div>
           <div className="space-y-4">
             <AiInsightsPanel compliance={compliance} scans={periodScans.length} reports={filteredReports.length} incidents={metrics?.incidents ?? 0} sos={metrics?.sos ?? 0} />
-            <QuickActions generating={generating} onGenerate={() => void handleGenerate()} onExecutive={() => void handleGenerate("executive")} onExport={exportCsv} csvDisabled={periodScans.length === 0} />
+            <QuickActions generating={generating} onGenerate={() => handleGenerate()} onExecutive={() => handleGenerate("patrol")} onIncidentPackage={handleDownloadIncidentPackage} />
             <AnalyticsPanel reportsByType={reportsByType} total={filteredReports.length} />
             <ScheduledReportsPanel jobs={reportJobs} />
           </div>
@@ -606,7 +687,7 @@ function ReportRow({ report, selected, companyName, siteLabel, onSelect, onExpor
       <td className="px-3 py-3">
         <div className="flex gap-1">
           <IconButton label="Preview" icon={Eye} onClick={() => onSelect(report.id)} />
-          <IconButton label="Download CSV" icon={Download} onClick={onExport} />
+          
           <IconButton label="Share unavailable" icon={Share2} disabled />
         </div>
       </td>
@@ -751,7 +832,7 @@ function ReportDetails({ report, companyName, siteLabel, scanCount, incidents, s
         <Detail label="Company" value={companyName} />
         <Detail label="Site" value={siteLabel} />
         <Detail label="Generated At" value={formatTime(report.generated_at)} />
-        <Detail label="Format" value="AI report / CSV export" />
+        <Detail label="Format" value="PDF only" />
         <Detail label="Status" value="Ready" />
       </dl>
       <div className="mt-5 rounded-lg border border-white/10 bg-white/5 p-4">
@@ -769,7 +850,6 @@ function ReportDetails({ report, companyName, siteLabel, scanCount, incidents, s
         <p className="text-xs text-slate-500">{companyName} - {siteLabel}</p>
       </div>
       <div className="mt-5 grid gap-2">
-        <button onClick={onExport} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/15 text-sm font-bold text-emerald-200"><Download className="h-4 w-4" />Download CSV</button>
         <button disabled className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 text-sm font-bold text-slate-500"><Share2 className="h-4 w-4" />Share requires backend</button>
         <button disabled className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-400/30 text-sm font-bold text-red-300 opacity-60"><Trash2 className="h-4 w-4" />Delete disabled</button>
       </div>
@@ -850,16 +930,16 @@ function AiInsightsPanel({ compliance, scans, reports, incidents, sos }: { compl
   );
 }
 
-function QuickActions({ generating, onGenerate, onExecutive, onExport, csvDisabled }: { generating: boolean; onGenerate: () => void; onExecutive: () => void; onExport: () => void; csvDisabled: boolean }) {
+function QuickActions({ generating, onGenerate, onExecutive, onIncidentPackage }: { generating: boolean; onGenerate: () => void; onExecutive: () => void; onIncidentPackage: () => void }) {
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950/72 p-4">
       <h3 className="mb-3 font-bold text-white">Quick Actions</h3>
       <div className="grid gap-2">
-        <ActionButton icon={Zap} label="Generate Report" onClick={onGenerate} disabled={generating} />
-        <ActionButton icon={ShieldCheck} label="Create Executive Summary" onClick={onExecutive} disabled={generating} />
+        <ActionButton icon={Zap} label="Generate PDF" onClick={onGenerate} disabled={generating} />
+        <ActionButton icon={ShieldCheck} label="Patrol PDF" onClick={onExecutive} disabled={generating} />
         <ActionButton icon={CalendarClock} label="Create Schedule" disabled />
-        <ActionButton icon={FileText} label="Export PDF" onClick={() => window.print()} />
-        <ActionButton icon={Download} label="Export CSV" onClick={onExport} disabled={csvDisabled} />
+        <ActionButton icon={FileText} label="Open Selected PDF" onClick={onGenerate} />
+        <ActionButton icon={Download} label="Download Incident Package" onClick={onIncidentPackage} disabled={generating} />
         <ActionButton icon={Share2} label="Share Report" disabled />
       </div>
     </div>
@@ -900,6 +980,13 @@ function formatDuration(minutes: number) {
 }
 
 export default Reports;
+
+
+
+
+
+
+
 
 
 

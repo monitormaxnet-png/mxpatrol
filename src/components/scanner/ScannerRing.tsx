@@ -25,7 +25,12 @@ export type ScannerUiState =
   | "disabled_device"
   | "update_required"
   | "security_failed"
-  | "sos";
+  | "sos"
+  | "syncing"
+  | "sync_complete"
+  | "low_battery"
+  | "gps_warning"
+  | "datalog_saved";
 
 type GpsStatus = "idle" | "capturing" | "available" | "pending" | "unavailable";
 type Tone = "ready" | "progress" | "success" | "warning" | "offline" | "error" | "sos";
@@ -68,6 +73,11 @@ const statusConfig: Record<ScannerUiState, { label: string; sublabel: string; to
   update_required: { label: "UPDATE REQUIRED", sublabel: "INSTALL APPROVED APP UPDATE", tone: "warning", icon: AlertTriangle },
   security_failed: { label: "SECURITY CHECK FAILED", sublabel: "ADMINISTRATOR ATTENTION REQUIRED", tone: "error", icon: ShieldAlert },
   sos: { label: "SOS ACTIVATED", sublabel: "EMERGENCY ALERT SENT", tone: "sos", icon: ShieldAlert },
+  syncing: { label: "SYNCING", sublabel: "UPLOADING SAVED SCANS", tone: "progress", icon: Cloud },
+  sync_complete: { label: "SYNC COMPLETE", sublabel: "ALL SAVED SCANS UPLOADED", tone: "success", icon: Check },
+  low_battery: { label: "LOW BATTERY", sublabel: "PLEASE CHARGE DEVICE SOON", tone: "warning", icon: AlertTriangle },
+  gps_warning: { label: "NO GPS SIGNAL", sublabel: "SCAN WILL STILL BE SAVED", tone: "warning", icon: AlertTriangle },
+  datalog_saved: { label: "DATALOG SAVED", sublabel: "SAVED SUCCESSFULLY", tone: "success", icon: Check },
 };
 
 interface ScannerRingProps {
@@ -159,7 +169,12 @@ function getStructuredPatrol(result: StructuredScanResult | null): ActivePatrolS
 }
 
 function getEventTitle(status: ScannerUiState) {
-  if (status === "awaiting_data") return "Scan recorded";
+  if (status === "awaiting_data") return "Datalog required";
+  if (status === "datalog_saved") return "Datalog saved";
+  if (status === "syncing") return "Syncing";
+  if (status === "sync_complete") return "Sync complete";
+  if (status === "low_battery") return "Low battery";
+  if (status === "gps_warning") return "Location pending";
   if (status === "duplicate") return "Already scanned";
   if (status === "success_offline" || status === "offline_saved") return "Offline scan saved";
   if (status === "sos") return "SOS active";
@@ -169,7 +184,12 @@ function getEventTitle(status: ScannerUiState) {
 function getEventMessage(status: ScannerUiState, checkpointName: string | null, errorReason: string | null, gpsStatus: GpsStatus, pendingCount: number, fallback?: string) {
   if (fallback) return fallback;
   if (status === "success" || status === "patrol_started" || status === "patrol_completed" || status === "no_active_patrol") return checkpointName ? `${checkpointName} recorded.` : "Checkpoint scan recorded.";
-  if (status === "awaiting_data") return "Open the data log and complete all required fields.";
+  if (status === "awaiting_data") return "Enter the checkpoint reading to finish this scan.";
+  if (status === "datalog_saved") return checkpointName ? `${checkpointName} datalog value saved.` : "Saved successfully. Returning to scanner.";
+  if (status === "syncing") return pendingCount ? `Sending saved scans. ${pendingCount} waiting.` : "Sending saved scans.";
+  if (status === "sync_complete") return "Offline scans uploaded. Returning to scanner.";
+  if (status === "low_battery") return "Battery is low. Scanning can continue.";
+  if (status === "gps_warning") return "Location will update automatically when GPS returns.";
   if (status === "duplicate") return checkpointName ? `${checkpointName} was already recorded for this patrol.` : "This checkpoint was already recorded for the current patrol.";
   if (status === "out_of_order") return errorReason ?? "This route must be scanned in sequence.";
   if (status === "unregistered") return errorReason ?? "This NFC tag is not assigned to a checkpoint.";
@@ -180,3 +200,4 @@ function getEventMessage(status: ScannerUiState, checkpointName: string | null, 
 }
 
 export default memo(ScannerRing);
+

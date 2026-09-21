@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
+import TTechMxPatrolLogo from "@/components/branding/TTechMxPatrolLogo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ScanDataLogForm } from "@/lib/scanResult";
@@ -12,7 +13,7 @@ type Props = {
   onCancel?: () => void;
 };
 
-export const DataLogFormOverlay = ({ form, submitting, onSubmit, onCancel }: Props) => {
+export const DataLogFormOverlay = ({ form, checkpointName, submitting, onSubmit, onCancel }: Props) => {
   const field = useMemo(() => [...form.fields].sort((a, b) => a.sequence_order - b.sequence_order)[0], [form.fields]);
   const label = (field?.label || form.name || "Datalog").trim();
   const [value, setValue] = useState("");
@@ -51,7 +52,7 @@ export const DataLogFormOverlay = ({ form, submitting, onSubmit, onCancel }: Pro
         </Button>
         {onCancel ? (
           <Button type="button" variant="outline" disabled={submitting} onClick={onCancel}>
-            LATER
+            SKIP
           </Button>
         ) : null}
       </div>
@@ -60,3 +61,4 @@ export const DataLogFormOverlay = ({ form, submitting, onSubmit, onCancel }: Pro
 };
 
 export default DataLogFormOverlay;
+

@@ -43,6 +43,7 @@ import {
   type WorkflowState,
 } from '@/lib/assistantWorkflows';
 import { reportMenuItems } from '@/lib/assistantReportDefinitions';
+import { openMxPdfReport, reportTypeFromAction } from '@/lib/mxPdfReports';
 
 const LiveMap = lazy(() => import('@/components/dashboard/LiveMap'));
 
@@ -474,7 +475,25 @@ export default function CommandCenter() {
       const period = action.slice(7) as keyof typeof PERIODS;
       if (PERIODS[period]) return runReportPeriod(period);
       if (action.startsWith('report:device_security:') && !isPlatformOwner) return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can access Device Security Reports.</p>);
-      return addAssistant(reportTitle(action) + ' - ' + selectedSite, <AssistantReportPanel action={action} site={selectedSite} scans={siteScans} patrols={sitePatrols} alerts={siteAlerts} incidents={siteIncidents} devices={siteDevices} checkpoints={siteCheckpoints} routes={siteRoutes} forms={siteForms} dataLogs={siteDataLogs} loading={ownerScopedData.isLoading || scans.isLoading || patrols.isLoading || devices.isLoading || alerts.isLoading || incidents.isLoading || dataLogSubmissions.isLoading} />);
+      const reportType = reportTypeFromAction(action);
+      if (!reportType) return addAssistant('REPORT UNAVAILABLE', <p>This report has been retired. Choose one of the six PDF reports from Reports.</p>);
+      try {
+        openMxPdfReport({
+          type: reportType,
+          companyName: selectedCompanyName,
+          siteName: selectedSite,
+          periodLabel: 'Today / selected site data',
+          scans: siteScans,
+          patrols: sitePatrols,
+          alerts: siteAlerts,
+          incidents: siteIncidents,
+          datalogs: siteDataLogs,
+          checkpoints: siteCheckpoints,
+        });
+        return addAssistant('PDF REPORT READY', <p>{reportTitle(action)} opened in a print-ready PDF layout. Use the browser print dialog to save or download the PDF.</p>);
+      } catch (error) {
+        return addAssistant('PDF REPORT BLOCKED', <p>{error instanceof Error ? error.message : 'Could not open the PDF report.'}</p>);
+      }
     }
     if (action === 'saved_reports') return addAssistant('SAVED REPORTS - ' + selectedSite, <SavedReports jobs={siteReportJobs} loading={reportJobs.isLoading} />);
     if (action === 'generate_report') {

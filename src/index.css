@@ -1741,3 +1741,24 @@
     grid-template-columns: 1fr;
   }
 }
+
+.rg360-data-heading {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  text-align: center;
+}
+
+.rg360-data-heading span {
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 1000;
+  letter-spacing: 0.12em;
+}
+
+.rg360-data-heading strong {
+  max-width: 100%;
+  color: #f8fcff;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}

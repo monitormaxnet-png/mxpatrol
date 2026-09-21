@@ -1,0 +1,74 @@
+import { describe, expect, it } from "vitest";
+import { buildStoredZip, evidenceFilename } from "./incidentEvidencePackage";
+import { buildCheckpointScanMatrix, buildDeviceScanMatrix, buildMxPdfReportHtml, formatReportDateTime } from "./mxPdfReports";
+
+const scans = [
+  { id: "1", scanned_at: "2026-09-16T06:02:00.000Z", device_identifier: "Guard-01", checkpoints: { name: "Main Gate" } },
+  { id: "2", scanned_at: "2026-09-16T07:10:00.000Z", device_identifier: "Guard-01", checkpoints: { name: "Lobby" } },
+  { id: "3", scanned_at: "2026-09-16T08:05:00.000Z", device_identifier: "Guard-02", checkpoints: { name: "Main Gate" } },
+];
+
+describe("MX PDF report helpers", () => {
+  it("formats local date and time for report timestamps", () => {
+    expect(formatReportDateTime("2026-09-16T06:42:00.000Z")).toContain("16 Sept 2026");
+    expect(formatReportDateTime("2026-09-16T06:42:00.000Z")).toContain("08:42");
+  });
+
+  it("maps checkpoint scan report as checkpoint rows by time columns", () => {
+    const matrix = buildCheckpointScanMatrix(scans);
+    expect(matrix.columns).toContain("08:00");
+    const mainGate = matrix.rows.find((row) => row.label === "Main Gate");
+    expect(mainGate?.cells.flat().join(" ")).toContain("08:02");
+    expect(mainGate?.cells.flat().join(" ")).toContain("10:05");
+  });
+
+  it("maps device scan report as device rows by checkpoint columns", () => {
+    const matrix = buildDeviceScanMatrix(scans);
+    expect(matrix.columns).toEqual(["Lobby", "Main Gate"]);
+    const guard = matrix.rows.find((row) => row.label === "Guard-01");
+    expect(guard?.cells.flat().join(" ")).toContain("08:02");
+    expect(guard?.cells.flat().join(" ")).toContain("09:10");
+  });
+
+  it("builds PDF-only report HTML with standard MX Patrol header", () => {
+    const html = buildMxPdfReportHtml({ type: "checkpoint_scan", companyName: "Acme", siteName: "Main Office", periodLabel: "Today", scans });
+    expect(html).toContain("MX PATROL");
+    expect(html).toContain("Checkpoint Scan Report");
+    expect(html).toContain("Report Period:");
+  });
+
+  it("adds incident evidence pages with photo previews and audio metadata", () => {
+    const html = buildMxPdfReportHtml({
+      type: "incident",
+      companyName: "Acme",
+      siteName: "Main Office",
+      periodLabel: "Today",
+      incidents: [{ id: "00421abcdef", created_at: "2026-09-16T18:14:00.000Z", title: "Gate issue", description: "Evidence photo | company/site/photo.jpg", severity: "high", resolved: false, device_identifier: "Guard-01" }],
+      incidentEvidence: {
+        "00421abcdef": {
+          photos: [{ incident_id: "00421abcdef", storage_path: "company/site/photo.jpg", signed_url: "https://example.test/photo.jpg", captured_at: "2026-09-16T18:14:00.000Z", device_identifier: "Guard-01" }],
+          audio: [{ incident_id: "00421abcdef", storage_path: "company/site/audio.m4a", captured_at: "2026-09-16T18:15:00.000Z", device_identifier: "Guard-01", duration_seconds: 42 }],
+        },
+      },
+    });
+    expect(html).toContain("Attached Evidence");
+    expect(html).toContain("Photo 1");
+    expect(html).toContain("photo.jpg");
+    expect(html).toContain("audio.m4a");
+    expect(html).toContain("00:42");
+  });
+
+  it("keeps incident reports usable when no evidence is attached", () => {
+    const html = buildMxPdfReportHtml({ type: "incident", companyName: "Acme", siteName: "Main Office", periodLabel: "Today", incidents: [{ id: "no-evidence", created_at: "2026-09-16T18:14:00.000Z", title: "No evidence", resolved: false }] });
+    expect(html).toContain("No attached photos for this report.");
+    expect(html).toContain("No attached audio");
+  });
+
+  it("builds a stored ZIP package with requested evidence paths", async () => {
+    const zip = buildStoredZip([{ path: "INC-00421/Photos/photo.jpg", bytes: new Uint8Array([1, 2, 3]) }]);
+    const bytes = new Uint8Array(await zip.arrayBuffer());
+    const text = new TextDecoder().decode(bytes);
+    expect(text).toContain("INC-00421/Photos/photo.jpg");
+    expect(evidenceFilename("company/site/audio.m4a")).toBe("audio.m4a");
+  });
+});

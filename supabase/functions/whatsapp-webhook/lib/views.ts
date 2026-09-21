@@ -5,14 +5,12 @@ import { greeting, timeAgo } from "./types.ts";
 import { deviceSecurityState, formatDeviceSecurityLine, formatSecureDeviceLabel, getSecureDeviceByIdentifier, getSecureDeviceEvents, getSecureDeviceRows, getSecureDeviceSummary } from "../../_shared/secure-device-management.ts";
 
 const REPORT_ROOT_OPTIONS = [
-  { id: "reports_period", label: "Daily / Weekly Summary" },
-  { id: "reports_checkpoint_activity", label: "Checkpoint Activity", entitlement: "checkpoint_reports" },
-  { id: "reports_patrols", label: "Patrol Reports", entitlement: "patrol_reports" },
-  { id: "reports_scan_investigations", label: "Scan Investigations", entitlement: "scan_investigations" },
-  { id: "reports_incidents", label: "Incident Reports", entitlement: "incident_reports" },
-  { id: "reports_sos", label: "SOS Reports", entitlement: "incident_reports" },
-  { id: "reports_devices", label: "Device Reports", entitlement: "device_reports" },
-  { id: "reports_device_security", label: "Device Security Reports", ownerOnly: true, entitlement: "device_reports" },
+  { id: "reports_checkpoint_scans", label: "Checkpoint Scan Report", entitlement: "checkpoint_reports" },
+  { id: "reports_devices", label: "Device Scan Report", entitlement: "device_reports" },
+  { id: "reports_patrols", label: "Patrol Report", entitlement: "patrol_reports" },
+  { id: "reports_sos", label: "SOS Report", entitlement: "incident_reports" },
+  { id: "reports_incidents", label: "Incident Report", entitlement: "incident_reports" },
+  { id: "reports_data_logs", label: "Datalog Report" },
   { id: "back", label: "Back" },
 ];
 
@@ -1283,67 +1281,36 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
       { id: "back", label: "Back" },
     ],
   },
-  reports_checkpoint_activity: reportMenu("CHECKPOINT ACTIVITY", "reports_checkpoint_activity", [
-    { id: "report:checkpoint_activity:summary", label: "Activity Summary" },
-    { id: "report:checkpoint_activity:checkpoint", label: "By Checkpoint" },
-    { id: "report:checkpoint_activity:device", label: "By Device" },
+  reports_checkpoint_activity: reportMenu("CHECKPOINT SCAN REPORT", "reports_checkpoint_activity", [
+    { id: "report:checkpoint_scans:matrix", label: "Generate PDF" },
     { id: "back", label: "Back" },
   ]),
-  reports_scan_investigations: reportMenu("SCAN INVESTIGATIONS", "reports_scan_investigations", [
-    { id: "report:scan_investigations:summary", label: "Investigation Summary" },
-    { id: "report:scan_investigations:pending", label: "Pending Review" },
-    { id: "report:scan_investigations:type", label: "By Type" },
+  reports_scan_investigations: reportMenu("CHECKPOINT SCAN REPORT", "reports_scan_investigations", [
+    { id: "report:checkpoint_scans:matrix", label: "Generate PDF" },
     { id: "back", label: "Back" },
   ]),
-  reports_checkpoint_scans: reportMenu("CHECKPOINT SCAN REPORTS", "reports_checkpoint_scans", [
-    { id: "report:checkpoint_scans:site_time", label: "Scans by Site / Date / Time" },
-    { id: "report:checkpoint_scans:checkpoint", label: "Scans by Checkpoint" },
-    { id: "report:checkpoint_scans:matrix", label: "Checkpoint Time Matrix" },
-    { id: "report:checkpoint_scans:device", label: "Scans by Device" },
-    { id: "report:checkpoint_scans:unregistered", label: "Unregistered Tags" },
-    { id: "report:checkpoint_scans:duplicate", label: "Duplicate Scans" },
-    { id: "report:checkpoint_scans:offline_synced", label: "Offline Synced Scans" },
+  reports_checkpoint_scans: reportMenu("CHECKPOINT SCAN REPORT", "reports_checkpoint_scans", [
+    { id: "report:checkpoint_scans:matrix", label: "Generate PDF" },
     { id: "back", label: "Back" },
   ]),
-  reports_patrols: reportMenu("PATROL REPORTS", "reports_patrols", [
-    { id: "report:patrols:summary", label: "Patrol Summary" },
-    { id: "report:patrols:details", label: "Patrol Session Details" },
-    { id: "report:patrols:performance", label: "Patrol Performance" },
-    { id: "report:patrols:timeline", label: "Patrol Timeline" },
-    { id: "missed_checkpoints", label: "Missed Checkpoints" },
-    { id: "late_patrols", label: "Late / Delayed Sessions" },
+  reports_patrols: reportMenu("PATROL REPORT", "reports_patrols", [
+    { id: "report:patrols:summary", label: "Generate PDF" },
     { id: "back", label: "Back" },
   ]),
-  reports_sos: reportMenu("SOS REPORTS", "reports_sos", [
-    { id: "report:sos:summary", label: "SOS Summary" },
-    { id: "report:sos:active", label: "Active SOS" },
-    { id: "report:sos:resolved", label: "Resolved SOS" },
-    { id: "report:sos:device", label: "SOS by Device" },
-    { id: "report:sos:site", label: "SOS by Site" },
-    { id: "report:sos:response_times", label: "Response Times" },
+  reports_sos: reportMenu("SOS REPORT", "reports_sos", [
+    { id: "report:sos:summary", label: "Generate PDF" },
     { id: "back", label: "Back" },
   ]),
-  reports_incidents: reportMenu("INCIDENT REPORTS", "reports_incidents", [
-    { id: "report:incidents:summary", label: "Incident Summary" },
-    { id: "incidents", label: "Open Incidents" },
-    { id: "report:incidents:high", label: "High Priority" },
-    { id: "report:incidents:resolved", label: "Resolved Incidents" },
-    { id: "report:incidents:site", label: "Incidents by Site" },
-    { id: "report:incidents:device", label: "Incidents by Device" },
+  reports_incidents: reportMenu("INCIDENT REPORT", "reports_incidents", [
+    { id: "report:incidents:summary", label: "Generate PDF" },
     { id: "back", label: "Back" },
   ]),
   reports_data_logs: reportMenu("DATALOG REPORT", "reports_data_logs", [
-    { id: "report:data_logs:values", label: "Datalog Values" },
-    { id: "menu:reports", label: "Back" },
+    { id: "report:data_logs:values", label: "Generate PDF" },
+    { id: "back", label: "Back" },
   ]),
-  reports_devices: reportMenu("DEVICE REPORTS", "reports_devices", [
-    { id: "report:devices:summary", label: "Device Summary" },
-    { id: "report:devices:online", label: "Online Devices" },
-    { id: "offline", label: "Offline Devices" },
-    { id: "report:devices:activity", label: "Device Activity" },
-    { id: "report:devices:patrol_activity", label: "Device Patrol Activity" },
-    { id: "report:devices:app_versions", label: "App Version Status" },
-    { id: "report:devices:disabled", label: "Disabled/Revoked Devices" },
+  reports_devices: reportMenu("DEVICE SCAN REPORT", "reports_devices", [
+    { id: "report:devices:activity", label: "Generate PDF" },
     { id: "back", label: "Back" },
   ]),
   reports_checkpoint_performance: reportMenu("CHECKPOINT PERFORMANCE", "reports_checkpoint_performance", [

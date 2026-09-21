@@ -233,29 +233,19 @@ describe("patrol output includes canonical times", () => {
 });
 
 describe("Reports category menu", () => {
-  const owner = { canManage: true, isPlatformOwner: true };
-
-  it("shows report categories and hides Device Security Reports from non-owners", () => {
+  it("shows the six simplified PDF report actions", () => {
     expect(resolveAssistantInput(userState(), "5", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
-    expect(resolveAssistantInput(userState("user_reports"), "1", guard)).toMatchObject({ kind: "menu", menuKey: "reports_checkpoint_activity" });
-    expect(resolveAssistantInput(userState("user_reports"), "2", guard)).toMatchObject({ kind: "menu", menuKey: "reports_patrols" });
-    expect(resolveAssistantInput(userState("user_reports"), "3", guard)).toMatchObject({ kind: "menu", menuKey: "reports_scan_investigations" });
+    expect(resolveAssistantInput(userState("user_reports"), "1", guard)).toMatchObject({ kind: "action", action: "report:checkpoint_scan" });
+    expect(resolveAssistantInput(userState("user_reports"), "2", guard)).toMatchObject({ kind: "action", action: "report:device_scan" });
+    expect(resolveAssistantInput(userState("user_reports"), "3", guard)).toMatchObject({ kind: "action", action: "report:patrol" });
+    expect(resolveAssistantInput(userState("user_reports"), "4", guard)).toMatchObject({ kind: "action", action: "report:sos" });
+    expect(resolveAssistantInput(userState("user_reports"), "5", guard)).toMatchObject({ kind: "action", action: "report:incident" });
+    expect(resolveAssistantInput(userState("user_reports"), "6", guard)).toMatchObject({ kind: "action", action: "report:datalog" });
     expect(resolveAssistantInput(userState("user_reports"), "7", guard)).toMatchObject({ kind: "menu", menuKey: USER_HOME });
   });
 
-  it("allows only platform owners into Device Security Reports", () => {
-    expect(resolveAssistantInput(mgmtState("management_reports"), "7", manager)).toMatchObject({ kind: "menu", menuKey: MANAGEMENT_HOME });
-    expect(resolveAssistantInput(mgmtState("management_reports"), "7", owner)).toMatchObject({ kind: "menu", menuKey: "reports_device_security" });
-    expect(resolveAssistantInput(mgmtState(), "device security reports", manager)).toMatchObject({ kind: "denied" });
-    expect(resolveAssistantInput(mgmtState(), "device security reports", owner)).toMatchObject({ kind: "menu", menuKey: "reports_device_security" });
-  });
-
-  it("routes report submenus and back navigation in the current assistant mode", () => {
-    expect(resolveAssistantInput(userState("reports_checkpoint_activity"), "3", guard)).toMatchObject({ action: "report:checkpoint_activity:device" });
-    expect(resolveAssistantInput(mgmtState("reports_scan_investigations"), "2", owner)).toMatchObject({ action: "report:scan_investigations:pending" });
-    expect(resolveAssistantInput(mgmtState("reports_patrols"), "1", owner)).toMatchObject({ action: "report:patrols:summary" });
-    expect(resolveAssistantInput(userState("reports_checkpoint_activity"), "4", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
-    expect(resolveAssistantInput(mgmtState("reports_checkpoint_activity"), "4", owner)).toMatchObject({ kind: "menu", menuKey: "management_reports" });
+  it("does not expose retired Device Security Reports through the simplified menu", () => {
+    expect(resolveAssistantInput(mgmtState(), "device security reports", manager)).toMatchObject({ kind: "unknown" });
+    expect(resolveAssistantInput(mgmtState(), "device security reports", { canManage: true, isPlatformOwner: true })).toMatchObject({ kind: "unknown" });
   });
 });
-

@@ -115,6 +115,7 @@ export function managementMenu(identity: Identity, session: SessionRow): OutMess
       { id: 'management_devices', label: 'Devices' },
       { id: 'management_sites', label: 'Sites' },
       { id: 'management_reports', label: 'Management Reports' },
+      { id: 'management_whatsapp', label: 'WhatsApp Management' },
       { id: 'back', label: 'Back' },
     ],
   };
@@ -1349,6 +1350,17 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     { id: "report:device_security:maintenance", label: "Maintenance Sessions" },
     { id: "back", label: "Back" },
   ]),
+  management_whatsapp: {
+    title: 'WHATSAPP MANAGEMENT',
+    menuKey: 'management_whatsapp',
+    lines: ['Authorize staff numbers to use the WhatsApp assistant.'],
+    options: [
+      { id: 'view_whatsapp_numbers', label: 'View Authorized Numbers' },
+      { id: 'authorize_whatsapp', label: 'Authorize Number' },
+      { id: 'revoke_whatsapp_access', label: 'Revoke Access' },
+      { id: 'back', label: 'Back' },
+    ],
+  },
 };
 
 export const WA_MENU_PARENTS: Record<string, string> = {

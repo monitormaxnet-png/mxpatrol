@@ -84,6 +84,7 @@ export function keywordIntent(text: string): Intent | null {
   if (/^(datalog|data log|data logs)$/.test(value)) return { action: "datalog" };
   if (/(report|log|raise|submit).*(incident|issue)|incident report/.test(value)) return { action: "report_incident" };
   if (/^(patrol status|patrols? status)$/.test(value)) return { action: "patrol_status" };
+  if (/^(active( patrols?)?)$/.test(value)) return { action: "active_patrols" };
   const reportPeriod = value.match(/(today|yesterday|this week|week)[a-z'\s]*report|report[a-z'\s]*(today|yesterday|this week|week)/);
   if (reportPeriod) {
     const token = (reportPeriod[1] ?? reportPeriod[2] ?? "today").toLowerCase();

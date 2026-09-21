@@ -708,6 +708,7 @@ function summarizePatrolStatusRows(rows: Record<string, any>[]) {
 }
 
 function patrolSummaryLine(row: PatrolSummaryRow, group: keyof typeof PATROL_STATUS_GROUPS) {
+  if (group === 'active') return row.patrolName + ' - ' + row.active + ' active session' + (row.active === 1 ? '' : 's');
   if (group === 'completed') return row.patrolName + ' - ' + row.completed + ' / ' + row.expected + ' sessions completed';
   const count = group === 'incomplete' ? row.incomplete : group === 'late' ? row.late : row.missed;
   const label = group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
@@ -734,7 +735,7 @@ export async function patrolStatusView(
     siteId,
   );
   const rows = summarizePatrolStatusRows((data ?? []) as any[]);
-  const countKey = group === 'completed' ? 'completed' : group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
+  const countKey = group === 'active' ? 'active' : group === 'completed' ? 'completed' : group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
   const visible = rows.filter((row) => row[countKey] > 0);
   const siteLabel = siteId ? ((visible[0]?.siteName) ?? 'Selected site') : 'ALL SITES';
   const title = (group === 'completed' ? 'COMPLETED' : group === 'incomplete' ? 'INCOMPLETE' : group === 'late' ? 'LATE' : 'MISSED') + ' PATROLS - ' + siteLabel;

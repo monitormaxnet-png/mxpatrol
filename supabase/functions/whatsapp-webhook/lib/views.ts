@@ -656,6 +656,7 @@ type PatrolSummaryRow = {
   patrolKey: string;
   patrolName: string;
   expected: number;
+  active: number;
   completed: number;
   incomplete: number;
   late: number;
@@ -689,12 +690,14 @@ function summarizePatrolStatusRows(rows: Record<string, any>[]) {
       patrolKey: patrolSummaryKey(row),
       patrolName: patrolSummaryName(row),
       expected: 0,
+      active: 0,
       completed: 0,
       incomplete: 0,
       late: 0,
       missed: 0,
     };
     current.expected += 1;
+    if ((PATROL_STATUS_GROUPS.active as readonly string[]).includes(String(row.status))) current.active += 1;
     if ((PATROL_STATUS_GROUPS.completed as readonly string[]).includes(String(row.status))) current.completed += 1;
     if ((PATROL_STATUS_GROUPS.incomplete as readonly string[]).includes(String(row.status))) current.incomplete += 1;
     if ((PATROL_STATUS_GROUPS.late as readonly string[]).includes(String(row.status))) current.late += 1;

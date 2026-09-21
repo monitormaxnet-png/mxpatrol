@@ -219,11 +219,13 @@ const Reports = () => {
     queryKey: ["reports_sos_rows", companyId, siteId, since],
     enabled: !!companyId,
     queryFn: async () => {
-      let query = supabase.from("alerts").select("*, sites(name)").eq("company_id", companyId!).eq("type", "panic_button").gte("created_at", since).order("created_at", { ascending: false }).limit(250);
-      if (siteId !== "all") query = query.eq("site_id", siteId);
-      const { data, error } = await query;
+      const { data, error } = await supabase.from("alerts").select("*").eq("company_id", companyId!).eq("type", "panic_button").gte("created_at", since).order("created_at", { ascending: false }).limit(250);
       if (error) throw error;
-      return data ?? [];
+      const rows = (data ?? []) as any[];
+      if (siteId === "all") return rows;
+      const { data: cps } = await supabase.from("checkpoints").select("id").eq("site_id", siteId);
+      const checkpointIds = new Set(((cps ?? []) as any[]).map((cp) => cp.id));
+      return rows.filter((row) => !row.checkpoint_id || checkpointIds.has(row.checkpoint_id));
     },
   });
 

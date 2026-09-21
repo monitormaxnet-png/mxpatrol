@@ -414,7 +414,7 @@ const Reports = () => {
             <FilterBox label="Company"><span className="font-semibold text-white">{companyName}</span></FilterBox>
             <FilterBox label="Site"><SiteSelector value={siteId} onChange={setSiteId} /></FilterBox>
             <FilterBox label="Report Type">
-              <Select value={reportType} onValueChange={setReportType}>
+              <Select value={reportType} onValueChange={(value) => setReportType(value as MxPdfReportType)}>
                 <SelectTrigger className="h-9 border-white/10 bg-slate-950/70 text-white"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {reportTypes.map((type) => <SelectItem key={type.type} value={type.type}>{type.label}</SelectItem>)}

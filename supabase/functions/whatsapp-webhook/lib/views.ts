@@ -4,7 +4,7 @@ import type { Identity, OutMessage, SessionRow } from "./types.ts";
 import { greeting, timeAgo } from "./types.ts";
 import { deviceSecurityState, formatDeviceSecurityLine, formatSecureDeviceLabel, getSecureDeviceByIdentifier, getSecureDeviceEvents, getSecureDeviceRows, getSecureDeviceSummary } from "../../_shared/secure-device-management.ts";
 
-const REPORT_ROOT_OPTIONS = [
+const REPORT_ROOT_OPTIONS: Array<{ id: string; label: string; entitlement?: string; ownerOnly?: boolean }> = [
   { id: "reports_checkpoint_scans", label: "Checkpoint Scan Report", entitlement: "checkpoint_reports" },
   { id: "reports_devices", label: "Device Scan Report", entitlement: "device_reports" },
   { id: "reports_patrols", label: "Patrol Report", entitlement: "patrol_reports" },

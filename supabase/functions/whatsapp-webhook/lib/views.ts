@@ -720,6 +720,7 @@ export async function patrolStatusView(
   identity: Identity,
   siteId: string | null,
   group: keyof typeof PATROL_STATUS_GROUPS,
+  siteName?: string | null,
 ): Promise<OutMessage> {
   const from = periodStart('today').toISOString();
   const to = periodEnd('today').toISOString();
@@ -737,7 +738,7 @@ export async function patrolStatusView(
   const rows = summarizePatrolStatusRows((data ?? []) as any[]);
   const countKey = group === 'active' ? 'active' : group === 'completed' ? 'completed' : group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
   const visible = rows.filter((row) => row[countKey] > 0);
-  const siteLabel = siteId ? ((visible[0]?.siteName) ?? 'Selected site') : 'ALL SITES';
+  const siteLabel = siteId ? ((visible[0]?.siteName) ?? siteName ?? 'Selected site') : 'ALL SITES';
   const title = (group === 'active' ? 'ACTIVE' : group === 'completed' ? 'COMPLETED' : group === 'incomplete' ? 'INCOMPLETE' : group === 'late' ? 'LATE' : 'MISSED') + ' PATROLS - ' + siteLabel;
   const options = [{ id: 'reports', label: 'Reports' }, { id: 'back', label: 'Back' }];
 

@@ -4,7 +4,7 @@ import type { Identity, OutMessage, SessionRow } from "./types.ts";
 import { greeting, timeAgo } from "./types.ts";
 import { deviceSecurityState, formatDeviceSecurityLine, formatSecureDeviceLabel, getSecureDeviceByIdentifier, getSecureDeviceEvents, getSecureDeviceRows, getSecureDeviceSummary } from "../../_shared/secure-device-management.ts";
 
-const REPORT_ROOT_OPTIONS = [
+const REPORT_ROOT_OPTIONS: Array<{ id: string; label: string; entitlement?: string; ownerOnly?: boolean }> = [
   { id: "reports_checkpoint_scans", label: "Checkpoint Scan Report", entitlement: "checkpoint_reports" },
   { id: "reports_devices", label: "Device Scan Report", entitlement: "device_reports" },
   { id: "reports_patrols", label: "Patrol Report", entitlement: "patrol_reports" },
@@ -115,6 +115,7 @@ export function managementMenu(identity: Identity, session: SessionRow): OutMess
       { id: 'management_devices', label: 'Devices' },
       { id: 'management_sites', label: 'Sites' },
       { id: 'management_reports', label: 'Management Reports' },
+      { id: 'management_whatsapp', label: 'WhatsApp Management' },
       { id: 'back', label: 'Back' },
     ],
   };
@@ -655,6 +656,7 @@ type PatrolSummaryRow = {
   patrolKey: string;
   patrolName: string;
   expected: number;
+  active: number;
   completed: number;
   incomplete: number;
   late: number;
@@ -688,12 +690,14 @@ function summarizePatrolStatusRows(rows: Record<string, any>[]) {
       patrolKey: patrolSummaryKey(row),
       patrolName: patrolSummaryName(row),
       expected: 0,
+      active: 0,
       completed: 0,
       incomplete: 0,
       late: 0,
       missed: 0,
     };
     current.expected += 1;
+    if ((PATROL_STATUS_GROUPS.active as readonly string[]).includes(String(row.status))) current.active += 1;
     if ((PATROL_STATUS_GROUPS.completed as readonly string[]).includes(String(row.status))) current.completed += 1;
     if ((PATROL_STATUS_GROUPS.incomplete as readonly string[]).includes(String(row.status))) current.incomplete += 1;
     if ((PATROL_STATUS_GROUPS.late as readonly string[]).includes(String(row.status))) current.late += 1;
@@ -704,6 +708,7 @@ function summarizePatrolStatusRows(rows: Record<string, any>[]) {
 }
 
 function patrolSummaryLine(row: PatrolSummaryRow, group: keyof typeof PATROL_STATUS_GROUPS) {
+  if (group === 'active') return row.patrolName + ' - ' + row.active + ' active session' + (row.active === 1 ? '' : 's');
   if (group === 'completed') return row.patrolName + ' - ' + row.completed + ' / ' + row.expected + ' sessions completed';
   const count = group === 'incomplete' ? row.incomplete : group === 'late' ? row.late : row.missed;
   const label = group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
@@ -715,6 +720,7 @@ export async function patrolStatusView(
   identity: Identity,
   siteId: string | null,
   group: keyof typeof PATROL_STATUS_GROUPS,
+  siteName?: string | null,
 ): Promise<OutMessage> {
   const from = periodStart('today').toISOString();
   const to = periodEnd('today').toISOString();
@@ -730,14 +736,14 @@ export async function patrolStatusView(
     siteId,
   );
   const rows = summarizePatrolStatusRows((data ?? []) as any[]);
-  const countKey = group === 'completed' ? 'completed' : group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
+  const countKey = group === 'active' ? 'active' : group === 'completed' ? 'completed' : group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
   const visible = rows.filter((row) => row[countKey] > 0);
-  const siteLabel = siteId ? ((visible[0]?.siteName) ?? 'Selected site') : 'ALL SITES';
-  const title = (group === 'completed' ? 'COMPLETED' : group === 'incomplete' ? 'INCOMPLETE' : group === 'late' ? 'LATE' : 'MISSED') + ' PATROLS - ' + siteLabel;
+  const siteLabel = siteId ? ((visible[0]?.siteName) ?? siteName ?? 'Selected site') : 'ALL SITES';
+  const title = (group === 'active' ? 'ACTIVE' : group === 'completed' ? 'COMPLETED' : group === 'incomplete' ? 'INCOMPLETE' : group === 'late' ? 'LATE' : 'MISSED') + ' PATROLS - ' + siteLabel;
   const options = [{ id: 'reports', label: 'Reports' }, { id: 'back', label: 'Back' }];
 
   if (!visible.length) {
-    const empty = group === 'completed' ? 'No completed patrol sessions found for the selected period.' : group === 'incomplete' ? 'No incomplete patrol sessions.' : group === 'late' ? 'No late patrol sessions.' : 'No missed patrol sessions.';
+    const empty = group === 'active' ? 'No active patrol sessions right now.' : group === 'completed' ? 'No completed patrol sessions found for the selected period.' : group === 'incomplete' ? 'No incomplete patrol sessions.' : group === 'late' ? 'No late patrol sessions.' : 'No missed patrol sessions.';
     return { title, lines: ['Period: Today', '', empty, '', 'Type reports for details.', 'Type back to return.'], options };
   }
 
@@ -756,8 +762,8 @@ export async function patrolStatusView(
     const expected = visible.reduce((sum, row) => sum + row.expected, 0);
     lines.push('Total: ' + completed + ' / ' + expected + ' sessions completed');
   } else {
-    const total = visible.reduce((sum, row) => sum + (group === 'incomplete' ? row.incomplete : group === 'late' ? row.late : row.missed), 0);
-    const label = group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
+    const total = visible.reduce((sum, row) => sum + (group === 'active' ? row.active : group === 'incomplete' ? row.incomplete : group === 'late' ? row.late : row.missed), 0);
+    const label = group === 'active' ? 'active' : group === 'incomplete' ? 'incomplete' : group === 'late' ? 'late' : 'missed';
     lines.push('Total ' + label + ' sessions: ' + total);
   }
   if (group === 'late') lines.push('', 'Type late sessions to view late session details.', 'Type reports for full details.', 'Type back to return.');
@@ -1349,6 +1355,17 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     { id: "report:device_security:maintenance", label: "Maintenance Sessions" },
     { id: "back", label: "Back" },
   ]),
+  management_whatsapp: {
+    title: 'WHATSAPP MANAGEMENT',
+    menuKey: 'management_whatsapp',
+    lines: ['Authorize staff numbers to use the WhatsApp assistant.'],
+    options: [
+      { id: 'view_whatsapp_numbers', label: 'View Authorized Numbers' },
+      { id: 'authorize_whatsapp', label: 'Authorize Number' },
+      { id: 'revoke_whatsapp_access', label: 'Revoke Access' },
+      { id: 'back', label: 'Back' },
+    ],
+  },
 };
 
 export const WA_MENU_PARENTS: Record<string, string> = {

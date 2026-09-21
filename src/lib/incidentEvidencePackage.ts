@@ -62,7 +62,7 @@ export function buildStoredZip(files: Array<{ path: string; bytes: Uint8Array }>
 
   const central = concat(centralParts);
   const end = concat([u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(central.length), u32(offset), u16(0)]);
-  return new Blob([concat([...localParts, central, end])], { type: "application/zip" });
+  return new Blob([concat([...localParts, central, end]) as unknown as BlobPart], { type: "application/zip" });
 }
 
 async function fetchEvidenceBytes(url?: string | null): Promise<Uint8Array | null> {

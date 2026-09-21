@@ -219,11 +219,13 @@ const Reports = () => {
     queryKey: ["reports_sos_rows", companyId, siteId, since],
     enabled: !!companyId,
     queryFn: async () => {
-      let query = supabase.from("alerts").select("*, sites(name)").eq("company_id", companyId!).eq("type", "panic_button").gte("created_at", since).order("created_at", { ascending: false }).limit(250);
-      if (siteId !== "all") query = query.eq("site_id", siteId);
-      const { data, error } = await query;
+      const { data, error } = await supabase.from("alerts").select("*").eq("company_id", companyId!).eq("type", "panic_button").gte("created_at", since).order("created_at", { ascending: false }).limit(250);
       if (error) throw error;
-      return data ?? [];
+      const rows = (data ?? []) as any[];
+      if (siteId === "all") return rows;
+      const { data: cps } = await supabase.from("checkpoints").select("id").eq("site_id", siteId);
+      const checkpointIds = new Set(((cps ?? []) as any[]).map((cp) => cp.id));
+      return rows.filter((row) => !row.checkpoint_id || checkpointIds.has(row.checkpoint_id));
     },
   });
 
@@ -414,7 +416,7 @@ const Reports = () => {
             <FilterBox label="Company"><span className="font-semibold text-white">{companyName}</span></FilterBox>
             <FilterBox label="Site"><SiteSelector value={siteId} onChange={setSiteId} /></FilterBox>
             <FilterBox label="Report Type">
-              <Select value={reportType} onValueChange={setReportType}>
+              <Select value={reportType} onValueChange={(value) => setReportType(value as MxPdfReportType)}>
                 <SelectTrigger className="h-9 border-white/10 bg-slate-950/70 text-white"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {reportTypes.map((type) => <SelectItem key={type.type} value={type.type}>{type.label}</SelectItem>)}

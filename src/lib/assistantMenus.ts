@@ -245,7 +245,7 @@ const NL_INTENTS: Array<[RegExp, string]> = [
   [/incident.*report/, 'report:incident'],
   [/^(datalog|data log|data logs)$/, 'datalog_today'],
   [/(data ?log).*report/, 'report:datalog'],
-  [/device security.*report/, 'report:device_security:summary'],
+  [/device security.*report/, 'menu:reports_device_security'], // retired report: intentionally resolves to unknown
   [/device.*report/, 'report:device_scan'],
   [/schedule.*report/, 'report:patrol'],
   [/route.*report/, 'report:patrol'],

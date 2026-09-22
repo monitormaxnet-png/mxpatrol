@@ -34,10 +34,10 @@ import java.util.List;
 
 import javax.security.auth.x500.X500Principal;
 
-@CapacitorPlugin(name =  SecureDevice)
+@CapacitorPlugin(name = "SecureDevice")
 public class SecureDevicePlugin extends Plugin {
-    private static final String KEY_ALIAS = mxpatrol.secure_device.ec.v1;
-    private static final String EXPECTED_PACKAGE = com.monitormaxnet.mxpatrol;
+    private static final String KEY_ALIAS = "mxpatrol.secure_device.ec.v1";
+    private static final String EXPECTED_PACKAGE = "com.monitormaxnet.mxpatrol";
 
     @PluginMethod
     public void getSecurityState(PluginCall call) {
@@ -49,35 +49,35 @@ public class SecureDevicePlugin extends Plugin {
         try {
             KeyPair pair = ensureKeyPair();
             JSObject result = new JSObject();
-            result.put(deviceKeyAvailable, true);
-            result.put(publicKey, Base64.encodeToString(pair.getPublic().getEncoded(), Base64.NO_WRAP));
-            result.put(publicKeyAlgorithm, ECDSA_P256_SHA256);
-            result.put(keyAlias, KEY_ALIAS);
+            result.put("deviceKeyAvailable", true);
+            result.put("publicKey", Base64.encodeToString(pair.getPublic().getEncoded(), Base64.NO_WRAP));
+            result.put("publicKeyAlgorithm", "ECDSA_P256_SHA256");
+            result.put("keyAlias", KEY_ALIAS);
             call.resolve(result);
         } catch (Exception error) {
-            call.reject(Unable to create secure device key, error);
+            call.reject("Unable to create secure device key", error);
         }
     }
 
     @PluginMethod
     public void signRequest(PluginCall call) {
         try {
-            String canonical = call.getString(canonical);
+            String canonical = call.getString("canonical");
             if (canonical == null || canonical.length() == 0) {
-                call.reject(canonical request is required);
+                call.reject("canonical request is required");
                 return;
             }
             KeyPair pair = ensureKeyPair();
-            java.security.Signature signer = java.security.Signature.getInstance(SHA256withECDSA);
+            java.security.Signature signer = java.security.Signature.getInstance("SHA256withECDSA");
             signer.initSign(pair.getPrivate());
             signer.update(canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             JSObject result = new JSObject();
-            result.put(signature, Base64.encodeToString(signer.sign(), Base64.NO_WRAP));
-            result.put(signatureAlgorithm, SHA256withECDSA);
-            result.put(canonical, canonical);
+            result.put("signature", Base64.encodeToString(signer.sign(), Base64.NO_WRAP));
+            result.put("signatureAlgorithm", "SHA256withECDSA");
+            result.put("canonical", canonical);
             call.resolve(result);
         } catch (Exception error) {
-            call.reject(Unable to sign secure device request, error);
+            call.reject("Unable to sign secure device request", error);
         }
     }
 
@@ -88,11 +88,11 @@ public class SecureDevicePlugin extends Plugin {
             DevicePolicyManager policy = policyManager();
             ComponentName admin = adminComponent();
             boolean owner = policy != null && policy.isDeviceOwnerApp(getContext().getPackageName());
-            result.put(deviceOwner, owner);
+            result.put("deviceOwner", owner);
             if (!owner) {
-                result.put(enabled, false);
-                result.put(kioskActive, isKioskActive());
-                result.put(reason, device_owner_required);
+                result.put("enabled", false);
+                result.put("kioskActive", isKioskActive());
+                result.put("reason", "device_owner_required");
                 call.resolve(result);
                 return;
             }
@@ -100,14 +100,14 @@ public class SecureDevicePlugin extends Plugin {
             policy.setLockTaskPackages(admin, new String[]{getContext().getPackageName()});
             Activity activity = getActivity();
             if (activity != null) activity.startLockTask();
-            result.put(enabled, true);
-            result.put(kioskActive, isKioskActive());
-            result.put(restrictions, supportedRestrictions());
+            result.put("enabled", true);
+            result.put("kioskActive", isKioskActive());
+            result.put("restrictions", supportedRestrictions());
             call.resolve(result);
         } catch (Exception error) {
-            result.put(enabled, false);
-            result.put(reason, kiosk_enable_failed);
-            result.put(message, error.getMessage());
+            result.put("enabled", false);
+            result.put("reason", "kiosk_enable_failed");
+            result.put("message", error.getMessage());
             call.resolve(result);
         }
     }
@@ -122,12 +122,12 @@ public class SecureDevicePlugin extends Plugin {
             if (policy != null && policy.isDeviceOwnerApp(getContext().getPackageName()) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 policy.setStatusBarDisabled(adminComponent(), false);
             }
-            result.put(disabled, true);
-            result.put(kioskActive, isKioskActive());
+            result.put("disabled", true);
+            result.put("kioskActive", isKioskActive());
             call.resolve(result);
         } catch (Exception error) {
-            result.put(disabled, false);
-            result.put(message, error.getMessage());
+            result.put("disabled", false);
+            result.put("message", error.getMessage());
             call.resolve(result);
         }
     }
@@ -147,31 +147,31 @@ public class SecureDevicePlugin extends Plugin {
         String packageName = getContext().getPackageName();
         DevicePolicyManager policy = policyManager();
         boolean owner = policy != null && policy.isDeviceOwnerApp(packageName);
-        state.put(platform, android);
-        state.put(packageName, packageName);
-        state.put(packageNameValid, EXPECTED_PACKAGE.equals(packageName));
-        state.put(deviceOwner, owner);
-        state.put(kioskActive, isKioskActive());
-        state.put(deviceKeyAvailable, hasDeviceKey());
-        state.put(appVersion, appVersionName());
-        state.put(appVersionCode, appVersionCode());
-        state.put(isDebugBuild, isDebugBuild());
-        state.put(developerModeDetected, globalSettingEnabled(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED));
-        state.put(adbDetected, globalSettingEnabled(Settings.Global.ADB_ENABLED));
-        state.put(appSignatureSha256, signingFingerprint());
-        state.put(capabilities, supportedRestrictions());
+        state.put("platform", "android");
+        state.put("packageName", packageName);
+        state.put("packageNameValid", EXPECTED_PACKAGE.equals(packageName));
+        state.put("deviceOwner", owner);
+        state.put("kioskActive", isKioskActive());
+        state.put("deviceKeyAvailable", hasDeviceKey());
+        state.put("appVersion", appVersionName());
+        state.put("appVersionCode", appVersionCode());
+        state.put("isDebugBuild", isDebugBuild());
+        state.put("developerModeDetected", globalSettingEnabled(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED));
+        state.put("adbDetected", globalSettingEnabled(Settings.Global.ADB_ENABLED));
+        state.put("appSignatureSha256", signingFingerprint());
+        state.put("capabilities", supportedRestrictions());
         return state;
     }
 
     private KeyPair ensureKeyPair() throws Exception {
-        KeyStore keyStore = KeyStore.getInstance(AndroidKeyStore);
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
         keyStore.load(null);
         if (!keyStore.containsAlias(KEY_ALIAS)) {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, AndroidKeyStore);
+            KeyPairGenerator generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore");
             KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
-                .setAlgorithmParameterSpec(new ECGenParameterSpec(secp256r1))
+                .setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1"))
                 .setDigests(KeyProperties.DIGEST_SHA256)
-                .setCertificateSubject(new X500Principal(CN=MX Patrol Secure Device))
+                .setCertificateSubject(new X500Principal("CN=MX Patrol Secure Device"))
                 .setCertificateSerialNumber(java.math.BigInteger.ONE)
                 .setCertificateNotBefore(new java.util.Date())
                 .setCertificateNotAfter(new java.util.Date(System.currentTimeMillis() + 315360000000L))
@@ -187,7 +187,7 @@ public class SecureDevicePlugin extends Plugin {
 
     private boolean hasDeviceKey() {
         try {
-            KeyStore keyStore = KeyStore.getInstance(AndroidKeyStore);
+            KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
             keyStore.load(null);
             return keyStore.containsAlias(KEY_ALIAS);
         } catch (Exception ignored) {
@@ -214,14 +214,14 @@ public class SecureDevicePlugin extends Plugin {
 
     private List<String> supportedRestrictions() {
         List<String> capabilities = new ArrayList<>();
-        capabilities.add(lock_task);
-        capabilities.add(disallow_add_user);
-        capabilities.add(disallow_modify_accounts);
-        capabilities.add(disallow_install_unknown_sources);
-        capabilities.add(disallow_safe_boot);
-        capabilities.add(disallow_factory_reset);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) capabilities.add(status_bar_disabled);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) capabilities.add(disallow_debugging_features);
+        capabilities.add("lock_task");
+        capabilities.add("disallow_add_user");
+        capabilities.add("disallow_modify_accounts");
+        capabilities.add("disallow_install_unknown_sources");
+        capabilities.add("disallow_safe_boot");
+        capabilities.add("disallow_factory_reset");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) capabilities.add("status_bar_disabled");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) capabilities.add("disallow_debugging_features");
         return capabilities;
     }
 
@@ -272,11 +272,11 @@ public class SecureDevicePlugin extends Plugin {
                 signatures = info.signatures;
             }
             if (signatures == null || signatures.length == 0) return null;
-            byte[] hash = MessageDigest.getInstance(SHA-256).digest(signatures[0].toByteArray());
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(signatures[0].toByteArray());
             StringBuilder builder = new StringBuilder();
             for (byte value : hash) {
-                if (builder.length() > 0) builder.append(:);
-                builder.append(String.format(%02X, value));
+                if (builder.length() > 0) builder.append(":");
+                builder.append(String.format("%02X", value));
             }
             return builder.toString();
         } catch (Exception ignored) { return null; }

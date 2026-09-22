@@ -178,6 +178,7 @@ describe("WhatsApp Patrol Status consolidates the four outcomes", () => {
     const query: any = {
       select: () => query,
       limit: () => query,
+      order: () => query,
       gte: () => query,
       lte: () => query,
       in: (col: string, value: unknown) => { captured.push([col, value]); return query; },
@@ -284,9 +285,19 @@ describe("WhatsApp report language routing", () => {
     expect(keywordIntent("patrol status")).toEqual({ action: "patrol_status" });
   });
 
+
+  it("persists WhatsApp incident photos through the incident evidence storage path", () => {
+    const flows = readFileSync("supabase/functions/whatsapp-webhook/lib/flows.ts", "utf8");
+    expect(flows).toContain("persistIncidentMedia");
+    expect(flows).toContain("incident_report_photos");
+    expect(flows).toContain("Evidence photo |");
+    expect(flows).toContain("isTwilioMediaUrl(url)");
+  });
   it("routes operational status and incident report requests without AI fallback", () => {
     expect(keywordIntent("status")).toEqual({ action: "live" });
+    expect(keywordIntent("incident report")).toEqual({ action: "incidents" });
     expect(keywordIntent("log incident")).toEqual({ action: "report_incident" });
+    expect(keywordIntent("report incident")).toEqual({ action: "report_incident" });
     expect(keywordIntent("report an issue")).toEqual({ action: "report_incident" });
   });
 });

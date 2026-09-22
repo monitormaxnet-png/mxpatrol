@@ -469,7 +469,13 @@ export default function CommandCenter() {
       return addAssistant('COMPANIES', <CompanyList rows={platformCompanies.data ?? []} loading={platformCompanies.isLoading} selectedId={selectedCompanyId} onSelect={(company) => { setSelectedCompanyId(company.id); setState((prev) => ({ ...prev, activeSiteId: null })); addAssistant('COMPANY CONTEXT UPDATED', <p>Now managing <b>{company.name}</b>. Choose <b>View Sites</b> or <b>Register Site</b> next.</p>); }} />);
     }
     if (action === 'view_sites') return addAssistant('SITES - ' + selectedCompanyName, <SitePicker sites={availableSites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
-    if (action === 'view_whatsapp_numbers') return addAssistant('WHATSAPP AUTHORIZED NUMBERS - ' + selectedSite, <WhatsAppAuthorizationList rows={whatsappAuthorizations.data ?? []} loading={whatsappAuthorizations.isLoading} />);
+    if (action === 'view_whatsapp_numbers') return addAssistant('WHATSAPP MANAGEMENT - ' + selectedSite, <WhatsAppAuthorizationPanel rows={whatsappAuthorizations.data ?? []} users={workflowContext.users} siteId={selectedSiteId} loading={whatsappAuthorizations.isLoading} onCreate={async (input) => {
+      const result = await runManagementAction({ action: 'create_whatsapp_authorization', input: { ...input, site_id: selectedSiteId, created_via: 'web_command_center' } });
+      return result.summary;
+    }} onRevoke={async (authorizationId) => {
+      const result = await runManagementAction({ action: 'revoke_whatsapp_authorization', input: { site_id: selectedSiteId, authorization_id: authorizationId } });
+      return result.summary;
+    }} />);
     if (action === 'routes' || action === 'schedules') return addAssistant(action === 'routes' ? 'PATROL ROUTES' : 'PATROL SCHEDULES', <ConfigList kind={action} siteId={selectedSiteId} />);
     if (action.startsWith('report:')) {
       const period = action.slice(7) as keyof typeof PERIODS;
@@ -1183,12 +1189,85 @@ function SavedReports({ jobs, loading }: { jobs: Array<{ id: string; report_type
   </div>)}</div>;
 }
 
-function WhatsAppAuthorizationList({ rows, loading }: { rows: any[]; loading: boolean }) {
-  if (loading) return <p>Loading WhatsApp authorizations...</p>;
-  if (!rows.length) return <p>No WhatsApp numbers are authorized for this site yet.</p>;
-  return <div className='space-y-2'>{rows.slice(0, 12).map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.display_name ?? 'Unknown user'}</b><p className='text-slate-400'>{row.masked_phone ?? row.phone ?? 'Not linked'} - {row.status ?? 'unknown'}{row.link_code ? ' - code ' + row.link_code : ''}</p></div>)}</div>;
-}
+function WhatsAppAuthorizationPanel({ rows, users, siteId, loading, onCreate, onRevoke }: { rows: any[]; users: Array<{ id: string; name: string; phone?: string | null; role?: string | null }>; siteId: string | null; loading: boolean; onCreate: (input: { target_user_id?: string; target_user?: string; display_name: string; phone: string; access_type: string }) => Promise<string>; onRevoke: (authorizationId: string) => Promise<string> }) {
+  const [userId, setUserId] = useState(users[0]?.id ?? 'manual');
+  const selectedUser = users.find((user) => user.id === userId) ?? null;
+  const [displayName, setDisplayName] = useState(selectedUser?.name ?? '');
+  const [phone, setPhone] = useState(selectedUser?.phone ?? '');
+  const [accessType, setAccessType] = useState('user');
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
+  useEffect(() => {
+    const user = users.find((row) => row.id === userId);
+    if (!user) return;
+    setDisplayName(user.name);
+    setPhone(user.phone ?? '');
+  }, [userId, users]);
+
+  const create = async () => {
+    if (!siteId) return setNotice('Choose a site before authorizing WhatsApp access.');
+    if (!displayName.trim()) return setNotice('Choose or type a user name.');
+    if (!phone.trim()) return setNotice('Enter the WhatsApp number with country code.');
+    setBusy(true);
+    setNotice(null);
+    try {
+      const summary = await onCreate({ target_user_id: selectedUser?.id, target_user: selectedUser?.name ?? displayName.trim(), display_name: displayName.trim(), phone: phone.trim(), access_type: accessType });
+      setNotice(summary);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not authorize WhatsApp number.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async (row: any) => {
+    const label = row.display_name ?? row.masked_phone ?? row.phone ?? 'this number';
+    if (!confirm('Revoke WhatsApp access for ' + label + '?')) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const summary = await onRevoke(String(row.id));
+      setNotice(summary);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not revoke WhatsApp access.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <div className='space-y-4'>
+    <div className='rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4'>
+      <b>Authorize WhatsApp access</b>
+      <div className='mt-3 grid gap-2 md:grid-cols-2'>
+        <label className='text-xs text-slate-300'>User
+          <select value={userId} onChange={(event) => setUserId(event.target.value)} className='mt-1 w-full rounded-lg border border-white/10 bg-slate-950 p-2 text-white'>
+            <option value='manual'>Manual name</option>
+            {users.map((user) => <option key={user.id} value={user.id}>{user.name}{user.role ? ' (' + user.role + ')' : ''}</option>)}
+          </select>
+        </label>
+        <label className='text-xs text-slate-300'>Access
+          <select value={accessType} onChange={(event) => setAccessType(event.target.value)} className='mt-1 w-full rounded-lg border border-white/10 bg-slate-950 p-2 text-white'>
+            <option value='user'>User Mode</option>
+            <option value='management'>Management Mode</option>
+          </select>
+        </label>
+        <label className='text-xs text-slate-300'>Display name
+          <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} className='mt-1 w-full rounded-lg border border-white/10 bg-slate-950 p-2 text-white' placeholder='John Doe' />
+        </label>
+        <label className='text-xs text-slate-300'>WhatsApp number
+          <input value={phone} onChange={(event) => setPhone(event.target.value)} className='mt-1 w-full rounded-lg border border-white/10 bg-slate-950 p-2 text-white' placeholder='+26771234567' />
+        </label>
+      </div>
+      <button type='button' onClick={create} disabled={busy || !siteId} className='mt-3 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-black text-black disabled:opacity-50'>{busy ? 'Working...' : 'Create Link Code'}</button>
+      {notice ? <p className='mt-3 text-sm text-emerald-100'>{notice}</p> : null}
+    </div>
+    <div>
+      <b>Authorized numbers</b>
+      {loading ? <p className='mt-2 text-slate-400'>Loading WhatsApp authorizations...</p> : !rows.length ? <p className='mt-2 text-slate-400'>No WhatsApp numbers are authorized for this site yet.</p> : <div className='mt-2 space-y-2'>{rows.slice(0, 20).map((row) => <div key={row.id} className='flex flex-col gap-3 rounded-xl border border-white/10 bg-slate-950/70 p-3 md:flex-row md:items-center md:justify-between'><div><b>{row.display_name ?? 'Unknown user'}</b><p className='text-slate-400'>{row.masked_phone ?? row.phone ?? 'Not linked'} - {row.status ?? 'unknown'}{row.access_type ? ' - ' + row.access_type : ''}</p>{row.link_code ? <p className='font-mono text-emerald-200'>Code: {row.link_code}</p> : null}{row.link_code_expires_at ? <p className='text-xs text-slate-500'>Expires: {assistantDate(row.link_code_expires_at)} {assistantTime(row.link_code_expires_at)}</p> : null}</div><button type='button' onClick={() => revoke(row)} disabled={busy || row.status === 'revoked'} className='rounded-lg border border-red-400/30 px-3 py-2 text-sm font-bold text-red-200 disabled:opacity-40'>Revoke</button></div>)}</div>}
+    </div>
+  </div>;
+}
 function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: string | null }) {
   const { data, isLoading } = useQuery({
     queryKey: ['assistant_config', kind, siteId],

@@ -80,9 +80,9 @@ export function keywordIntent(text: string): Intent | null {
   if (/^(status|site status|system status|whats status|what is the status|what\x27s the status)$/.test(value)) return { action: "live" };
   if (/^(attention|problems?|alerts?)$/.test(value)) return { action: "attention", filter: "all" };
   if (/^(devices?)$/.test(value)) return { action: "devices", filter: "all" };
-  if (/^(incidents?)$/.test(value)) return { action: "incidents" };
+  if (/^(incidents?|incident report|incident reports)$/.test(value)) return { action: "incidents" };
   if (/^(datalog|data log|data logs)$/.test(value)) return { action: "datalog" };
-  if (/(report|log|raise|submit).*(incident|issue)|incident report/.test(value)) return { action: "report_incident" };
+  if (/(report|log|raise|submit).*(incident|issue)/.test(value)) return { action: "report_incident" };
   if (/^(patrol status|patrols? status)$/.test(value)) return { action: "patrol_status" };
   if (/^(active( patrols?)?)$/.test(value)) return { action: "active_patrols" };
   const reportPeriod = value.match(/(today|yesterday|this week|week)[a-z'\s]*report|report[a-z'\s]*(today|yesterday|this week|week)/);

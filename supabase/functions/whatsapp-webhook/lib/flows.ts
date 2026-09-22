@@ -1,4 +1,5 @@
 // deno-lint-ignore no-explicit-any
+declare const Deno: { env: { get(key: string): string | undefined } };
 type SupabaseClient = any;
 import type { Identity, OutMessage, SessionRow, SiteRow } from "./types.ts";
 import { allowedSites } from "./identity.ts";
@@ -753,6 +754,76 @@ async function revokeWhatsApp(client: SupabaseClient, identity: Identity, sessio
   return { session: await clearFlow(client, session), message: CANCELLED };
 }
 
+function isTwilioMediaUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "twilio.com" || host.endsWith(".twilio.com");
+  } catch {
+    return false;
+  }
+}
+
+async function fetchWhatsAppMedia(url: string): Promise<{ bytes: Uint8Array; contentType: string }> {
+  const headers = new Headers();
+  const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
+  if (isTwilioMediaUrl(url) && sid && token) headers.set("Authorization", "Basic " + btoa(sid + ":" + token));
+  const response = await fetch(url, { headers });
+  if (!response.ok) throw new Error("WhatsApp media download failed: " + response.status);
+  const contentType = response.headers.get("content-type") ?? "image/jpeg";
+  return { bytes: new Uint8Array(await response.arrayBuffer()), contentType };
+}
+
+function mediaExtension(contentType: string, url: string): string {
+  const fromUrl = url.split("?")[0].match(/\.([a-z0-9]{3,5})$/i)?.[1]?.toLowerCase();
+  if (fromUrl && ["jpg", "jpeg", "png", "webp"].includes(fromUrl)) return fromUrl === "jpeg" ? "jpg" : fromUrl;
+  if (contentType.includes("png")) return "png";
+  if (contentType.includes("webp")) return "webp";
+  return "jpg";
+}
+
+async function persistIncidentMedia(
+  client: SupabaseClient,
+  identity: Identity,
+  incidentId: string,
+  siteId: string,
+  mediaUrls: string[],
+): Promise<string[]> {
+  const paths: string[] = [];
+  for (let index = 0; index < mediaUrls.length; index += 1) {
+    const mediaUrl = mediaUrls[index];
+    try {
+      const { bytes, contentType } = await fetchWhatsAppMedia(mediaUrl);
+      if (!contentType.toLowerCase().startsWith("image/")) continue;
+      const extension = mediaExtension(contentType, mediaUrl);
+      const capturedAt = new Date().toISOString();
+      const storagePath = `${identity.company_id}/whatsapp/${incidentId}/${Date.now()}-${index + 1}.${extension}`;
+      const { error: uploadError } = await client.storage.from("incident-reports").upload(storagePath, bytes, { contentType, upsert: false });
+      if (uploadError) throw uploadError;
+      const { error: insertError } = await client.from("incident_report_photos").insert({
+        company_id: identity.company_id,
+        site_id: siteId,
+        device_identifier: identity.display_name ?? identity.phone ?? "whatsapp",
+        gps_lat: null,
+        gps_lng: null,
+        gps_accuracy: null,
+        captured_at: capturedAt,
+        storage_path: storagePath,
+      });
+      if (insertError) throw insertError;
+      paths.push(storagePath);
+    } catch (error) {
+      console.warn("[WA] incident media persistence failed:", error);
+    }
+  }
+  if (paths.length) {
+    const evidenceLines = paths.map((path) => `Evidence photo | ${path}`).join("\n");
+    const { data: incident } = await client.from("incidents").select("description").eq("id", incidentId).eq("company_id", identity.company_id).maybeSingle();
+    const description = [incident?.description, evidenceLines].filter(Boolean).join("\n");
+    await client.from("incidents").update({ description, image_url: paths[0] }).eq("id", incidentId).eq("company_id", identity.company_id);
+  }
+  return paths;
+}
 /* ----------------------------- report incident ----------------------------- */
 
 const SEVERITIES = [
@@ -839,7 +910,7 @@ async function reportIncident(
       description: data.description,
       title: String(data.description).slice(0, 80),
       severity: data.severity,
-      image_url: media[0] ?? null,
+      image_url: null,
       source: "whatsapp_report",
     });
 
@@ -851,11 +922,12 @@ async function reportIncident(
     }
 
     const record = outcome.result.record as Record<string, any>;
+    const savedMedia = record.id && media.length ? await persistIncidentMedia(client, identity, String(record.id), String(data.site_id), media) : [];
     return {
       session: await clearFlow(client, session),
       message: {
         title: outcome.result.duplicate ? "INCIDENT ALREADY LOGGED" : "✅ INCIDENT CREATED",
-        lines: [`Reference: ${record.reference}`, `${data.site_name} · ${data.severity_label}`, `Status: ${record.status}`],
+        lines: [`Reference: ${record.reference}`, `${data.site_name} · ${data.severity_label}`, `Status: ${record.status}`, savedMedia.length ? `${savedMedia.length} photo${savedMedia.length === 1 ? "" : "s"} saved to incident evidence` : media.length ? "Incident saved, but photo upload could not be stored" : "No photos attached"],
         options: [{ id: "incidents", label: "View Incidents" }, { id: "menu", label: "Main Menu" }],
       },
     };

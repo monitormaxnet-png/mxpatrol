@@ -607,6 +607,29 @@ const PATROL_STATUS_LABELS: Record<keyof typeof PATROL_STATUS_GROUPS, string> = 
   missed: "Missed",
 };
 
+function patrolDetailName(row: Record<string, any>): string {
+  const route = Array.isArray(row.patrol_routes) ? row.patrol_routes[0] : row.patrol_routes;
+  const template = Array.isArray(row.patrol_templates) ? row.patrol_templates[0] : row.patrol_templates;
+  return String(row.patrol_name ?? route?.name ?? template?.name ?? "Patrol");
+}
+
+function patrolDetailSite(row: Record<string, any>): string {
+  const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
+  return String(site?.name ?? "Unassigned site");
+}
+
+function patrolDetailLine(row: Record<string, any>, index: number): string {
+  return [
+    `${index + 1}. ${patrolDetailName(row)} - ${patrolDetailSite(row)}`,
+    `Status: ${String(row.status ?? "active").replace(/_/g, " ")}`,
+    `Scheduled: ${waDate(row.scheduled_start) ?? "unknown date"} ${waTime(row.scheduled_start) ?? "unknown time"}`,
+    `Started: ${waTime(row.actual_start) ?? "not started"}`,
+    `Progress: ${row.checkpoint_completed ?? 0}/${row.checkpoint_total ?? 0}`,
+    `Device: ${row.device_identifier ?? "unassigned"}`,
+    `Last activity: ${timeAgo(row.last_scan_at ?? row.actual_start ?? row.scheduled_start)}`,
+  ].join("\n");
+}
+
 /** Patrol Status overview: compact session counts for the selected site and today reporting period. */
 export async function patrolStatusOverview(
   client: SupabaseClient,
@@ -617,13 +640,16 @@ export async function patrolStatusOverview(
   const from = periodStart('today').toISOString();
   const to = periodEnd('today').toISOString();
   const { data } = await siteFilter<any>(
-    client.from('patrol_sessions').select('id, status, site_id').gte('scheduled_start', from).lte('scheduled_start', to).limit(500),
+    client.from('patrol_sessions').select('id, status, scheduled_start, actual_start, last_scan_at, device_identifier, checkpoint_completed, checkpoint_total, site_id, sites(name), patrol_routes(name), patrol_templates(name)').gte('scheduled_start', from).lte('scheduled_start', to).order('scheduled_start', { ascending: true }).limit(500),
     identity,
     siteId,
   );
   const rows = (data ?? []) as any[];
   const count = (group: keyof typeof PATROL_STATUS_GROUPS) =>
     rows.filter((row) => (PATROL_STATUS_GROUPS[group] as readonly string[]).includes(String(row.status))).length;
+
+  const activeRows = rows.filter((row) => (PATROL_STATUS_GROUPS.active as readonly string[]).includes(String(row.status)));
+  const activeDetails = activeRows.slice(0, 5).map((row, index) => patrolDetailLine(row, index));
 
   return {
     title: siteName ? 'PATROL STATUS - ' + siteName : 'PATROL STATUS - ALL SITES',
@@ -636,6 +662,9 @@ export async function patrolStatusOverview(
       'Incomplete sessions: ' + count('incomplete'),
       'Late sessions: ' + count('late'),
       'Missed sessions: ' + count('missed'),
+      '',
+      activeDetails.length ? 'Active patrols:' : 'No active patrols right now.',
+      ...(activeDetails.length ? activeDetails : []),
       '',
       'Choose a status for a short session summary.',
     ],
@@ -727,7 +756,7 @@ export async function patrolStatusView(
   const { data } = await siteFilter<any>(
     client
       .from('patrol_sessions')
-      .select('id, status, scheduled_start, site_id, sites(name), patrol_routes(id,name), patrol_templates(id,name)')
+      .select('id, status, scheduled_start, actual_start, last_scan_at, device_identifier, checkpoint_completed, checkpoint_total, site_id, sites(name), patrol_routes(id,name), patrol_templates(id,name)')
       .gte('scheduled_start', from)
       .lte('scheduled_start', to)
       .order('scheduled_start', { ascending: false })
@@ -755,6 +784,14 @@ export async function patrolStatusView(
     }
   } else {
     lines.push(...visible.map((row) => patrolSummaryLine(row, group)), '');
+  }
+
+  if (group === 'active') {
+    const activeDetails = ((data ?? []) as any[])
+      .filter((row) => (PATROL_STATUS_GROUPS.active as readonly string[]).includes(String(row.status)))
+      .slice(0, 5)
+      .map((row, index) => patrolDetailLine(row, index));
+    if (activeDetails.length) lines.push('Active session details:', ...activeDetails, '');
   }
 
   if (group === 'completed') {

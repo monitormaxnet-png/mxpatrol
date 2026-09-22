@@ -28,6 +28,7 @@ import { useReportJobs, useReports, type ReportJob } from "@/hooks/useReports";
 import { patrolScanCheckpointName, patrolScanDeviceIdentity, useCompanyId, useLivePatrolScans } from "@/hooks/usePatrolScanData";
 import { supabase } from "@/integrations/supabase/client";
 import SiteSelector from "@/components/sites/SiteSelector";
+import { useSites } from "@/hooks/useSites";
 import { realtimeStatusLabel, useRealtimeConnectionStatus } from "@/hooks/useRealtimeConnectionStatus";
 import { SocPageShell } from "@/components/dashboard/SocComponents";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
@@ -109,17 +110,38 @@ const incidentEvidencePaths = (incident: any): string[] => String(incident?.desc
   .map((line: string) => line.split("|").pop()?.trim() ?? "")
   .filter((value: string) => /\.(jpe?g|png|webp|m4a|mp3|wav|aac)$/i.test(value));
 
-/** Photos have no incident_id column, so evidence is matched by site + device + capture time. */
-const EVIDENCE_WINDOW_MS = 30 * 60 * 1000;
-const photoMatchesIncident = (photo: any, incident: any) => {
-  if (incident?.site_id && photo?.site_id && incident.site_id !== photo.site_id) return false;
-  if (incident?.device_identifier && photo?.device_identifier && incident.device_identifier !== photo.device_identifier) return false;
-  const incidentTime = new Date(incident?.occurred_at ?? incident?.created_at ?? 0).getTime();
-  const photoTime = new Date(photo?.captured_at ?? photo?.created_at ?? 0).getTime();
-  if (!incidentTime || !photoTime) return false;
-  return Math.abs(incidentTime - photoTime) <= EVIDENCE_WINDOW_MS;
-};
+const EVIDENCE_TIME_WINDOW_MS = 30 * 60 * 1000;
 
+function incidentPhotoEvidencePayload(photo: IncidentPhotoEvidenceRow, incidentId: string) {
+  return {
+    id: photo.id,
+    incident_id: incidentId,
+    storage_path: photo.storage_path,
+    signed_url: photo.signed_url,
+    device_identifier: photo.device_identifier,
+    captured_at: photo.captured_at,
+    created_at: photo.created_at,
+  };
+}
+
+function incidentTimeMs(incident: any) {
+  const time = new Date(incident?.occurred_at ?? incident?.created_at ?? incident?.reported_at ?? incident?.updated_at ?? 0).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function photoTimeMs(photo: IncidentPhotoEvidenceRow) {
+  const time = new Date(photo.captured_at ?? photo.created_at ?? 0).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function photoLikelyBelongsToIncident(photo: IncidentPhotoEvidenceRow, incident: any) {
+  if (photo.site_id && incident?.site_id && photo.site_id !== incident.site_id) return false;
+  if (photo.device_identifier && incident?.device_identifier && photo.device_identifier !== incident.device_identifier) return false;
+  const incidentTime = incidentTimeMs(incident);
+  const capturedTime = photoTimeMs(photo);
+  if (incidentTime == null || capturedTime == null) return false;
+  return Math.abs(capturedTime - incidentTime) <= EVIDENCE_TIME_WINDOW_MS;
+}
 function matchesTemplate(row: Record<string, unknown>, templateId: string) {
   if (templateId === "all") return true;
   return row.template_id === templateId || row.patrol_template_id === templateId;
@@ -148,6 +170,7 @@ const Reports = () => {
   const { data: companyId } = useCompanyId();
   const { data: reportRows = [], isLoading, error: reportsError } = useReports();
   const { data: reportJobs = [], isLoading: jobsLoading, error: jobsError } = useReportJobs();
+  const { data: sites = [] } = useSites();
   const reports = reportRows as ReportRecord[];
   const [siteId, setSiteId] = useState("all");
   const [dateRange, setDateRange] = useState<DateRange>("7d");
@@ -289,6 +312,7 @@ const Reports = () => {
   const selectedTemplateName = useMemo(() => templateOptions.find((template) => template.id === patrolTemplateId)?.name ?? "All Patrol Templates", [patrolTemplateId, templateOptions]);
   const periodScans = useMemo(() => registeredScans.filter((scan) => scan.scanned_at >= since && matchesTemplate(scan, patrolTemplateId)), [patrolTemplateId, registeredScans, since]);
   const reportTypes = MX_PDF_REPORT_TYPES;
+  const selectedSiteLabel = siteId === "all" ? "All Sites" : sites.find((site) => site.id === siteId)?.name ?? "Selected site";
 
   const filteredReports = useMemo(() => reports.filter((report) => {
     const data = report.data as ReportData | null;
@@ -331,20 +355,17 @@ const Reports = () => {
   const incidentEvidence = useMemo<Record<string, MxPdfIncidentEvidence>>(() => {
     const photosByPath = new Map(incidentPhotoRows.map((photo) => [photo.storage_path, photo]));
     return incidentRows.reduce<Record<string, MxPdfIncidentEvidence>>((acc, incident: any) => {
-      const linked = incidentEvidencePaths(incident)
+      const attached = new Map<string, IncidentPhotoEvidenceRow>();
+      incidentEvidencePaths(incident)
         .map((path) => photosByPath.get(path))
-        .filter(Boolean) as typeof incidentPhotoRows;
-      const matched = linked.length ? linked : incidentPhotoRows.filter((photo) => photoMatchesIncident(photo, incident));
-      const photos = matched
-        .map((photo) => ({
-          id: photo!.id,
-          incident_id: incident.id,
-          storage_path: photo!.storage_path,
-          signed_url: photo!.signed_url,
-          device_identifier: photo!.device_identifier,
-          captured_at: photo!.captured_at,
-          created_at: photo!.created_at,
-        }));
+        .filter(Boolean)
+        .forEach((photo) => attached.set(photo!.storage_path, photo!));
+      incidentPhotoRows
+        .filter((photo) => !attached.has(photo.storage_path) && photoLikelyBelongsToIncident(photo, incident))
+        .forEach((photo) => attached.set(photo.storage_path, photo));
+      const photos = Array.from(attached.values())
+        .sort((a, b) => (photoTimeMs(a) ?? 0) - (photoTimeMs(b) ?? 0))
+        .map((photo) => incidentPhotoEvidencePayload(photo, incident.id));
       acc[String(incident.id)] = { photos, audio: [] };
       acc[incidentNo(incident)] = acc[String(incident.id)];
       return acc;
@@ -354,7 +375,7 @@ const Reports = () => {
   const buildPdfInput = (overrideType?: MxPdfReportType): MxPdfReportInput => ({
     type: overrideType ?? reportType,
     companyName,
-    siteName: siteId === "all" ? "All Sites" : "Selected site",
+    siteName: selectedSiteLabel,
     periodLabel: rangeLabel(dateRange),
     scans: periodScans,
     patrols: sessionReports.length ? sessionReports : expectedSessions,
@@ -497,7 +518,7 @@ const Reports = () => {
                 </div>
               </div>
             </div>
-            <ReportTableState loading={isLoading} error={reportsError} jobsLoading={jobsLoading} jobsError={jobsError} activeTab={activeTab} reports={filteredReports} jobs={filteredJobs} selectedId={selected?.id ?? null} companyName={companyName} siteLabel={siteId === "all" ? "All Sites" : "Selected site"} onSelect={setSelectedId} onExport={exportCsv} />
+            <ReportTableState loading={isLoading} error={reportsError} jobsLoading={jobsLoading} jobsError={jobsError} activeTab={activeTab} reports={filteredReports} jobs={filteredJobs} selectedId={selected?.id ?? null} companyName={companyName} siteLabel={selectedSiteLabel} onSelect={setSelectedId} onExport={exportCsv} />
           </div>
           <div className="space-y-4">
             <AiInsightsPanel compliance={compliance} scans={periodScans.length} reports={filteredReports.length} incidents={metrics?.incidents ?? 0} sos={metrics?.sos ?? 0} />
@@ -506,7 +527,7 @@ const Reports = () => {
             <ScheduledReportsPanel jobs={reportJobs} />
           </div>
           <div className="xl:col-start-3">
-            <ReportDetails report={selected} companyName={companyName} siteLabel={siteId === "all" ? "All Sites" : "Selected site"} scanCount={periodScans.length} incidents={metrics?.incidents ?? 0} sosEvents={metrics?.sos ?? 0} onClose={() => setSelectedId(null)} onExport={exportCsv} />
+            <ReportDetails report={selected} companyName={companyName} siteLabel={selectedSiteLabel} scanCount={periodScans.length} incidents={metrics?.incidents ?? 0} sosEvents={metrics?.sos ?? 0} onClose={() => setSelectedId(null)} onExport={exportCsv} />
           </div>
         </section>
 

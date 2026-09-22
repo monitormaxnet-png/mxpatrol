@@ -104,7 +104,21 @@ const reportLabel = (type?: string | null) => reportTypeLabels[type ?? ""] ?? `$
 const formatTime = (value?: string | null) => value ? format(new Date(value), "dd MMM yyyy HH:mm") : "Not available";
 const rangeLabel = (range: DateRange) => range === "today" ? "Today" : range === "7d" ? "Last 7 Days" : "Last 30 Days";
 const incidentNo = (incident: any) => `INC-${String(incident?.id ?? "UNKNOWN").slice(0, 8).toUpperCase()}`;
-const incidentEvidencePaths = (incident: any) => (incident?.description ?? "").split("`n").map((line: string) => line.split("|").pop()?.trim() ?? "").filter((value: string) => /\\.(jpe?g|png|webp|m4a|mp3|wav|aac)$/i.test(value));
+const incidentEvidencePaths = (incident: any): string[] => String(incident?.description ?? "")
+  .split(/[\r\n]+/)
+  .map((line: string) => line.split("|").pop()?.trim() ?? "")
+  .filter((value: string) => /\.(jpe?g|png|webp|m4a|mp3|wav|aac)$/i.test(value));
+
+/** Photos have no incident_id column, so evidence is matched by site + device + capture time. */
+const EVIDENCE_WINDOW_MS = 30 * 60 * 1000;
+const photoMatchesIncident = (photo: any, incident: any) => {
+  if (incident?.site_id && photo?.site_id && incident.site_id !== photo.site_id) return false;
+  if (incident?.device_identifier && photo?.device_identifier && incident.device_identifier !== photo.device_identifier) return false;
+  const incidentTime = new Date(incident?.occurred_at ?? incident?.created_at ?? 0).getTime();
+  const photoTime = new Date(photo?.captured_at ?? photo?.created_at ?? 0).getTime();
+  if (!incidentTime || !photoTime) return false;
+  return Math.abs(incidentTime - photoTime) <= EVIDENCE_WINDOW_MS;
+};
 
 function matchesTemplate(row: Record<string, unknown>, templateId: string) {
   if (templateId === "all") return true;

@@ -331,9 +331,11 @@ const Reports = () => {
   const incidentEvidence = useMemo<Record<string, MxPdfIncidentEvidence>>(() => {
     const photosByPath = new Map(incidentPhotoRows.map((photo) => [photo.storage_path, photo]));
     return incidentRows.reduce<Record<string, MxPdfIncidentEvidence>>((acc, incident: any) => {
-      const photos = incidentEvidencePaths(incident)
+      const linked = incidentEvidencePaths(incident)
         .map((path) => photosByPath.get(path))
-        .filter(Boolean)
+        .filter(Boolean) as typeof incidentPhotoRows;
+      const matched = linked.length ? linked : incidentPhotoRows.filter((photo) => photoMatchesIncident(photo, incident));
+      const photos = matched
         .map((photo) => ({
           id: photo!.id,
           incident_id: incident.id,

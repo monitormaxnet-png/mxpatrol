@@ -52,7 +52,7 @@ export const DataLogFormOverlay = ({ form, checkpointName, submitting, onSubmit,
         </Button>
         {onCancel ? (
           <Button type="button" variant="outline" disabled={submitting} onClick={onCancel}>
-            SKIP
+            LATER
           </Button>
         ) : null}
       </div>

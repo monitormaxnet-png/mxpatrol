@@ -49,7 +49,7 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
   management_patrol_status: {
     key: 'management_patrol_status',
     title: 'PATROL STATUS',
-    parent: 'management_operations',
+    parent: MANAGEMENT_HOME,
     items: [
       { label: 'Completed', action: 'completed_patrols' },
       { label: 'Incomplete', action: 'incomplete_patrols' },
@@ -71,7 +71,6 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     parent: null,
     items: [
       { label: 'Organization Setup', action: 'menu:management_organization' },
-      { label: 'Operations', action: 'menu:management_operations' },
       { label: 'Devices', action: 'menu:management_devices' },
       { label: 'Checkpoints', action: 'menu:management_checkpoints' },
       { label: 'Incidents', action: 'menu:management_incidents' },
@@ -126,7 +125,7 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     items: [
       { label: 'View Checkpoints', action: 'checkpoints' },
       { label: 'Missed Checkpoints', action: 'missed_checkpoints' },
-      { label: 'Pending NFC Assignment', action: 'pending_nfc' },
+      { label: 'Pending Unregistered Checkpoints', action: 'pending_nfc' },
       { label: 'Register Checkpoint', action: 'register_checkpoint' },
       { label: 'Back', action: 'back' },
     ],
@@ -190,6 +189,11 @@ export function menuNode(key: string): MenuNode {
   return ASSISTANT_MENUS[key] ?? ASSISTANT_MENUS[USER_HOME];
 }
 
+const PLATFORM_OWNER_ONLY_ACTIONS = new Set([
+  'register_company',
+  'view_companies',
+]);
+
 const MANAGEMENT_ONLY_ACTIONS = new Set([
   'secure_devices',
   'register_device',
@@ -212,7 +216,6 @@ const MANAGEMENT_ONLY_ACTIONS = new Set([
   'revoke_whatsapp_access',
   'register_company',
   'register_site',
-  'view_companies',
   'view_sites',
   
   'routes',
@@ -222,6 +225,7 @@ const MANAGEMENT_ONLY_ACTIONS = new Set([
 /** Natural-language intents. Evaluated only for non-numeric input, so menu numbers never fall through. */
 const NL_INTENTS: Array<[RegExp, string]> = [
   [/patrol\s+status/, 'menu:patrol_status'],
+  [/register\s+company/, 'register_company'],
   [/(missed\s+checkpoint|checkpoint.*miss)/, 'missed_checkpoints'],
   [/^(missed|missed sessions?|show missed sessions?)$/, 'missed_sessions'],
   [/^(late sessions?|show late sessions?)$/, 'late_sessions'],
@@ -294,6 +298,9 @@ function applyAction(state: RouterState, action: string, canManage: boolean, isP
     return { kind: 'menu', state: next, menuKey: key };
   }
 
+  if (PLATFORM_OWNER_ONLY_ACTIONS.has(action) && !isPlatformOwner) {
+    return { kind: 'denied', state, action };
+  }
   if (MANAGEMENT_ONLY_ACTIONS.has(action) && !canManage) {
     return { kind: 'denied', state, action };
   }
@@ -335,7 +342,8 @@ export function resolveAssistantInput(
 
   const node = menuNode(state.activeMenu);
   const visibleReportItems = reportMenuItems(state.activeMenu, !!opts.isPlatformOwner);
-  const menuItems = visibleReportItems.length ? visibleReportItems : node.items;
+  const sourceItems = visibleReportItems.length ? visibleReportItems : node.items;
+  const menuItems = sourceItems.filter((item) => opts.isPlatformOwner || !PLATFORM_OWNER_ONLY_ACTIONS.has(item.action));
 
   if (/^\d+$/.test(input)) {
     const index = Number(input);

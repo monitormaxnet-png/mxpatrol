@@ -454,7 +454,7 @@ export default function CommandCenter() {
     if (action === 'incidents_high') return addAssistant('HIGH PRIORITY INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => ['high', 'critical'].includes(String(row.severity)))} />);
     if (action === 'incidents_resolved') return addAssistant('RESOLVED INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => row.resolved)} />);
     if (action === 'checkpoints') return addAssistant('CHECKPOINTS - ' + selectedSite, <CheckpointList rows={siteCheckpoints} />);
-    if (action === 'pending_nfc') return addAssistant('PENDING NFC ASSIGNMENT - ' + selectedSite, <CheckpointList rows={siteCheckpoints.filter((row: any) => !row.nfc_tag_id)} />);
+    if (action === 'pending_nfc') return addAssistant('PENDING UNREGISTERED CHECKPOINTS - ' + selectedSite, <CheckpointList rows={siteCheckpoints.filter((row: any) => !row.nfc_tag_id)} />);
     if (action === 'patrol_status') return showMenu(state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status');
     if (action === 'completed_patrols') return addAssistant('COMPLETED PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='completed' site={selectedSite} />);
     if (action === 'incomplete_patrols') return addAssistant('INCOMPLETE PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='incomplete' site={selectedSite} />);
@@ -663,7 +663,7 @@ export default function CommandCenter() {
           <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${loadedScansToday} loaded today`} icon={ScanLine} tone='blue' />
         </section>
 
-        <main className='grid flex-1 gap-3 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
+        <main className='grid min-h-0 flex-1 gap-3 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
           <div className='flex min-h-0 flex-col gap-3'>
             <DashboardPanel title="Today's Patrol Status" icon={ShieldCheck} action='Today'>
               <PatrolStatusDonut counts={patrolCounts} total={totalPatrols} />
@@ -682,7 +682,7 @@ export default function CommandCenter() {
             </Suspense>
           </DashboardPanel>
 
-          <section className='flex h-[calc(100vh-15rem)] min-h-[34rem] max-h-[52rem] flex-col overflow-hidden rounded-lg border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_35px_rgba(14,165,233,0.08)]'>
+          <section className='flex h-[min(52rem,calc(100vh-15rem))] min-h-[34rem] flex-col overflow-hidden rounded-lg border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_35px_rgba(14,165,233,0.08)]'>
             <div className='shrink-0 border-b border-white/10 px-4 py-3'>
               <div className='flex items-start justify-between gap-3'>
                 <div>
@@ -1054,9 +1054,10 @@ function CheckpointTimeMatrix({ scans, checkpoints }: { scans: DashboardScan[]; 
   if (!names.length || !sessions.length) return <p>No checkpoint scans available for the matrix.</p>;
   return <div className='mt-2 overflow-x-auto'><table className='min-w-full text-left text-xs'><thead><tr><th className='border-b border-white/10 p-2 text-slate-400'>Time</th>{names.map((name) => <th key={name} className='border-b border-white/10 p-2 text-slate-400'>{name}</th>)}</tr></thead><tbody>{sessions.map((hour) => <tr key={hour}><td className='border-b border-white/10 p-2 font-mono text-emerald-300'>{hour}:00</td>{names.map((name) => { const hit = scans.find((scan) => checkpointName(scan) === name && (assistantTime(scan.scanned_at)?.startsWith(hour) ?? false)); return <td key={name} className='border-b border-white/10 p-2'>{hit ? `${assistantTime(hit.scanned_at)} - ${scanBucket(hit)}` : 'Missed'}</td>; })}</tr>)}</tbody></table></div>;
 }
-function MenuView({ site, node, isPlatformOwner = false }: { site: string; node: { key?: string; title: string; items: { label: string }[] }; isPlatformOwner?: boolean }) {
+function MenuView({ site, node, isPlatformOwner = false }: { site: string; node: { key?: string; title: string; items: { label: string; action?: string }[] }; isPlatformOwner?: boolean }) {
   const visibleItems = node.key ? reportMenuItems(node.key, isPlatformOwner) : [];
-  const items = visibleItems.length ? visibleItems : node.items;
+  const sourceItems = visibleItems.length ? visibleItems : node.items;
+  const items = sourceItems.filter((item) => isPlatformOwner || !['register_company', 'view_companies'].includes(String(item.action)));
   return <div><p>Viewing: <b>{site}</b></p><p className='mt-2'>What would you like to do?</p><NumberList items={items.map((item) => item.label)} /><p className='mt-3 text-slate-300'>Reply with a number, or type your request.</p></div>;
 }
 function NumberList({ items }: { items: readonly string[] }) { return <ol className='mt-3 space-y-1'>{items.map((item, index) => <li key={item + index}><span className='text-emerald-300'>{index + 1}.</span> {item}</li>)}</ol>; }

@@ -20,8 +20,8 @@ describe("context-aware numeric menu routing", () => {
     expect(result.state.activeMenu).toBe("management_organization");
   });
 
-  it("management home 2 opens Operations", () => {
-    expect(resolveAssistantInput(mgmtState(), "2", manager)).toMatchObject({ kind: "menu", menuKey: "management_operations" });
+  it("management home 2 opens Devices after Operations was removed", () => {
+    expect(resolveAssistantInput(mgmtState(), "2", manager)).toMatchObject({ kind: "menu", menuKey: "management_devices" });
   });
 
   it("operations 2 opens the Patrol Status submenu", () => {
@@ -49,10 +49,10 @@ describe("context-aware numeric menu routing", () => {
 
   it("numeric meaning changes after submenu navigation", () => {
     const opened = resolveAssistantInput(mgmtState(), "2", manager);
-    const before = resolveAssistantInput(mgmtState(), "3", manager);
+    const before = resolveAssistantInput(mgmtState(), "2", manager);
     const after = resolveAssistantInput(opened.state, "2", manager);
     expect(before).toMatchObject({ kind: "menu", menuKey: "management_devices" });
-    expect(after).toMatchObject({ kind: "menu", menuKey: "management_patrol_status" });
+    expect(after).toMatchObject({ kind: "action", action: "devices_offline" });
   });
 
   it("back returns to the parent menu", () => {
@@ -94,7 +94,7 @@ describe("Patrol Status replaces the separate patrol outcome items", () => {
     expect(resolveAssistantInput(userState("user_patrol_status"), "5", guard)).toMatchObject({ kind: "menu", menuKey: USER_HOME });
     expect(resolveAssistantInput(mgmtState("management_patrol_status"), "5", manager)).toMatchObject({
       kind: "menu",
-      menuKey: "management_operations",
+      menuKey: "management_home",
     });
   });
 
@@ -146,18 +146,20 @@ describe("permission-checked mode switching", () => {
 
 
   it("routes Organization Setup actions from the submenu", () => {
-    expect(resolveAssistantInput(mgmtState("management_organization"), "1", manager)).toMatchObject({ action: "register_company" });
-    expect(resolveAssistantInput(mgmtState("management_organization"), "2", manager)).toMatchObject({ action: "register_site" });
-    expect(resolveAssistantInput(mgmtState("management_organization"), "3", manager)).toMatchObject({ action: "view_companies" });
-    expect(resolveAssistantInput(mgmtState("management_organization"), "4", manager)).toMatchObject({ action: "view_sites" });
+    expect(resolveAssistantInput(mgmtState("management_organization"), "1", { ...manager, isPlatformOwner: true })).toMatchObject({ action: "register_company" });
+    expect(resolveAssistantInput(mgmtState("management_organization"), "2", { ...manager, isPlatformOwner: true })).toMatchObject({ action: "register_site" });
+    expect(resolveAssistantInput(mgmtState("management_organization"), "3", { ...manager, isPlatformOwner: true })).toMatchObject({ action: "view_companies" });
+    expect(resolveAssistantInput(mgmtState("management_organization"), "4", { ...manager, isPlatformOwner: true })).toMatchObject({ action: "view_sites" });
+    expect(resolveAssistantInput(mgmtState("management_organization"), "1", manager)).toMatchObject({ action: "register_site" });
+    expect(resolveAssistantInput(mgmtState("management_organization"), "register company", manager)).toMatchObject({ kind: "denied" });
   });
   it("opens WhatsApp management from management home", () => {
-    const result = resolveAssistantInput(mgmtState(), "8", manager);
+    const result = resolveAssistantInput(mgmtState(), "7", manager);
     expect(result).toMatchObject({ kind: "menu", menuKey: "management_whatsapp" });
   });
 
   it("returns to the user assistant from management", () => {
-    const result = resolveAssistantInput(mgmtState(), "11", manager);
+    const result = resolveAssistantInput(mgmtState(), "10", manager);
     expect(result.state.mode).toBe("user");
     expect(result.state.activeMenu).toBe(USER_HOME);
   });

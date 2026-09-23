@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790131448687,
+      "tag": "0000_sos_resolution_authorization",
+      "breakpoints": true
+    }
+  ]
+}

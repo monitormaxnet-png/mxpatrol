@@ -22,6 +22,7 @@ export type DeviceScanPayload = {
   device_metadata?: Record<string, unknown> | Json;
   face_verified?: boolean | null;
   face_confidence?: number | null;
+  data_log_responses?: Record<string, unknown> | Json | null;
   is_offline_sync?: boolean;
   client_scan_id?: string | null;
   device_auth?: SecureDeviceAuth | null;

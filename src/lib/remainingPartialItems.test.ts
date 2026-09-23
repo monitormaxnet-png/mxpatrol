@@ -37,6 +37,18 @@ describe("remaining partial item regressions", () => {
     expect(deviceScan).toContain("submit_data_log_submission");
   });
 
+
+  it("exposes SOS resolution and siren controls in the main dashboard alerts panel", () => {
+    const source = read("src/components/dashboard/AlertsFeed.tsx");
+    expect(source).toContain("Resolve SOS");
+    expect(source).toContain("Acknowledge");
+    expect(source).toContain("Enable SOS Sound");
+    expect(source).toContain("startSosSiren");
+    expect(source).toContain("stopSosSiren");
+    expect(source).toContain("seenSosIdsRef");
+    expect(source).toContain("resolveSosAlert(alert.id, alert.site_id ?? null)");
+    expect(source).toContain("Management access required");
+  });
   it("exposes SOS resolution and WhatsApp management in Command Center UI", () => {
     const source = read("src/pages/CommandCenter.tsx");
     expect(source).toContain("function SosResolutionPanel");
@@ -53,3 +65,4 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("from('alerts').select('*').eq('company_id', companyId).eq('site_id', siteId)");
   });
 });
+

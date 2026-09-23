@@ -110,6 +110,7 @@ export type Database = {
           resolved_source: string | null
           session_id: string | null
           severity: Database["public"]["Enums"]["incident_severity"] | null
+          site_id: string | null
           type: Database["public"]["Enums"]["alert_type"]
         }
         Insert: {
@@ -131,6 +132,7 @@ export type Database = {
           resolved_source?: string | null
           session_id?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"] | null
+          site_id?: string | null
           type: Database["public"]["Enums"]["alert_type"]
         }
         Update: {
@@ -152,6 +154,7 @@ export type Database = {
           resolved_source?: string | null
           session_id?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"] | null
+          site_id?: string | null
           type?: Database["public"]["Enums"]["alert_type"]
         }
         Relationships: [
@@ -195,6 +198,13 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "patrol_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alerts_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
             referencedColumns: ["id"]
           },
         ]

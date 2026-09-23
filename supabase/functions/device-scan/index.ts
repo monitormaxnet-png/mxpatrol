@@ -150,6 +150,20 @@ async function buildPatrolResult(client: any, sessionId: string | null) {
   };
 }
 
+async function submitInlineDataLog(client: any, scanLogId: string | null, responses: unknown, submittedBy: string | null) {
+  if (!scanLogId || !responses || typeof responses !== "object" || Array.isArray(responses)) return null;
+  const { data, error } = await client.rpc("submit_data_log_submission", {
+    p_scan_log_id: scanLogId,
+    p_responses_json: responses as Record<string, unknown>,
+    p_submitted_by: submittedBy,
+  });
+  if (error) {
+    console.warn("device-scan inline datalog submit failed", error);
+    return null;
+  }
+  return Array.isArray(data) ? data[0] ?? null : data ?? null;
+}
+
 async function loadDataLogForm(client: any, checkpointId: string | null) {
   if (!checkpointId) return null;
   const { data: checkpoint } = await client
@@ -603,6 +617,8 @@ Deno.serve(async (req) => {
         siteId = stringOrNull(persistedCheckpoint?.site_id) ?? siteId;
       }
     }
+
+    const dataLogSubmission = await submitInlineDataLog(serviceClient, scanLog?.id ?? null, scan.data_log_responses ?? body.data_log_responses, stringOrNull(scan.scanned_by));
 
     if (checkpointId && gpsLat != null && gpsLng != null) {
       const checkpointGpsUpdate = await serviceClient

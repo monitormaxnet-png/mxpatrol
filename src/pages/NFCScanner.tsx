@@ -227,7 +227,7 @@ const NFCScanner = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("checkpoints")
-        .select("id, name, nfc_tag_id, site_id, patrol_id, location_lat, location_lng")
+        .select("id, name, nfc_tag_id, site_id, patrol_id, location_lat, location_lng, data_log_enabled, data_log_label")
         .eq("company_id", companyId!)
         .order("sort_order");
 
@@ -345,7 +345,27 @@ const NFCScanner = () => {
         queryClient.invalidateQueries({ queryKey: ["patrols"] });
         queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       });
-      if (structured?.data_log_required && structured.data_log_form && structured.scan_id) {
+      if (!isOnline && result.checkpoint?.data_log_enabled) {
+        const label = (result.checkpoint.data_log_label || "Datalog").trim() || "Datalog";
+        setPendingDataLog({
+          result: {
+            success: true,
+            code: "CHECKPOINT_REQUIRES_DATA",
+            scan_id: result.scanLogId ?? result.tagId ?? null,
+            checkpoint: result.checkpoint ? { id: result.checkpoint.id, name: result.checkpointName ?? result.checkpoint.name } : null,
+            patrol: null,
+            next_checkpoint: null,
+            duplicate: false,
+            offline_replay: true,
+            message: "Offline datalog pending",
+            data_log_required: true,
+            data_log_form: { id: `offline-simple-${result.checkpoint.id}`, name: label, form_type: "simple", fields: [{ id: "datalog_value", label, field_type: "text", required: true, options: [], sequence_order: 1 }] },
+          },
+          checkpointName: getScanDisplayName(result),
+        });
+        setDataLogOpen(true);
+        setScannerStatus("awaiting_data");
+      } else if (structured?.data_log_required && structured.data_log_form && structured.scan_id) {
         setPendingDataLog({ result: structured, checkpointName: getScanDisplayName(result) });
         setDataLogOpen(true);
         setScannerStatus("awaiting_data");
@@ -361,7 +381,7 @@ const NFCScanner = () => {
         progress: formatProgress(structured?.patrol ?? null),
         gpsStatus,
       });
-      if (!(structured?.data_log_required && structured.data_log_form)) {
+      if (!(!isOnline && result.checkpoint?.data_log_enabled) && !(structured?.data_log_required && structured.data_log_form)) {
         setTimeout(() => setScannerStatus("scanning"), feedback.holdMs);
       }
     },

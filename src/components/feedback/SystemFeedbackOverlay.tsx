@@ -61,6 +61,7 @@ const buildSosNotice = (alert: any): SosNotice => {
 
 export default function SystemFeedbackOverlay() {
   const { user } = useAuth();
+  const { canManage } = useUserRole();
   const [sosNotice, setSosNotice] = useState<SosNotice | null>(null);
   const [sosCount, setSosCount] = useState(0);
   const [sirenMuted, setSirenMuted] = useState(() => isSosSirenMuted());
@@ -108,11 +109,11 @@ export default function SystemFeedbackOverlay() {
     stopSosSiren();
     setSosNotice((notice) => (notice ? { ...notice, resolved: true } : notice));
     if (!sosNotice.id.startsWith("local-")) {
-      await (supabase as any).from("alerts").update({ is_read: true }).eq("id", sosNotice.id);
+      await resolveSosAlert(sosNotice.id);
     }
     window.dispatchEvent(new CustomEvent("mxpatrol:sos-resolved", { detail: { id: sosNotice.id } }));
     window.setTimeout(() => setSosNotice(null), 400);
-  }, [sosNotice]);
+  }, [canManage, sosNotice]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -121,12 +122,12 @@ export default function SystemFeedbackOverlay() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!sosNotice || sosNotice.resolved) return;
+      if (!canManage || !sosNotice || sosNotice.resolved) return;
       if (event.key.toLowerCase() === "r") void resolveSos();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [resolveSos, sosNotice]);
+  }, [canManage, resolveSos, sosNotice]);
 
   useEffect(() => () => stopSosSiren(), []);
 
@@ -277,9 +278,9 @@ export default function SystemFeedbackOverlay() {
                 value={sirenVolume}
                 onChange={(event) => updateSirenVolume(Number(event.target.value))}
               />
-              <button type="button" onClick={resolveSos} className="inline-flex h-10 items-center rounded-md bg-red-500 px-4 text-sm font-black uppercase tracking-wide text-white transition hover:bg-red-400">
+              {canManage ? <button type="button" onClick={resolveSos} className="inline-flex h-10 items-center rounded-md bg-red-500 px-4 text-sm font-black uppercase tracking-wide text-white transition hover:bg-red-400">
                 Resolve
-              </button>
+              </button> : null}
               <button type="button" onClick={() => setSosNotice(null)} className="rounded-md p-2 text-red-100/70 hover:bg-red-400/15 hover:text-white">
                 <X className="h-4 w-4" />
               </button>
@@ -312,9 +313,9 @@ export default function SystemFeedbackOverlay() {
                 </button>
               </div>
               <div className="mt-4 flex gap-2">
-                <button type="button" onClick={resolveSos} className="flex-1 rounded-md bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground transition hover:bg-destructive/90">
+                {canManage ? <button type="button" onClick={resolveSos} className="flex-1 rounded-md bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground transition hover:bg-destructive/90">
                   Resolve
-                </button>
+                </button> : null}
               </div>
             </div>
           </div>

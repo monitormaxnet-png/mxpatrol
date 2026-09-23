@@ -6,8 +6,8 @@ import { useNavigate } from "react-router-dom";
 import { useAlerts } from "@/hooks/useDashboardData";
 import { useRealtimeConnectionStatus } from "@/hooks/useRealtimeConnectionStatus";
 import { format, formatDistanceToNow } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { resolveSosAlert } from "@/lib/resolveSosAlert";
 import { EmptyState, LiveStatusBadge, LoadingState } from "@/components/feedback/FeedbackPrimitives";
 
 const iconMap: Record<string, typeof AlertTriangle> = {
@@ -77,11 +77,9 @@ const AlertsFeed = () => {
   }, [latestAlertTime, realtime.lastUpdatedAt]);
 
   const resolveAlert = async (alert: any) => {
-    const { error } = await supabase.from("alerts").update({ is_read: true }).eq("id", alert.id);
-    if (!error) {
-      window.dispatchEvent(new CustomEvent("mxpatrol:sos-resolved", { detail: { id: alert.id } }));
-      queryClient.invalidateQueries({ queryKey: ["alerts"] });
-    }
+    await resolveSosAlert(alert.id, alert.site_id ?? null);
+    window.dispatchEvent(new CustomEvent("mxpatrol:sos-resolved", { detail: { id: alert.id } }));
+    queryClient.invalidateQueries({ queryKey: ["alerts"] });
   };
 
   const openIncidentReport = (alert: any) => {

@@ -10,7 +10,7 @@ import type { StructuredScanResult } from "@/lib/scanResult";
 
 export type ScanValidationResult = {
   valid: boolean;
-  checkpoint?: { id: string; name: string; nfc_tag_id: string; patrol_id?: string | null; site_id?: string | null };
+  checkpoint?: { id: string; name: string; nfc_tag_id: string; patrol_id?: string | null; site_id?: string | null; data_log_enabled?: boolean | null; data_log_label?: string | null };
   checkpointName?: string;
   scanLogId?: string;
   tagId?: string;
@@ -24,7 +24,7 @@ type ScanGps = { lat: number; lng: number; accuracy?: number | null } | null;
 type QueuedScanInput = Omit<QueuedScan, "id">;
 
 type ProcessorOptions = {
-  checkpoints: Array<{ id: string; name: string; nfc_tag_id: string; patrol_id: string | null; site_id?: string | null }>;
+  checkpoints: Array<{ id: string; name: string; nfc_tag_id: string; patrol_id: string | null; site_id?: string | null; data_log_enabled?: boolean | null; data_log_label?: string | null }>;
   patrols: Array<{ id: string; verification_level?: string }>;
   selectedGuardId: string | null;
   guardName?: string | null;

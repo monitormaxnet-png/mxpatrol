@@ -34,7 +34,8 @@ export type ManagementActionName =
   | "list_sites"
   | "create_whatsapp_authorization"
   | "list_whatsapp_authorizations"
-  | "revoke_whatsapp_authorization";
+  | "revoke_whatsapp_authorization"
+  | "resolve_sos_alert";
 
 export type ManagementResult = {
   ok: true;
@@ -1124,6 +1125,63 @@ export async function revokeWhatsAppAuthorization(client: SupabaseClient, actor:
   if (existing.phone) await client.from("whatsapp_sessions").delete().eq("phone", existing.phone);
 
   return { ok: true, action: "revoke_whatsapp_authorization", duplicate: false, record: whatsappAuthorizationRecord(data), summary: "WhatsApp access revoked for " + (existing.display_name ?? maskPhone(existing.phone)) + " at " + site.name + "." };
+}
+
+
+export async function resolveSosAlert(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
+  assertCanManage(actor);
+  const alertId = text(input.alert_id ?? input.id, "SOS alert", { min: 8, max: 80 });
+  const siteId = typeof input.site_id === "string" && input.site_id.trim() ? input.site_id.trim() : null;
+
+  let query = client
+    .from("alerts")
+    .select("id, company_id, site_id, type, is_read, message, created_at")
+    .eq("id", alertId)
+    .eq("company_id", actor.company_id)
+    .eq("type", "panic_button");
+  if (siteId) query = query.eq("site_id", siteId);
+
+  const { data: alert, error: findError } = await query.maybeSingle();
+  if (findError) throw new ManagementActionError(findError.message, 500);
+  if (!alert?.id) throw new ManagementActionError("SOS alert was not found for this company/site", 404);
+
+  const resolvedAt = new Date().toISOString();
+  const updatePayload: Record<string, unknown> = {
+    is_read: true,
+    resolved_at: resolvedAt,
+    resolved_by: actor.user_id ?? null,
+    resolved_source: String(input.resolved_source ?? "management_action").slice(0, 80),
+  };
+
+  let update = await client
+    .from("alerts")
+    .update(updatePayload)
+    .eq("id", alert.id)
+    .eq("company_id", actor.company_id)
+    .eq("type", "panic_button")
+    .select("id, is_read, resolved_at, resolved_by, resolved_source")
+    .maybeSingle();
+
+  if (update.error && (update.error.code === "42703" || update.error.code === "PGRST204")) {
+    update = await client
+      .from("alerts")
+      .update({ is_read: true })
+      .eq("id", alert.id)
+      .eq("company_id", actor.company_id)
+      .eq("type", "panic_button")
+      .select("id, is_read")
+      .maybeSingle();
+  }
+
+  if (update.error) throw new ManagementActionError(update.error.message, 500);
+
+  return {
+    ok: true,
+    action: "resolve_sos_alert",
+    duplicate: Boolean(alert.is_read),
+    record: { id: alert.id, site_id: alert.site_id ?? null, resolved_at: (update.data as Record<string, unknown> | null)?.resolved_at ?? resolvedAt },
+    summary: alert.is_read ? "SOS alert was already resolved." : "SOS alert resolved.",
+  };
 }
 
 /* -------------------------------- dispatcher ------------------------------ */

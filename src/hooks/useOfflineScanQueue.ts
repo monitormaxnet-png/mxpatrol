@@ -27,6 +27,7 @@ export type QueuedScan = {
   face_confidence?: number | null;
   guard_name?: string | null;
   client_scan_id?: string | null;
+  data_log_responses?: Record<string, unknown> | null;
 };
 
 const STORAGE_KEY = "offline_scan_queue";
@@ -120,6 +121,7 @@ export function useOfflineScanQueue() {
           face_confidence: scan.face_confidence ?? null,
           client_scan_id: scan.client_scan_id ?? scan.id,
           is_offline_sync: true,
+          data_log_responses: scan.data_log_responses ?? null,
         });
 
         console.info("[Scan] Offline replay result", {

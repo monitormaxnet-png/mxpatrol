@@ -10,6 +10,7 @@ import { useAlerts, useDevices, useIncidents, useScanLogs, useCheckpoints, useRe
 import { useReportJobs } from '@/hooks/useReports';
 import { supabase } from '@/integrations/supabase/client';
 import { LiveSecureDeviceManagementPanel } from '@/components/command-center/LiveSecureDeviceManagementPanel';
+import PendingUnregisteredCheckpoints from '@/components/dashboard/PendingUnregisteredCheckpoints';
 import {
   ASSISTANT_MENUS,
   MANAGEMENT_HOME,
@@ -437,7 +438,7 @@ export default function CommandCenter() {
     const missedCps = rows.sessions.reduce((total, row) => total + Math.max((row.checkpoint_total ?? 0) - (row.checkpoint_completed ?? 0), 0), 0);
     addAssistant(`${PERIODS[period].label.toUpperCase()} REPORT - ${selectedSite}`, (
       <div>
-        <MetricGrid items={[['Patrols scheduled', rows.sessions.length], ['Completed', completed], ['Missed patrols', missed], ['Missed checkpoints', missedCps], ['Checkpoint scans', rows.scans.length], ['Incidents', rows.incidents.length], ['SOS alerts', rows.alerts.filter((row: any) => row.type === 'panic_button').length]]} />
+        <MetricGrid items={[['Patrols scheduled', rows.sessions.length], ['Completed', completed], ['Missed patrols', missed], ['Missed checkpoints', missedCps], ['Checkpoint scans', rows.scans.length], ['Incidents', rows.incidents.length], ['SOS alerts', rows.alerts.filter((row: any) => row.type === 'panic_button' && !row.is_read).length]]} />
         {rows.sessions.length ? <PatrolList rows={rows.sessions.slice(0, 6)} /> : <p className='mt-3'>No patrol sessions scheduled for this period at {selectedSite}.</p>}
       </div>
     ));
@@ -454,7 +455,7 @@ export default function CommandCenter() {
     if (action === 'incidents_high') return addAssistant('HIGH PRIORITY INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => ['high', 'critical'].includes(String(row.severity)))} />);
     if (action === 'incidents_resolved') return addAssistant('RESOLVED INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => row.resolved)} />);
     if (action === 'checkpoints') return addAssistant('CHECKPOINTS - ' + selectedSite, <CheckpointList rows={siteCheckpoints} />);
-    if (action === 'pending_nfc') return addAssistant('PENDING UNREGISTERED CHECKPOINTS - ' + selectedSite, <CheckpointList rows={siteCheckpoints.filter((row: any) => !row.nfc_tag_id)} />);
+    if (action === 'pending_nfc') return addAssistant('PENDING UNREGISTERED CHECKPOINTS - ' + selectedSite, <PendingUnregisteredCheckpoints />);
     if (action === 'patrol_status') return showMenu(state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status');
     if (action === 'completed_patrols') return addAssistant('COMPLETED PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='completed' site={selectedSite} />);
     if (action === 'incomplete_patrols') return addAssistant('INCOMPLETE PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='incomplete' site={selectedSite} />);
@@ -808,7 +809,7 @@ function PatrolStatusDonut({ counts, total }: { counts: Record<PatrolStatusGroup
 function DeviceFeedbackRows({ devices, scans, alerts }: { devices: DashboardDevice[]; scans: DashboardScan[]; alerts: DashboardAlert[] }) {
   const rows = [
     ...alerts.filter((alert) => alert.type === 'panic_button').slice(0, 2).map((alert) => ({ id: alert.id, title: alert.title ?? 'SOS Alert', detail: alert.message ?? 'Panic button activated', time: assistantTime(alert.created_at), tone: 'rose' as Tone, icon: ShieldAlert })),
-    ...devices.filter((device) => device.status === 'offline').slice(0, 3).map((device) => ({ id: device.id, title: device.device_identifier ?? device.device_name ?? 'Offline device', detail: 'Device offline', time: assistantTime(device.last_seen_at), tone: 'amber' as Tone, icon: AlertTriangle })),
+    ...devices.filter((device) => device.status === 'offline').slice(0, 3).map((device) => ({ id: device.id, title: device.device_name ?? device.device_identifier ?? 'Offline device', detail: 'Device offline', time: assistantTime(device.last_seen_at), tone: 'amber' as Tone, icon: AlertTriangle })),
     ...scans.slice(0, 4).map((scan) => ({ id: scan.id, title: scan.checkpoints?.name ?? scan.device_identifier ?? 'Checkpoint scan', detail: scan.guards?.full_name ?? formatStatusText(scan.tag_status ?? 'Scan received'), time: assistantTime(scan.scanned_at), tone: 'emerald' as Tone, icon: CheckCircle2 })),
   ].slice(0, 5);
   if (!rows.length) return <p className='text-sm text-slate-400'>No device feedback yet.</p>;
@@ -1080,9 +1081,9 @@ function CurrentDatalogEntries({ rows }: { rows: DatalogSubmission[] }) {
   });
   return <div><MetricGrid items={[["Entries today", rows.length], ["Checkpoints", new Set(rows.map((row) => row.checkpoint_id).filter(Boolean)).size]]} /><ReportRows rows={entries} empty='No Datalog entries captured today for this site.' /></div>;
 }
-function Summary({ devices, alerts, incidents, patrols, scans }: { devices: any[]; alerts: any[]; incidents: any[]; patrols: AssistantPatrolRow[]; scans: any[] }) { return <MetricGrid items={[['Devices Online', devices.filter((row) => row.status === 'online').length], ['Devices Offline', devices.filter((row) => row.status === 'offline').length], ['Active Patrols', patrols.filter((row) => ['active', 'in_progress'].includes(String(row.status))).length], ['Completed', filterPatrols(patrols, 'completed').length], ['Incidents', incidents.length], ['SOS', alerts.filter((row: any) => row.type === 'panic_button').length], ['Scans', scans.length]]} />; }
+function Summary({ devices, alerts, incidents, patrols, scans }: { devices: any[]; alerts: any[]; incidents: any[]; patrols: AssistantPatrolRow[]; scans: any[] }) { return <MetricGrid items={[['Devices Online', devices.filter((row) => row.status === 'online').length], ['Devices Offline', devices.filter((row) => row.status === 'offline').length], ['Active Patrols', patrols.filter((row) => ['active', 'in_progress'].includes(String(row.status))).length], ['Completed', filterPatrols(patrols, 'completed').length], ['Incidents', incidents.length], ['SOS', alerts.filter((row: any) => row.type === 'panic_button' && !row.is_read).length], ['Scans', scans.length]]} />; }
 function Attention({ devices, alerts, patrols }: { devices: any[]; alerts: any[]; patrols: AssistantPatrolRow[] }) { return <MetricGrid items={[['Open Alerts', alerts.filter((row: any) => !row.is_read).length], ['SOS Alerts', alerts.filter((row: any) => row.type === 'panic_button').length], ['Offline Devices', devices.filter((row) => row.status === 'offline').length], ['Missed Patrols', filterPatrols(patrols, 'missed').length]]} />; }
-function DeviceList({ devices, offlineOnly }: { devices: any[]; offlineOnly?: boolean }) { const rows = offlineOnly ? devices.filter((row) => row.status === 'offline') : devices; if (!rows.length) return <p>{offlineOnly ? 'All devices are online.' : 'No devices found for this site.'}</p>; return <div className='space-y-2'>{rows.slice(0, 10).map((device) => <div key={device.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{device.device_identifier ?? device.device_name ?? 'Device'}</b><p className='text-slate-400'>{device.status ?? 'unknown'}</p></div>)}</div>; }
+function DeviceList({ devices, offlineOnly }: { devices: any[]; offlineOnly?: boolean }) { const rows = offlineOnly ? devices.filter((row) => row.status === 'offline') : devices; if (!rows.length) return <p>{offlineOnly ? 'All devices are online.' : 'No devices found for this site.'}</p>; return <div className='space-y-2'>{rows.slice(0, 10).map((device) => <div key={device.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{device.device_name ?? device.device_identifier ?? 'Device'}</b><p className='text-slate-400'>{device.device_identifier ? `${device.device_identifier} - ` : ''}{device.status ?? 'unknown'}</p></div>)}</div>; }
 function IncidentList({ rows }: { rows: any[] }) { if (!rows.length) return <p>No incidents match this view for the active site.</p>; return <div className='space-y-2'>{rows.slice(0, 8).map((incident) => <div key={incident.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{incident.title ?? incident.incident_type ?? 'Incident'}</b><p className='text-slate-400'>{incident.severity ?? 'normal'} - {incident.resolved ? 'Resolved' : 'Open'} - {assistantDate(incident.created_at) ?? ''}</p></div>)}</div>; }
 function CheckpointList({ rows }: { rows: any[] }) { if (!rows.length) return <p>No checkpoints match this view for the active site.</p>; return <div className='space-y-2'>{rows.slice(0, 12).map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>NFC: {row.nfc_tag_id ? 'Assigned' : 'Awaiting assignment'}</p></div>)}</div>; }
 

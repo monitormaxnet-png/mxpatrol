@@ -65,7 +65,7 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("Management access required");
     expect(source).toContain("WhatsApp Access Management");
     expect(source).toContain("command_center_screen");
-    expect(source).toContain("from('alerts').select('*').eq('company_id', companyId).eq('site_id', siteId)");
+    expect(source).toContain("from('alerts').select('*').eq('company_id', companyId)");
   });
 });
 

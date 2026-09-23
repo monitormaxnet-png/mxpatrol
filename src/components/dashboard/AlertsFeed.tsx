@@ -12,6 +12,7 @@ import { setFeedbackSoundEnabled } from "@/lib/feedbackSound";
 import { startSosSiren, stopSosSiren } from "@/lib/sosSirenManager";
 import { EmptyState, LiveStatusBadge, LoadingState } from "@/components/feedback/FeedbackPrimitives";
 import { useUserRole } from "@/hooks/useUserRole";
+import { toast } from "@/hooks/use-toast";
 
 const iconMap: Record<string, typeof AlertTriangle> = {
   missed_checkpoint: Clock,
@@ -154,10 +155,19 @@ const AlertsFeed = () => {
 
   const resolveAlert = async (alert: any) => {
     if (!window.confirm("Resolve this SOS alert? This will close the active SOS case.")) return;
-    await resolveSosAlert(alert.id, alert.site_id ?? null);
-    acknowledgeSosAlert(alert.id);
-    window.dispatchEvent(new CustomEvent("mxpatrol:sos-resolved", { detail: { id: alert.id } }));
-    queryClient.invalidateQueries({ queryKey: ["alerts"] });
+    try {
+      await resolveSosAlert(alert.id, alert.site_id ?? null);
+      acknowledgeSosAlert(alert.id);
+      window.dispatchEvent(new CustomEvent("mxpatrol:sos-resolved", { detail: { id: alert.id } }));
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      toast({ title: "SOS alert resolved" });
+    } catch (error) {
+      toast({
+        title: "Could not resolve SOS alert",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const openIncidentReport = (alert: any) => {

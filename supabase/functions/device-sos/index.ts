@@ -113,7 +113,6 @@ Deno.serve(async (req) => {
       .insert({
         company_id: device.company_id,
         guard_id: null,
-        site_id: device.site_id ?? null,
         session_id: sessionId,
         device_identifier: device.device_identifier,
         event_occurred_at: triggeredAt,

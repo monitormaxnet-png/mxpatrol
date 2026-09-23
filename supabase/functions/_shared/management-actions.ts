@@ -1131,15 +1131,12 @@ export async function revokeWhatsAppAuthorization(client: SupabaseClient, actor:
 export async function resolveSosAlert(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
   assertCanManage(actor);
   const alertId = text(input.alert_id ?? input.id, "SOS alert", { min: 8, max: 80 });
-  const siteId = typeof input.site_id === "string" && input.site_id.trim() ? input.site_id.trim() : null;
-
-  let query = client
+  const query = client
     .from("alerts")
-    .select("id, company_id, site_id, type, is_read, message, created_at")
+    .select("id, company_id, type, is_read, message, created_at")
     .eq("id", alertId)
     .eq("company_id", actor.company_id)
     .eq("type", "panic_button");
-  if (siteId) query = query.eq("site_id", siteId);
 
   const { data: alert, error: findError } = await query.maybeSingle();
   if (findError) throw new ManagementActionError(findError.message, 500);
@@ -1179,7 +1176,7 @@ export async function resolveSosAlert(client: SupabaseClient, actor: ManagementA
     ok: true,
     action: "resolve_sos_alert",
     duplicate: Boolean(alert.is_read),
-    record: { id: alert.id, site_id: alert.site_id ?? null, resolved_at: (update.data as Record<string, unknown> | null)?.resolved_at ?? resolvedAt },
+    record: { id: alert.id, resolved_at: (update.data as Record<string, unknown> | null)?.resolved_at ?? resolvedAt },
     summary: alert.is_read ? "SOS alert was already resolved." : "SOS alert resolved.",
   };
 }
@@ -1195,6 +1192,8 @@ export async function runManagementAction(
   const requestedCompanyId = typeof input.company_id === "string" ? input.company_id.trim() : "";
   const effectiveActor = actor.isPlatformOwner && requestedCompanyId ? { ...actor, company_id: requestedCompanyId } : actor;
   switch (action) {
+    case "resolve_sos_alert":
+      return await resolveSosAlert(client, effectiveActor, input);
     case "create_incident":
       return await createIncident(client, effectiveActor, input);
     case "register_device":

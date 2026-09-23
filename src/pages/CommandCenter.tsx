@@ -295,9 +295,8 @@ export default function CommandCenter() {
   const siteCheckpointIdSet = new Set(((checkpoints.data ?? []) as any[]).map((cp) => cp.id));
   const siteAlerts = ownerData ? (ownerData.alerts as DashboardAlert[]) : ((alerts.data ?? []) as DashboardAlert[]).filter((row) => {
     if (!selectedSiteId) return true;
-    if (row.site_id) return row.site_id === selectedSiteId;
     if (row.checkpoint_id) return siteCheckpointIdSet.has(row.checkpoint_id);
-    return false;
+    return true;
   });
   const siteIncidents = ownerData ? (ownerData.incidents as DashboardIncident[]) : ((incidents.data ?? []) as DashboardIncident[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
   const sitePatrols = ownerData?.patrols ?? patrols.data ?? [];

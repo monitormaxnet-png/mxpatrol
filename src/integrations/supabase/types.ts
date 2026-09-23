@@ -105,6 +105,9 @@ export type Database = {
           location_lng: number | null
           message: string
           patrol_id: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_source: string | null
           session_id: string | null
           severity: Database["public"]["Enums"]["incident_severity"] | null
           type: Database["public"]["Enums"]["alert_type"]
@@ -123,6 +126,9 @@ export type Database = {
           location_lng?: number | null
           message: string
           patrol_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_source?: string | null
           session_id?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"] | null
           type: Database["public"]["Enums"]["alert_type"]
@@ -141,6 +147,9 @@ export type Database = {
           location_lng?: number | null
           message?: string
           patrol_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_source?: string | null
           session_id?: string | null
           severity?: Database["public"]["Enums"]["incident_severity"] | null
           type?: Database["public"]["Enums"]["alert_type"]

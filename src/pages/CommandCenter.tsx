@@ -262,7 +262,7 @@ export default function CommandCenter() {
       const siteId = selectedSiteId!;
       const [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows] = await Promise.all([
         supabase.from('devices').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('last_seen_at', { ascending: false }).limit(100),
-        supabase.from('alerts').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
+        supabase.from('alerts').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100),
         supabase.from('incidents').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
         supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId).eq('site_id', siteId).order('scanned_at', { ascending: false }).limit(200),
         supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('sort_order').limit(200),
@@ -278,7 +278,7 @@ export default function CommandCenter() {
       const siteAlertsData = (alertRows.data ?? []).filter((a) => !a.checkpoint_id || siteCheckpointIds.has(a.checkpoint_id));
       return {
         devices: deviceRows.data ?? [],
-        alerts: alertRows.data ?? [],
+        alerts: siteAlertsData,
         incidents: incidentRows.data ?? [],
         scans: scanRows.data ?? [],
         checkpoints: checkpointRows.data ?? [],

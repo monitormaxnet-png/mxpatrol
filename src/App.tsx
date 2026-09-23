@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
-import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -63,6 +63,15 @@ const RouteLoading = () => (
 const lazyRoute = (element: ReactNode) => (
   <ErrorBoundary label="route"><Suspense fallback={<RouteLoading />}><PageTransition>{element}</PageTransition></Suspense></ErrorBoundary>
 );
+
+const DefaultRoute = () => {
+  if (Capacitor.isNativePlatform()) {
+    return <NFCScanner />;
+  }
+
+  return <Navigate to="/dashboard" replace />;
+};
+
 const NativeScannerRouteGuard = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -96,7 +105,7 @@ const App = () => (
             <Route path="/signup" element={lazyRoute(<Signup />)} />
             <Route path="/forgot-password" element={lazyRoute(<ForgotPassword />)} />
             <Route path="/reset-password" element={lazyRoute(<ResetPassword />)} />
-            <Route path="/" element={lazyRoute(<NFCScanner />)} />
+            <Route path="/" element={lazyRoute(<DefaultRoute />)} />
             <Route path="/nfc-scanner" element={lazyRoute(<NFCScanner />)} />
             <Route path="/enroll" element={lazyRoute(<EnrollPage />)} />
             <Route path="/install" element={lazyRoute(<InstallPage />)} />

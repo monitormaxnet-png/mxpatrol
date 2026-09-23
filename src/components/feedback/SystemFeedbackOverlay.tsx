@@ -4,6 +4,8 @@ import { Camera, CheckCircle2, Loader2, MapPin, ShieldAlert, Volume2, VolumeX, X
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserRole } from "@/hooks/useUserRole";
+import { resolveSosAlert } from "@/lib/resolveSosAlert";
 import { playError, playPhotoCapture, playPhotoReceived } from "@/lib/feedbackSound";
 import {
   getSosSirenVolume,

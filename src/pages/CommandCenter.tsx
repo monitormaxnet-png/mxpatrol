@@ -758,9 +758,22 @@ export default function CommandCenter() {
         <section className='grid gap-3 md:grid-cols-2 xl:grid-cols-5'>
           <KpiCard title='Active Patrols' value={activePatrolCount} total={totalPatrols || undefined} note='Live sessions' icon={Users} tone='emerald' />
           <KpiCard title='Devices Online' value={onlineDevices} total={siteDevices.length || undefined} note='Reporting devices' icon={Smartphone} tone='cyan' />
-          <KpiCard title='SOS Alerts' value={sosAlertCount} note='Active alerts' icon={ShieldAlert} tone='rose' />
+          <KpiCard title='SOS Alerts' value={sosAlertCount} note={sosAlertCount ? 'Action required' : 'All clear'} icon={ShieldAlert} tone='rose' />
           <KpiCard title='Open Incidents' value={openIncidentCount} note={`${todayIncidentCount} today, ${highPriorityIncidentCount} high priority`} icon={Shield} tone='amber' />
           <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${loadedScansToday} loaded today`} icon={ScanLine} tone='blue' />
+        </section>
+
+        <section className='grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]'>
+          <DashboardPanel title='SOS Alerts' icon={ShieldAlert} action={sosAlertCount ? 'Action required' : 'All clear'} className={sosAlertCount ? 'border-rose-400/30 bg-rose-950/20 shadow-[0_0_34px_rgba(244,63,94,0.14)]' : ''}>
+            <SosResolutionPanel alerts={siteAlerts} siteName={selectedSite} canManage={canManage} resolvingId={resolvingSosId} acknowledgedIds={acknowledgedSosIds} soundPrompt={sosSoundPrompt} onAcknowledge={handleAcknowledgeSos} onEnableSound={handleEnableSosSound} onResolve={handleResolveSos} />
+          </DashboardPanel>
+          <DashboardPanel title='Current SOS Rules' icon={ShieldCheck} action='Acknowledge != Resolve'>
+            <div className='grid gap-3 text-sm text-slate-300'>
+              <p><b className='text-amber-200'>Acknowledge</b> stops the siren and marks the alert seen on this dashboard.</p>
+              <p><b className='text-emerald-200'>Resolve SOS</b> closes the real SOS record and removes it from the active count.</p>
+              <p className='text-xs text-slate-500'>Resolved SOS records remain available in reports and history.</p>
+            </div>
+          </DashboardPanel>
         </section>
 
         <main className='grid min-h-0 flex-1 gap-3 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
@@ -1453,6 +1466,7 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` - ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` - ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
 
 
 

@@ -52,6 +52,9 @@ describe("remaining partial item regressions", () => {
   it("exposes SOS resolution and WhatsApp management in Command Center UI", () => {
     const source = read("src/pages/CommandCenter.tsx");
     expect(source).toContain("function SosResolutionPanel");
+    expect(source).toContain("<DashboardPanel title='SOS Alerts'");
+    expect(source).toContain("note={sosAlertCount ? 'Action required' : 'All clear'}");
+    expect(source).toContain("Acknowledge != Resolve");
     expect(source).toContain("Resolve SOS");
     expect(source).toContain("Acknowledge");
     expect(source).toContain("Enable SOS Sound");
@@ -65,4 +68,6 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("from('alerts').select('*').eq('company_id', companyId).eq('site_id', siteId)");
   });
 });
+
+
 

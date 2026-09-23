@@ -46,6 +46,8 @@ import {
 import { reportMenuItems } from '@/lib/assistantReportDefinitions';
 import { openMxPdfReport, reportTypeFromAction } from '@/lib/mxPdfReports';
 import { resolveSosAlert } from '@/lib/resolveSosAlert';
+import { setFeedbackSoundEnabled } from '@/lib/feedbackSound';
+import { startSosSiren, stopSosSiren } from '@/lib/sosSirenManager';
 
 const LiveMap = lazy(() => import('@/components/dashboard/LiveMap'));
 
@@ -102,6 +104,11 @@ export default function CommandCenter() {
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [resolvingSosId, setResolvingSosId] = useState<string | null>(null);
+  const [acknowledgedSosIds, setAcknowledgedSosIds] = useState<Set<string>>(() => new Set());
+  const [sosSoundArmed, setSosSoundArmed] = useState(() => typeof window !== 'undefined' && window.localStorage.getItem('mxpatrol_sos_sound_armed') === 'true');
+  const [sosSoundPrompt, setSosSoundPrompt] = useState(false);
+  const seenSosIdsRef = useRef<Set<string>>(new Set());
+  const sosInitialLoadRef = useRef(false);
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -321,6 +328,55 @@ export default function CommandCenter() {
       return (data ?? []) as unknown as LiveCheckpointRow[];
     },
   });
+  const activeSosAlerts = useMemo(() => siteAlerts.filter((alert) => alert.type === 'panic_button' && !alert.is_read), [siteAlerts]);
+  const unacknowledgedSosAlerts = useMemo(() => activeSosAlerts.filter((alert) => !acknowledgedSosIds.has(alert.id)), [acknowledgedSosIds, activeSosAlerts]);
+
+  useEffect(() => {
+    sosInitialLoadRef.current = false;
+    seenSosIdsRef.current = new Set();
+    setAcknowledgedSosIds(new Set());
+    stopSosSiren();
+  }, [selectedSiteId]);
+
+  useEffect(() => {
+    if (sosSoundArmed) return;
+    const arm = () => {
+      setFeedbackSoundEnabled(true);
+      window.localStorage.setItem('mxpatrol_sos_sound_armed', 'true');
+      setSosSoundArmed(true);
+      setSosSoundPrompt(false);
+    };
+    window.addEventListener('pointerdown', arm, { once: true });
+    window.addEventListener('keydown', arm, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', arm);
+      window.removeEventListener('keydown', arm);
+    };
+  }, [sosSoundArmed]);
+
+  useEffect(() => {
+    const activeIds = activeSosAlerts.map((alert) => alert.id);
+    if (!sosInitialLoadRef.current) {
+      seenSosIdsRef.current = new Set(activeIds);
+      sosInitialLoadRef.current = true;
+      return;
+    }
+    const nextNew = activeSosAlerts.filter((alert) => !seenSosIdsRef.current.has(alert.id));
+    if (!nextNew.length) return;
+    setAcknowledgedSosIds((prev) => {
+      const next = new Set(prev);
+      for (const alert of nextNew) next.delete(alert.id);
+      return next;
+    });
+    for (const alert of nextNew) seenSosIdsRef.current.add(alert.id);
+    if (!sosSoundArmed) setSosSoundPrompt(true);
+    startSosSiren();
+  }, [activeSosAlerts, sosSoundArmed]);
+
+  useEffect(() => {
+    if (!unacknowledgedSosAlerts.length) stopSosSiren();
+  }, [unacknowledgedSosAlerts.length]);
+
 
   useEffect(() => {
     if (!shouldAutoScrollRef.current && !forceNextScrollRef.current) return;
@@ -453,11 +509,30 @@ export default function CommandCenter() {
     ));
   };
 
+  const handleAcknowledgeSos = (alert: DashboardAlert) => {
+    setAcknowledgedSosIds((prev) => {
+      const next = new Set(prev);
+      next.add(alert.id);
+      return next;
+    });
+    if (unacknowledgedSosAlerts.filter((row) => row.id !== alert.id).length === 0) stopSosSiren();
+  };
+
+  const handleEnableSosSound = () => {
+    setFeedbackSoundEnabled(true);
+    window.localStorage.setItem('mxpatrol_sos_sound_armed', 'true');
+    setSosSoundArmed(true);
+    setSosSoundPrompt(false);
+    if (unacknowledgedSosAlerts.length) startSosSiren();
+  };
+
   const handleResolveSos = async (alert: DashboardAlert) => {
     if (!canManage) throw new Error('Management access required');
+    if (!window.confirm('Resolve this SOS alert? This closes the active SOS case but keeps it in reports/history.')) return;
     setResolvingSosId(alert.id);
     try {
       await resolveSosAlert(alert.id, selectedSiteId);
+      handleAcknowledgeSos(alert);
       window.dispatchEvent(new CustomEvent('mxpatrol:sos-resolved', { detail: { id: alert.id } }));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['alerts'] }),
@@ -847,28 +922,52 @@ function PatrolStatusDonut({ counts, total }: { counts: Record<PatrolStatusGroup
   );
 }
 
-function SosResolutionPanel({ alerts, canManage, resolvingId, onResolve }: { alerts: DashboardAlert[]; canManage: boolean; resolvingId: string | null; onResolve: (alert: DashboardAlert) => Promise<void> }) {
+function alertField(message: string | null | undefined, label: string) {
+  if (!message) return null;
+  const parts = message.split('|').map((part) => part.trim());
+  const lower = label.toLowerCase();
+  const match = parts.find((part) => part.toLowerCase().startsWith(lower + ':') || part.toLowerCase().startsWith(lower + '='));
+  if (!match) return null;
+  const index = match.includes('=') ? match.indexOf('=') : match.indexOf(':');
+  return match.slice(index + 1).trim() || null;
+}
+
+function SosResolutionPanel({ alerts, siteName, canManage, resolvingId, acknowledgedIds, soundPrompt, onAcknowledge, onEnableSound, onResolve }: { alerts: DashboardAlert[]; siteName: string; canManage: boolean; resolvingId: string | null; acknowledgedIds: Set<string>; soundPrompt: boolean; onAcknowledge: (alert: DashboardAlert) => void; onEnableSound: () => void; onResolve: (alert: DashboardAlert) => Promise<void> }) {
   const [error, setError] = useState<string | null>(null);
   const rows = alerts.filter((alert) => alert.type === 'panic_button').sort((a, b) => Number(Boolean(a.is_read)) - Number(Boolean(b.is_read)) || new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()).slice(0, 6);
   if (!rows.length) return <p className='text-sm text-slate-400'>No SOS alerts for this site.</p>;
   return <div className='space-y-3'>
+    {soundPrompt ? <button type='button' onClick={onEnableSound} className='w-full rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm font-black text-amber-100'>Enable SOS Sound</button> : null}
     {error ? <p className='rounded-md border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-100'>{error}</p> : null}
     {rows.map((alert) => {
       const active = !alert.is_read;
+      const acknowledged = acknowledgedIds.has(alert.id);
       const busy = resolvingId === alert.id;
-      return <div key={alert.id} className={(active ? 'border-rose-400/35 bg-rose-500/10' : 'border-white/10 bg-slate-950/70') + ' rounded-md border p-3'}>
+      const device = alertField(alert.message, 'Device') ?? alertField(alert.message, 'Device ID') ?? 'Patrol device';
+      const site = alertField(alert.message, 'Site') ?? siteName;
+      return <div key={alert.id} className={(active ? acknowledged ? 'border-amber-400/35 bg-amber-500/10' : 'border-rose-400/45 bg-rose-500/15 shadow-[0_0_24px_rgba(244,63,94,0.18)]' : 'border-white/10 bg-slate-950/70') + ' rounded-md border p-3'}>
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
             <p className={(active ? 'text-rose-100' : 'text-slate-200') + ' truncate text-sm font-black'}>{alert.title ?? 'SOS Alert'}</p>
-            <p className='mt-1 line-clamp-2 text-xs text-slate-400'>{alert.message ?? 'Panic button activated'}</p>
-            <p className='mt-2 font-mono text-xs text-slate-500'>Raised: {assistantDate(alert.created_at) ?? '--'} {assistantTime(alert.created_at) ?? '--:--'}</p>
-            {alert.is_read ? <p className='mt-1 font-mono text-xs text-emerald-300'>Resolved: {assistantDate(alert.resolved_at) ?? 'saved'} {assistantTime(alert.resolved_at) ?? ''}{alert.resolved_source ? ' - ' + alert.resolved_source : ''}</p> : null}
+            <div className='mt-2 grid gap-1 text-xs text-slate-300'>
+              <span>Device: <b className='text-white'>{device}</b></span>
+              <span>Site: <b className='text-white'>{site}</b></span>
+              <span>Triggered: <b className='font-mono text-white'>{assistantDate(alert.created_at) ?? '--'} {assistantTime(alert.created_at) ?? '--:--'}</b></span>
+              <span>Status: <b className={active ? acknowledged ? 'text-amber-200' : 'text-rose-200' : 'text-emerald-200'}>{active ? acknowledged ? 'Acknowledged - active' : 'New active SOS' : 'Resolved'}</b></span>
+            </div>
+            <p className='mt-2 line-clamp-2 text-xs text-slate-500'>{alert.message ?? 'Panic button activated'}</p>
+            {alert.is_read ? <p className='mt-2 font-mono text-xs text-emerald-300'>Resolved: {assistantDate(alert.resolved_at) ?? 'saved'} {assistantTime(alert.resolved_at) ?? ''}{alert.resolved_source ? ' - ' + alert.resolved_source : ''}</p> : null}
           </div>
-          <span className={(active ? 'border-rose-400/35 text-rose-200' : 'border-emerald-400/30 text-emerald-200') + ' shrink-0 rounded-md border px-2 py-1 text-xs font-bold'}>{active ? 'Active' : 'Resolved'}</span>
+          <span className={(active ? acknowledged ? 'border-amber-400/35 text-amber-200' : 'border-rose-400/45 text-rose-100' : 'border-emerald-400/30 text-emerald-200') + ' shrink-0 rounded-md border px-2 py-1 text-xs font-bold'}>{active ? acknowledged ? 'Active' : 'New' : 'Resolved'}</span>
         </div>
-        {active ? <button type='button' disabled={!canManage || busy} onClick={async () => { setError(null); try { await onResolve(alert); } catch (err) { setError(err instanceof Error ? err.message : 'SOS alert could not be resolved.'); } }} className='mt-3 w-full rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm font-black text-emerald-100 disabled:cursor-not-allowed disabled:opacity-45'>
-          {busy ? 'Resolving...' : canManage ? 'Resolve SOS' : 'Management access required'}
-        </button> : null}
+        {active ? <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+          <button type='button' onClick={() => onAcknowledge(alert)} className='rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm font-black text-amber-100'>
+            {acknowledged ? 'Acknowledged' : 'Acknowledge'}
+          </button>
+          {canManage ? <button type='button' disabled={busy} onClick={async () => { setError(null); try { await onResolve(alert); } catch (err) { setError(err instanceof Error ? err.message : 'SOS alert could not be resolved.'); } }} className='rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm font-black text-emerald-100 disabled:cursor-not-allowed disabled:opacity-45'>
+            {busy ? 'Resolving...' : 'Resolve SOS'}
+          </button> : <span className='rounded-md border border-white/10 px-3 py-2 text-center text-xs font-bold text-slate-400'>Management access required</span>}
+        </div> : null}
       </div>;
     })}
   </div>;

@@ -41,7 +41,13 @@ describe("remaining partial item regressions", () => {
     const source = read("src/pages/CommandCenter.tsx");
     expect(source).toContain("function SosResolutionPanel");
     expect(source).toContain("Resolve SOS");
+    expect(source).toContain("Acknowledge");
+    expect(source).toContain("Enable SOS Sound");
+    expect(source).toContain("startSosSiren");
+    expect(source).toContain("stopSosSiren");
+    expect(source).toContain("seenSosIdsRef");
     expect(source).toContain("resolveSosAlert(alert.id, selectedSiteId)");
+    expect(source).toContain("Management access required");
     expect(source).toContain("WhatsApp Access Management");
     expect(source).toContain("command_center_screen");
     expect(source).toContain("from('alerts').select('*').eq('company_id', companyId).eq('site_id', siteId)");

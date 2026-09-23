@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+﻿import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, AlertTriangle, ArrowRight, Bell, Bot, CheckCircle2, ChevronDown, Clock3, Cpu, Lock, MapPin, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
@@ -262,7 +262,7 @@ export default function CommandCenter() {
       const siteId = selectedSiteId!;
       const [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows] = await Promise.all([
         supabase.from('devices').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('last_seen_at', { ascending: false }).limit(100),
-        supabase.from('alerts').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100),
+        supabase.from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100),
         supabase.from('incidents').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
         supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId).eq('site_id', siteId).order('scanned_at', { ascending: false }).limit(200),
         supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('sort_order').limit(200),
@@ -946,11 +946,12 @@ function alertField(message: string | null | undefined, label: string) {
 
 function SosResolutionPanel({ alerts, siteName, canManage, resolvingId, acknowledgedIds, soundPrompt, onAcknowledge, onEnableSound, onResolve }: { alerts: DashboardAlert[]; siteName: string; canManage: boolean; resolvingId: string | null; acknowledgedIds: Set<string>; soundPrompt: boolean; onAcknowledge: (alert: DashboardAlert) => void; onEnableSound: () => void; onResolve: (alert: DashboardAlert) => Promise<void> }) {
   const [error, setError] = useState<string | null>(null);
-  const rows = alerts.filter((alert) => alert.type === 'panic_button').sort((a, b) => Number(Boolean(a.is_read)) - Number(Boolean(b.is_read)) || new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()).slice(0, 6);
+  const rows = alerts.filter((alert) => alert.type === 'panic_button').sort((a, b) => Number(Boolean(a.is_read)) - Number(Boolean(b.is_read)) || new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
   if (!rows.length) return <p className='text-sm text-slate-400'>No SOS alerts for this site.</p>;
   return <div className='space-y-3'>
     {soundPrompt ? <button type='button' onClick={onEnableSound} className='w-full rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm font-black text-amber-100'>Enable SOS Sound</button> : null}
     {error ? <p className='rounded-md border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-100'>{error}</p> : null}
+    <div className='max-h-[13.5rem] space-y-2 overflow-y-auto pr-1' aria-label={siteName + ' SOS alerts'}>
     {rows.map((alert) => {
       const active = !alert.is_read;
       const acknowledged = acknowledgedIds.has(alert.id);
@@ -982,6 +983,7 @@ function SosResolutionPanel({ alerts, siteName, canManage, resolvingId, acknowle
         </div> : null}
       </div>;
     })}
+    </div>
   </div>;
 }
 
@@ -1465,6 +1467,10 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` - ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` - ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
+
+
+
 
 
 

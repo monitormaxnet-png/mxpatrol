@@ -45,6 +45,7 @@ import {
 } from '@/lib/assistantWorkflows';
 import { reportMenuItems } from '@/lib/assistantReportDefinitions';
 import { openMxPdfReport, reportTypeFromAction } from '@/lib/mxPdfReports';
+import { resolveSosAlert } from '@/lib/resolveSosAlert';
 
 const LiveMap = lazy(() => import('@/components/dashboard/LiveMap'));
 
@@ -61,7 +62,7 @@ type MissedCheckpointRow = {
 };
 
 type DashboardDevice = { id: string; status?: string | null; device_identifier?: string | null; device_name?: string | null; last_seen_at?: string | null; site_id?: string | null };
-type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | null; title?: string | null; message?: string | null; created_at?: string | null; site_id?: string | null; checkpoint_id?: string | null };
+type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | null; title?: string | null; message?: string | null; created_at?: string | null; site_id?: string | null; checkpoint_id?: string | null; resolved_at?: string | null; resolved_by?: string | null; resolved_source?: string | null };
 type DashboardIncident = { id: string; resolved?: boolean | null; severity?: string | null; title?: string | null; incident_type?: string | null; created_at?: string | null; site_id?: string | null };
 type DashboardScan = { id: string; scanned_at?: string | null; tag_status?: string | null; device_identifier?: string | null; checkpoints?: { name?: string | null } | null; guards?: { full_name?: string | null } | null };
 type DatalogSubmission = { id: string; submitted_at?: string | null; datalog_value?: string | null; responses_json?: any; site_id?: string | null; checkpoint_id?: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
@@ -100,6 +101,7 @@ export default function CommandCenter() {
   const [pendingConfirm, setPendingConfirm] = useState<null | { label: string; run: () => Promise<void> }>(null);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [resolvingSosId, setResolvingSosId] = useState<string | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -253,7 +255,7 @@ export default function CommandCenter() {
       const siteId = selectedSiteId!;
       const [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows] = await Promise.all([
         supabase.from('devices').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('last_seen_at', { ascending: false }).limit(100),
-        supabase.from('alerts').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100),
+        supabase.from('alerts').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
         supabase.from('incidents').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
         supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId).eq('site_id', siteId).order('scanned_at', { ascending: false }).limit(200),
         supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('sort_order').limit(200),
@@ -269,7 +271,7 @@ export default function CommandCenter() {
       const siteAlertsData = (alertRows.data ?? []).filter((a) => !a.checkpoint_id || siteCheckpointIds.has(a.checkpoint_id));
       return {
         devices: deviceRows.data ?? [],
-        alerts: siteAlertsData,
+        alerts: alertRows.data ?? [],
         incidents: incidentRows.data ?? [],
         scans: scanRows.data ?? [],
         checkpoints: checkpointRows.data ?? [],
@@ -284,7 +286,12 @@ export default function CommandCenter() {
   const ownerData = ownerScoped ? ownerScopedData.data : null;
   const siteDevices = (ownerData?.devices ?? devices.data ?? []) as DashboardDevice[];
   const siteCheckpointIdSet = new Set(((checkpoints.data ?? []) as any[]).map((cp) => cp.id));
-  const siteAlerts = ownerData ? (ownerData.alerts as DashboardAlert[]) : ((alerts.data ?? []) as DashboardAlert[]).filter((row) => !selectedSiteId || !row.checkpoint_id || siteCheckpointIdSet.has(row.checkpoint_id));
+  const siteAlerts = ownerData ? (ownerData.alerts as DashboardAlert[]) : ((alerts.data ?? []) as DashboardAlert[]).filter((row) => {
+    if (!selectedSiteId) return true;
+    if (row.site_id) return row.site_id === selectedSiteId;
+    if (row.checkpoint_id) return siteCheckpointIdSet.has(row.checkpoint_id);
+    return false;
+  });
   const siteIncidents = ownerData ? (ownerData.incidents as DashboardIncident[]) : ((incidents.data ?? []) as DashboardIncident[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
   const sitePatrols = ownerData?.patrols ?? patrols.data ?? [];
   const siteScans = (ownerData?.scans ?? scans.data ?? []) as DashboardScan[];
@@ -372,6 +379,8 @@ export default function CommandCenter() {
       queryClient.invalidateQueries({ queryKey: ['assistant_config'] }),
       queryClient.invalidateQueries({ queryKey: ['assistant_workflow_options'] }),
       queryClient.invalidateQueries({ queryKey: ['assistant_whatsapp_authorizations'] }),
+      queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+      queryClient.invalidateQueries({ queryKey: ['assistant_owner_scoped_dashboard'] }),
       queryClient.invalidateQueries({ queryKey: ['assistant_platform_companies'] }),
       queryClient.invalidateQueries({ queryKey: ['assistant_company_sites'] }),
       queryClient.invalidateQueries({ queryKey: ['sites'] }),
@@ -442,6 +451,21 @@ export default function CommandCenter() {
         {rows.sessions.length ? <PatrolList rows={rows.sessions.slice(0, 6)} /> : <p className='mt-3'>No patrol sessions scheduled for this period at {selectedSite}.</p>}
       </div>
     ));
+  };
+
+  const handleResolveSos = async (alert: DashboardAlert) => {
+    if (!canManage) throw new Error('Management access required');
+    setResolvingSosId(alert.id);
+    try {
+      await resolveSosAlert(alert.id, selectedSiteId);
+      window.dispatchEvent(new CustomEvent('mxpatrol:sos-resolved', { detail: { id: alert.id } }));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+        queryClient.invalidateQueries({ queryKey: ['assistant_owner_scoped_dashboard'] }),
+      ]);
+    } finally {
+      setResolvingSosId(null);
+    }
   };
 
   const runAction = (action: string) => {
@@ -719,6 +743,23 @@ export default function CommandCenter() {
           </section>
         </main>
 
+        {canManage ? <section className='rounded-lg border border-emerald-400/20 bg-slate-950/75 p-4 shadow-[0_0_30px_rgba(14,165,233,0.07)]'>
+          <div className='mb-3 flex items-center justify-between gap-3'>
+            <div>
+              <h2 className='flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-100'><Smartphone className='h-4 w-4 text-emerald-300' /> WhatsApp Access Management</h2>
+              <p className='mt-1 text-xs text-slate-400'>Authorize and revoke WhatsApp numbers for {selectedSite} without using the assistant.</p>
+            </div>
+            <span className='rounded-md border border-emerald-400/25 px-2 py-1 text-xs font-bold text-emerald-200'>{whatsappAuthorizations.data?.length ?? 0} records</span>
+          </div>
+          <WhatsAppAuthorizationPanel rows={whatsappAuthorizations.data ?? []} users={workflowContext.users} siteId={selectedSiteId} loading={whatsappAuthorizations.isLoading} onCreate={async (input) => {
+            const result = await runManagementAction({ action: 'create_whatsapp_authorization', input: { ...input, site_id: selectedSiteId, created_via: 'command_center_screen' } });
+            return result.summary;
+          }} onRevoke={async (authorizationId) => {
+            const result = await runManagementAction({ action: 'revoke_whatsapp_authorization', input: { site_id: selectedSiteId, authorization_id: authorizationId } });
+            return result.summary;
+          }} />
+        </section> : null}
+
         <section className='grid gap-3 xl:grid-cols-[1.15fr_0.85fr_0.85fr]'>
           <DashboardPanel title="Today's Activity Timeline" icon={Activity}>
             <ActivityTimeline buckets={activityBuckets} />
@@ -804,6 +845,33 @@ function PatrolStatusDonut({ counts, total }: { counts: Record<PatrolStatusGroup
       </div>
     </div>
   );
+}
+
+function SosResolutionPanel({ alerts, canManage, resolvingId, onResolve }: { alerts: DashboardAlert[]; canManage: boolean; resolvingId: string | null; onResolve: (alert: DashboardAlert) => Promise<void> }) {
+  const [error, setError] = useState<string | null>(null);
+  const rows = alerts.filter((alert) => alert.type === 'panic_button').sort((a, b) => Number(Boolean(a.is_read)) - Number(Boolean(b.is_read)) || new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()).slice(0, 6);
+  if (!rows.length) return <p className='text-sm text-slate-400'>No SOS alerts for this site.</p>;
+  return <div className='space-y-3'>
+    {error ? <p className='rounded-md border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-100'>{error}</p> : null}
+    {rows.map((alert) => {
+      const active = !alert.is_read;
+      const busy = resolvingId === alert.id;
+      return <div key={alert.id} className={(active ? 'border-rose-400/35 bg-rose-500/10' : 'border-white/10 bg-slate-950/70') + ' rounded-md border p-3'}>
+        <div className='flex items-start justify-between gap-3'>
+          <div className='min-w-0'>
+            <p className={(active ? 'text-rose-100' : 'text-slate-200') + ' truncate text-sm font-black'}>{alert.title ?? 'SOS Alert'}</p>
+            <p className='mt-1 line-clamp-2 text-xs text-slate-400'>{alert.message ?? 'Panic button activated'}</p>
+            <p className='mt-2 font-mono text-xs text-slate-500'>Raised: {assistantDate(alert.created_at) ?? '--'} {assistantTime(alert.created_at) ?? '--:--'}</p>
+            {alert.is_read ? <p className='mt-1 font-mono text-xs text-emerald-300'>Resolved: {assistantDate(alert.resolved_at) ?? 'saved'} {assistantTime(alert.resolved_at) ?? ''}{alert.resolved_source ? ' - ' + alert.resolved_source : ''}</p> : null}
+          </div>
+          <span className={(active ? 'border-rose-400/35 text-rose-200' : 'border-emerald-400/30 text-emerald-200') + ' shrink-0 rounded-md border px-2 py-1 text-xs font-bold'}>{active ? 'Active' : 'Resolved'}</span>
+        </div>
+        {active ? <button type='button' disabled={!canManage || busy} onClick={async () => { setError(null); try { await onResolve(alert); } catch (err) { setError(err instanceof Error ? err.message : 'SOS alert could not be resolved.'); } }} className='mt-3 w-full rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm font-black text-emerald-100 disabled:cursor-not-allowed disabled:opacity-45'>
+          {busy ? 'Resolving...' : canManage ? 'Resolve SOS' : 'Management access required'}
+        </button> : null}
+      </div>;
+    })}
+  </div>;
 }
 
 function DeviceFeedbackRows({ devices, scans, alerts }: { devices: DashboardDevice[]; scans: DashboardScan[]; alerts: DashboardAlert[] }) {

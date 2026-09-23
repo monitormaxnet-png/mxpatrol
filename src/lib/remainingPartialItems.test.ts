@@ -36,4 +36,14 @@ describe("remaining partial item regressions", () => {
     expect(deviceScan).toContain("submitInlineDataLog");
     expect(deviceScan).toContain("submit_data_log_submission");
   });
+
+  it("exposes SOS resolution and WhatsApp management in Command Center UI", () => {
+    const source = read("src/pages/CommandCenter.tsx");
+    expect(source).toContain("function SosResolutionPanel");
+    expect(source).toContain("Resolve SOS");
+    expect(source).toContain("resolveSosAlert(alert.id, selectedSiteId)");
+    expect(source).toContain("WhatsApp Access Management");
+    expect(source).toContain("command_center_screen");
+    expect(source).toContain("from('alerts').select('*').eq('company_id', companyId).eq('site_id', siteId)");
+  });
 });

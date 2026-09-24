@@ -180,6 +180,43 @@ async function storeInbound(ctx: Ctx, inbound: InboundWhatsAppMessage) {
   }
 }
 
+
+async function siteIdForInboundAlert(ctx: Ctx): Promise<string | null> {
+  if (ctx.session.current_site_id) return ctx.session.current_site_id;
+  const sites = await allowedSites(ctx.client, ctx.identity);
+  return sites.length === 1 ? sites[0].id : null;
+}
+
+async function createInboundWhatsAppAlert(ctx: Ctx, inbound: InboundWhatsAppMessage) {
+  try {
+    if (!ctx.identity.company_id) return;
+    const trimmed = inbound.body.trim();
+    const body = trimmed || (inbound.mediaUrls.length ? "[media message]" : "[empty message]");
+    const siteId = await siteIdForInboundAlert(ctx);
+    const message = [
+      "WhatsApp inbound message",
+      "From: " + ctx.identity.phone,
+      ctx.identity.display_name ? "Name: " + ctx.identity.display_name : null,
+      siteId ? "Site ID: " + siteId : null,
+      "Message: " + body.slice(0, 500),
+      inbound.messageSid ? "Twilio SID: " + inbound.messageSid : null,
+    ].filter(Boolean).join(" | ");
+
+    const { error } = await ctx.client.from("alerts").insert({
+      company_id: ctx.identity.company_id,
+      site_id: siteId,
+      guard_id: ctx.identity.guard_id ?? null,
+      type: "anomaly",
+      severity: "low",
+      is_read: false,
+      message,
+    });
+    if (error) console.warn("[WA] inbound alert insert failed:", error.message);
+  } catch (error) {
+    console.warn("[WA] inbound alert creation failed:", error);
+  }
+}
+
 /** Site context resolution: auto-select single site, remember choice, ask when ambiguous. */
 async function ensureSiteContext(ctx: Ctx): Promise<{ siteId: string | null; ask?: OutMessage }> {
   if (ctx.session.current_site_id) return { siteId: ctx.session.current_site_id };
@@ -659,6 +696,7 @@ serve(async (req) => {
     }
 
     await storeInbound(ctx, inbound);
+    if (resolved.kind !== "linked") await createInboundWhatsAppAlert(ctx, inbound);
 
     let message: OutMessage;
 

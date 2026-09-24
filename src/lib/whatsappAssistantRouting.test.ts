@@ -441,3 +441,19 @@ describe("WhatsApp text encoding guardrails", () => {
   });
 });
 
+describe("WhatsApp inbound messages create Live Alerts", () => {
+  it("stores authorized inbound WhatsApp messages as unread anomaly alerts", () => {
+    const source = readFileSync("supabase/functions/whatsapp-webhook/index.ts", "utf8");
+    expect(source).toContain("async function createInboundWhatsAppAlert");
+    expect(source).toContain("await createInboundWhatsAppAlert(ctx, inbound)");
+    expect(source).toContain("if (resolved.kind !== \"linked\")");
+    expect(source).toContain("ctx.client.from(\"alerts\").insert");
+    expect(source).toContain("type: \"anomaly\"");
+    expect(source).toContain("severity: \"low\"");
+    expect(source).toContain("is_read: false");
+    expect(source).toContain("WhatsApp inbound message");
+    expect(source).toContain("Twilio SID: ");
+    expect(source).toMatch(/hasDuplicateInbound[\s\S]*await storeInbound\(ctx, inbound\)/);
+  });
+});
+

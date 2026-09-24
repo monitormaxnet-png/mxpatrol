@@ -1131,56 +1131,76 @@ export async function revokeWhatsAppAuthorization(client: SupabaseClient, actor:
 export async function resolveSosAlert(client: SupabaseClient, actor: ManagementActor, input: Record<string, unknown>): Promise<ManagementResult> {
   assertCanManage(actor);
   const alertId = text(input.alert_id ?? input.id, "SOS alert", { min: 8, max: 80 });
-  const query = client
+  const requestedSiteId = typeof input.site_id === "string" ? input.site_id.trim() : "";
+  const requestedSite = requestedSiteId ? await resolveSite(client, actor, requestedSiteId) : null;
+
+  const { data: alert, error: findError } = await client
     .from("alerts")
-    .select("id, company_id, type, is_read, message, created_at")
+    .select("id, company_id, site_id, type, is_read, message, created_at, resolved_at, resolved_by, resolved_source")
     .eq("id", alertId)
     .eq("company_id", actor.company_id)
-    .eq("type", "panic_button");
+    .eq("type", "panic_button")
+    .maybeSingle();
 
-  const { data: alert, error: findError } = await query.maybeSingle();
   if (findError) throw new ManagementActionError(findError.message, 500);
   if (!alert?.id) throw new ManagementActionError("SOS alert was not found for this company/site", 404);
+  if (requestedSite && alert.site_id !== requestedSite.id) {
+    throw new ManagementActionError("SOS alert belongs to another site", 403);
+  }
+  if (!requestedSite && actor.allowed_site_ids?.length && (!alert.site_id || !actor.allowed_site_ids.includes(alert.site_id))) {
+    throw new ManagementActionError("You do not have access to that SOS alert site", 403);
+  }
 
   const resolvedAt = new Date().toISOString();
+  const resolvedSource = String(input.resolved_source ?? "management_action").slice(0, 80);
   const updatePayload: Record<string, unknown> = {
     is_read: true,
     resolved_at: resolvedAt,
     resolved_by: actor.user_id ?? null,
-    resolved_source: String(input.resolved_source ?? "management_action").slice(0, 80),
+    resolved_source: resolvedSource,
   };
 
-  let update = await client
+  let write = client
     .from("alerts")
     .update(updatePayload)
     .eq("id", alert.id)
     .eq("company_id", actor.company_id)
-    .eq("type", "panic_button")
-    .select("id, is_read, resolved_at, resolved_by, resolved_source")
-    .maybeSingle();
+    .eq("type", "panic_button");
+  if (requestedSite) write = write.eq("site_id", requestedSite.id);
+  let update = await write.select("id, site_id, is_read, resolved_at, resolved_by, resolved_source").maybeSingle();
 
   if (update.error && (update.error.code === "42703" || update.error.code === "PGRST204")) {
-    update = await client
+    let fallback = client
       .from("alerts")
       .update({ is_read: true })
       .eq("id", alert.id)
       .eq("company_id", actor.company_id)
-      .eq("type", "panic_button")
-      .select("id, is_read")
-      .maybeSingle();
+      .eq("type", "panic_button");
+    if (requestedSite) fallback = fallback.eq("site_id", requestedSite.id);
+    update = await fallback.select("id, site_id, is_read").maybeSingle();
   }
 
   if (update.error) throw new ManagementActionError(update.error.message, 500);
+  if (!update.data) throw new ManagementActionError("SOS alert could not be resolved", 500);
 
+  const record = update.data as Record<string, unknown>;
   return {
     ok: true,
     action: "resolve_sos_alert",
     duplicate: Boolean(alert.is_read),
-    record: { id: alert.id, resolved_at: (update.data as Record<string, unknown> | null)?.resolved_at ?? resolvedAt },
+    record: {
+      id: alert.id,
+      site_id: record.site_id ?? alert.site_id ?? requestedSite?.id ?? null,
+      is_read: record.is_read ?? true,
+      resolved_at: record.resolved_at ?? resolvedAt,
+      resolved_by: record.resolved_by ?? actor.user_id ?? null,
+      resolved_source: record.resolved_source ?? resolvedSource,
+      supervisor_user_id: actor.user_id ?? null,
+      supervisor_guard_id: actor.guard_id ?? null,
+    },
     summary: alert.is_read ? "SOS alert was already resolved." : "SOS alert resolved.",
   };
 }
-
 /* -------------------------------- dispatcher ------------------------------ */
 
 export async function runManagementAction(
@@ -1226,6 +1246,7 @@ export async function runManagementAction(
       throw new ManagementActionError(`Unsupported management action: ${action}`, 400);
   }
 }
+
 
 
 

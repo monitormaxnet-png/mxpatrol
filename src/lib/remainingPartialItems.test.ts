@@ -12,6 +12,10 @@ describe("remaining partial item regressions", () => {
     expect(source).toMatch(/resolveSosAlert[\s\S]*assertCanManage\(actor\)/);
     expect(source).toMatch(/resolveSosAlert[\s\S]*\.eq\("company_id", actor\.company_id\)/);
     expect(source).toMatch(/resolveSosAlert[\s\S]*\.eq\("type", "panic_button"\)/);
+    expect(source).toMatch(/resolveSosAlert[\s\S]*resolveSite\(client, actor, requestedSiteId\)/);
+    expect(source).toMatch(/resolveSosAlert[\s\S]*SOS alert belongs to another site/);
+    expect(source).toMatch(/resolveSosAlert[\s\S]*resolved_by: actor\.user_id \?\? null/);
+    expect(source).toMatch(/resolveSosAlert[\s\S]*supervisor_user_id: actor\.user_id \?\? null/);
   });
 
   it("does not resolve SOS alerts with direct browser table updates", () => {
@@ -105,6 +109,8 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))')");
   });
 });
+
+
 
 
 

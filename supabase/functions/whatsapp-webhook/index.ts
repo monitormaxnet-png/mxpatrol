@@ -37,6 +37,7 @@ import {
   MANAGEMENT_HOME_KEY,
   WA_SUBMENUS,
   backTarget,
+  ownerOnlyDenial,
   resolveMenuChoice,
 } from "./lib/views.ts";
 
@@ -57,8 +58,9 @@ const LOCKOUT: OutMessage = {
   footer: "",
 };
 
+// deno-lint-ignore no-explicit-any
 type Ctx = {
-  client: ReturnType<typeof createClient>;
+  client: any;
   identity: Identity;
   session: SessionRow;
 };
@@ -462,7 +464,7 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   if (id === "view_sites") {
     if (!ctx.identity.canManage) return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "User Mode" }]);
     const sites = await allowedSites(ctx.client, ctx.identity);
-    return optionMenu("SITES", sites.length ? sites.map((site, index) => String(index + 1) + ". " + site.name + " - " + (site.status ?? "active")) : ["No sites are assigned to this account."], [{ id: "management_sites", label: "Sites" }, { id: "back", label: "Back" }]);
+    return optionMenu("SITES", sites.length ? sites.map((site: any, index: number) => String(index + 1) + ". " + site.name + " - " + (site.status ?? "active")) : ["No sites are assigned to this account."], [{ id: "management_sites", label: "Sites" }, { id: "back", label: "Back" }]);
   }
   if (id === "register_site") return optionMenu("REGISTER SITE", ["Site registration uses the guided Web AI flow for now."], [{ id: "management_sites", label: "Sites" }, { id: "back", label: "Back" }]);
   if (id === "routes" || id === "schedules") return optionMenu(id === "routes" ? "ROUTES" : "SCHEDULES", ["This management view is available in the MX Patrol web Command Center."], [{ id: id === "routes" ? "management_routes" : "management_schedules", label: "Back" }]);

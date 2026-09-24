@@ -198,7 +198,7 @@ export async function getDeviceSecurityReports(client: SupabaseClient, actor: Se
   if (error) throw new Error("Secure device database query failed" + (error.code ? " (" + error.code + ")" : "") + ": " + (error.message ?? "Unknown Supabase error"));
 
   const rows = (data ?? []).map(normalizeDevice);
-  const deviceIdentifiers = Array.from(new Set(rows.map((row) => String(row.device_identifier ?? "")).filter(Boolean)));
+  const deviceIdentifiers = Array.from(new Set(rows.map((row: SecureDeviceRow) => String(row.device_identifier ?? "")).filter(Boolean)));
   let sessions: Array<Record<string, any>> = [];
 
   if (deviceIdentifiers.length) {
@@ -223,7 +223,7 @@ export async function getDeviceSecurityReports(client: SupabaseClient, actor: Se
   });
 
   const summary = emptyDeviceSecurityCounts();
-  const enrichedRows = rows.map((row) => {
+  const enrichedRows = rows.map((row: SecureDeviceRow) => {
     applyDeviceSecurityCounts(summary, row);
     const session = latestSessionByDevice.get(String(row.device_identifier ?? "")) ?? null;
     return {
@@ -243,7 +243,7 @@ export async function getDeviceSecurityReports(client: SupabaseClient, actor: Se
   });
 
   const siteGroups = new Map<string, Record<string, any>>();
-  enrichedRows.forEach((row) => {
+  enrichedRows.forEach((row: SecureDeviceRow) => {
     const siteKey = String(row.site_id ?? "unassigned");
     if (!siteGroups.has(siteKey)) {
       siteGroups.set(siteKey, {

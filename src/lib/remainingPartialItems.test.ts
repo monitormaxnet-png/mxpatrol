@@ -131,7 +131,7 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("activityUnseen('recordings')");
     expect(source).toContain("Site Activity - Today");
     expect(source).toContain("New activity - click to view");
-    expect(source).toContain("activityType === 'sos' && sosAlertCount > 0");
+    expect(source).toContain("const activityUnseen = (activityType: ActivityType) => isNewerThanAck(");
     expect(source).toContain("acknowledgeActivity(activityType)");
   });
 });

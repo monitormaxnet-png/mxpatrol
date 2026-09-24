@@ -21,7 +21,7 @@ interface PairingRequest {
     imei?: string;
     serial_number?: string;
     nfc_enabled?: boolean;
-    [key: string]: unknown;
+    [key: string]: any;
   };
 }
 

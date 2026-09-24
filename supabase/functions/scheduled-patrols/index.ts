@@ -106,7 +106,8 @@ const BodySchema = z.discriminatedUnion("action", [
 ]);
 
 
-type ServiceClient = ReturnType<typeof createClient>;
+// deno-lint-ignore no-explicit-any
+type ServiceClient = any;
 
 type Access = {
   userId: string;

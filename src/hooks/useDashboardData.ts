@@ -24,7 +24,7 @@ export function useAlerts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("alerts")
-        .select("*, companies(name), guards(full_name, badge_number)")
+        .select("*, companies(name), guards(full_name, badge_number), sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))")
         .order("created_at", { ascending: false })
         .limit(20);
       if (error) throw error;
@@ -188,3 +188,4 @@ export function useRealtimeSubscriptions() {
     };
   }, [queryClient]);
 }
+

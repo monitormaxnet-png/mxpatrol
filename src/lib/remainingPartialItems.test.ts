@@ -49,6 +49,27 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("resolveSosAlert(alert.id, alert.site_id ?? null)");
     expect(source).toContain("Management access required");
   });
+
+  it("persists SOS alerts with site context and maps alert locations", () => {
+    const migration = read("supabase/migrations/20260923133000_alerts_site_context_for_sos.sql");
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS site_id");
+    expect(migration).toContain("idx_alerts_active_sos_site");
+
+    const deviceSos = read("supabase/functions/device-sos/index.ts");
+    expect(deviceSos).toContain("site_id: device.site_id ?? null");
+    expect(deviceSos).toContain("location_lat: lat");
+    expect(deviceSos).toContain("session_id: sessionId");
+
+    const hardware = read("src/components/devices/HardwareSosListener.tsx");
+    expect(hardware).toContain('supabase.functions.invoke("device-sos"');
+    expect(hardware).not.toContain('from("alerts").insert');
+
+    const map = read("src/components/dashboard/LiveMap.tsx");
+    expect(map).toContain("siteName: alert.sites?.name");
+    expect(map).toContain("checkpointName: alert.checkpoints?.name");
+    expect(map).toContain("patrolName: alert.patrol_sessions?.patrol_routes?.name");
+    expect(map).toContain("Status: ${alert.status}");
+  });
   it("exposes SOS resolution and WhatsApp management in Command Center UI", () => {
     const source = read("src/pages/CommandCenter.tsx");
     expect(source).toContain("function SosResolutionPanel");
@@ -65,9 +86,11 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("Management access required");
     expect(source).toContain("WhatsApp Access Management");
     expect(source).toContain("command_center_screen");
-    expect(source).toContain("from('alerts').select('*').eq('company_id', companyId)");
+    expect(source).toContain("from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))')");
   });
 });
+
+
 
 
 

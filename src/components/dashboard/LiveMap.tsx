@@ -48,26 +48,58 @@ type SosAlertMarker = {
   lat: number;
   lng: number;
   deviceIdentifier: string;
+  siteName: string;
+  checkpointName: string;
+  patrolName: string;
+  status: string;
 };
 
-const parseSosAlertMarker = (alert: { id: string; message: string; created_at: string; type: string }): SosAlertMarker | null => {
+type RawSosAlert = {
+  id: string;
+  message?: string | null;
+  created_at?: string | null;
+  event_occurred_at?: string | null;
+  type?: string | null;
+  is_read?: boolean | null;
+  location_lat?: number | string | null;
+  location_lng?: number | string | null;
+  device_identifier?: string | null;
+  sites?: { name?: string | null } | null;
+  checkpoints?: { name?: string | null } | null;
+  patrol_sessions?: { patrol_routes?: { name?: string | null } | null; patrol_templates?: { name?: string | null } | null; status?: string | null } | null;
+};
+
+const extractMessageField = (message: string | null | undefined, label: string) => {
+  if (!message) return null;
+  const prefix = `${label}:`;
+  return message.split("|").map((part) => part.trim()).find((part) => part.toLowerCase().startsWith(prefix.toLowerCase()))?.slice(prefix.length).trim() || null;
+};
+
+const parseNumber = (value: unknown) => {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+const parseSosAlertMarker = (alert: RawSosAlert): SosAlertMarker | null => {
   if (alert.type !== "panic_button") return null;
-  const locationMatch = alert.message.match(/Location:\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i);
-  if (!locationMatch) return null;
-  const lat = Number(locationMatch[1]);
-  const lng = Number(locationMatch[2]);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const deviceMatch = alert.message.match(/Device ID:\s*([^|]+)/i);
+  const message = alert.message ?? "";
+  const locationMatch = message.match(/Location:\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i);
+  const lat = parseNumber(alert.location_lat) ?? (locationMatch ? Number(locationMatch[1]) : null);
+  const lng = parseNumber(alert.location_lng) ?? (locationMatch ? Number(locationMatch[2]) : null);
+  if (lat == null || lng == null) return null;
   return {
     id: alert.id,
-    message: alert.message,
-    created_at: alert.created_at,
+    message,
+    created_at: alert.event_occurred_at ?? alert.created_at ?? new Date().toISOString(),
     lat,
     lng,
-    deviceIdentifier: deviceMatch?.[1]?.trim() || "SOS device",
+    deviceIdentifier: alert.device_identifier ?? extractMessageField(message, "Device ID") ?? "SOS device",
+    siteName: alert.sites?.name ?? extractMessageField(message, "Site") ?? "Unassigned site",
+    checkpointName: alert.checkpoints?.name ?? extractMessageField(message, "Checkpoint") ?? "No checkpoint linked",
+    patrolName: alert.patrol_sessions?.patrol_routes?.name ?? alert.patrol_sessions?.patrol_templates?.name ?? extractMessageField(message, "Patrol") ?? "No patrol linked",
+    status: alert.is_read ? "Resolved" : "Active",
   };
 };
-
 const routePointPopup = (point: ReplayRoutePoint) => `
   <div class="text-xs">
     <strong>Route Point</strong><br/>
@@ -158,7 +190,7 @@ const LiveMap = ({
   }, [scanEvents]);
 
   const checkpointsWithCoords = useMemo(() => checkpoints.filter((cp) => cp.location_lat != null && cp.location_lng != null), [checkpoints]);
-  const sosAlerts = useMemo(() => alerts.map((alert) => parseSosAlertMarker(alert)).filter((alert): alert is SosAlertMarker => Boolean(alert)).slice(0, 5), [alerts]);
+  const sosAlerts = useMemo(() => (alerts as RawSosAlert[]).map((alert) => parseSosAlertMarker(alert)).filter((alert): alert is SosAlertMarker => Boolean(alert)).slice(0, 12), [alerts]);
   const filteredDevicePositions = useMemo(() => devicePositions.filter((device) => (selectedSiteId === "all" || device.site_id === selectedSiteId) && (selectedDeviceIdentifier === "all" || device.device_identifier === selectedDeviceIdentifier)), [devicePositions, selectedDeviceIdentifier, selectedSiteId]);
   const replaySessionOptions = useMemo(() => replayPoints.map((point) => ({ id: point.session_id, label: `${point.session_id.slice(0, 8)} - ${format(new Date(point.scanned_at), "MMM d HH:mm")}` })), [replayPoints]);
   const currentReplayPoint = replayPoints[replayIndex] ?? null;
@@ -318,7 +350,7 @@ const LiveMap = ({
     sosAlerts.forEach((alert) => {
       const marker = L.marker([alert.lat, alert.lng], { icon, zIndexOffset: 1000 })
         .addTo(map)
-        .bindPopup(`<div class="text-xs"><strong>SOS Panic Alert</strong><br/>Device: ${alert.deviceIdentifier}<br/>Time: ${new Date(alert.created_at).toLocaleString()}<br/>GPS: ${alert.lat.toFixed(6)}, ${alert.lng.toFixed(6)}</div>`);
+        .bindPopup(`<div class="text-xs"><strong>SOS Panic Alert</strong><br/>Status: ${alert.status}<br/>Site: ${alert.siteName}<br/>Checkpoint: ${alert.checkpointName}<br/>Patrol: ${alert.patrolName}<br/>Device: ${alert.deviceIdentifier}<br/>Time: ${new Date(alert.created_at).toLocaleString()}<br/>GPS: ${alert.lat.toFixed(6)}, ${alert.lng.toFixed(6)}</div>`);
       sosMarkersRef.current.push(marker);
     });
   }, [replayMode, showSos, sosAlerts]);
@@ -619,4 +651,6 @@ const LiveMap = ({
 };
 
 export default LiveMap;
+
+
 

@@ -112,6 +112,7 @@ Deno.serve(async (req) => {
       .from("alerts")
       .insert({
         company_id: device.company_id,
+        site_id: device.site_id ?? null,
         guard_id: null,
         session_id: sessionId,
         device_identifier: device.device_identifier,
@@ -123,7 +124,7 @@ Deno.serve(async (req) => {
         severity: "critical",
         message: fullDetails,
       })
-      .select("id, company_id, session_id, type, severity, created_at")
+      .select("id, company_id, site_id, session_id, type, severity, created_at")
       .single();
 
     if (alertError) throw alertError;
@@ -174,3 +175,5 @@ Deno.serve(async (req) => {
     }, 500);
   }
 });
+
+

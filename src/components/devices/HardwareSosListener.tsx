@@ -198,7 +198,7 @@ async function createSosAlert(userId: string | null, key: HardwareKeyDetail) {
     });
   }
 
-  if (!userId) {
+  {
     const { data, error } = await supabase.functions.invoke("device-sos", {
       body: {
         device_identifier: deviceInfo.deviceIdentifier,
@@ -216,48 +216,6 @@ async function createSosAlert(userId: string | null, key: HardwareKeyDetail) {
     });
     return;
   }
-
-  const { data: device } = await supabase
-    .from("devices")
-    .select("id, device_name, site_location, device_identifier, site_id")
-    .eq("company_id", companyId)
-    .eq("device_identifier", deviceInfo.deviceIdentifier)
-    .maybeSingle();
-
-  const deviceLabel = device?.device_name ?? "Unregistered patrol device";
-  const deviceIdentifier = device?.device_identifier ?? deviceInfo.deviceIdentifier;
-  const locationSource = gps ? "device GPS" : device?.site_location ? "registered device site" : "unavailable";
-  const location = gps
-    ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}${gps.accuracy ? ` (accuracy ${Math.round(gps.accuracy)}m)` : ""}`
-    : device?.site_location ?? "GPS unavailable";
-
-  const { data: alert, error } = await supabase.from("alerts").insert({
-    company_id: companyId,
-    site_id: device?.site_id ?? siteId,
-    guard_id: null,
-    type: "panic_button",
-    severity: "critical",
-    message: [
-      "SOS ALERT",
-      `Device: ${deviceLabel}`,
-      `Device ID: ${deviceIdentifier}`,
-      `Device registered: ${device?.id ? "yes" : "no"}`,
-      `Location: ${location}`,
-      `Location source: ${locationSource}`,
-      `Hardware: ${key.keyName} (${key.keyCode})`,
-      `Hold: ${Math.round(key.durationMs)}ms`,
-      `Scan/device/source: ${key.key?.scanCode ?? "n/a"}/${key.device?.id ?? "n/a"}/${key.device?.source ?? "n/a"}`,
-      `Timestamp: ${new Date().toISOString()}`,
-    ].join(" | "),
-  }).select("id").single();
-
-  if (error) throw error;
-  console.info("[SOS] Panic alert inserted", {
-    alertId: alert?.id ?? null,
-    companyId,
-    deviceIdentifier,
-    gps,
-  });
 }
 
 function parseHardwareKeyEvent(event: Event): HardwareKeyDetail | null {
@@ -330,3 +288,8 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
     if (timeoutId) clearTimeout(timeoutId);
   }
 }
+
+
+
+
+

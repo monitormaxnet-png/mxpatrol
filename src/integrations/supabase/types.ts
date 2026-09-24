@@ -3020,6 +3020,54 @@ export type Database = {
           },
         ]
       }
+      user_activity_acknowledgements: {
+        Row: {
+          acknowledged_at: string
+          activity_type: string
+          company_id: string
+          created_at: string
+          id: string
+          site_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          acknowledged_at?: string
+          activity_type: string
+          company_id: string
+          created_at?: string
+          id?: string
+          site_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          acknowledged_at?: string
+          activity_type?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          site_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_activity_acknowledgements_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_activity_acknowledgements_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string

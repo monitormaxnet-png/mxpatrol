@@ -70,6 +70,22 @@ describe("remaining partial item regressions", () => {
     expect(map).toContain("patrolName: alert.patrol_sessions?.patrol_routes?.name");
     expect(map).toContain("Status: ${alert.status}");
   });
+
+  it("keeps Command Center SOS alerts scoped to the selected site", () => {
+    const source = read("src/pages/CommandCenter.tsx");
+    expect(source).toContain(".eq('site_id', siteId).order('created_at'");
+    expect(source).toContain("if (row.site_id) return row.site_id === selectedSiteId;");
+    expect(source).toContain("if (row.checkpoint_id) return siteCheckpointIdSet.has(row.checkpoint_id);");
+    expect(source).toContain("return false;");
+    expect(source).toContain('.select("id, session_id, status, scheduled_at, scheduled_order, checkpoint_name_snapshot, scanned_at, checkpoints(name)")');
+    expect(source).toContain('.in("session_id", livePatrolIds)');
+  });
+
+  it("does not stop the SOS siren while another SOS remains unacknowledged", () => {
+    const source = read("src/components/dashboard/AlertsFeed.tsx");
+    expect(source).toContain("unacknowledgedSosAlerts.filter((alert: any) => alert.id !== alertId).length === 0");
+    expect(source).not.toContain("setAcknowledgedSosIds((current) => new Set(current).add(alertId));\r\n    stopSosSiren();");
+  });
   it("exposes SOS resolution and WhatsApp management in Command Center UI", () => {
     const source = read("src/pages/CommandCenter.tsx");
     expect(source).toContain("function SosResolutionPanel");
@@ -89,6 +105,7 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))')");
   });
 });
+
 
 
 

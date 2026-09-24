@@ -150,7 +150,7 @@ const AlertsFeed = () => {
 
   const acknowledgeSosAlert = (alertId: string) => {
     setAcknowledgedSosIds((current) => new Set(current).add(alertId));
-    stopSosSiren();
+    if (unacknowledgedSosAlerts.filter((alert: any) => alert.id !== alertId).length === 0) stopSosSiren();
   };
 
   const resolveAlert = async (alert: any) => {
@@ -291,3 +291,4 @@ const AlertsFeed = () => {
 };
 
 export default AlertsFeed;
+

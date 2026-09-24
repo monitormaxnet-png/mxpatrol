@@ -68,7 +68,7 @@ type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | nu
 type DashboardIncident = { id: string; resolved?: boolean | null; severity?: string | null; title?: string | null; incident_type?: string | null; created_at?: string | null; site_id?: string | null };
 type DashboardScan = { id: string; scanned_at?: string | null; tag_status?: string | null; device_identifier?: string | null; checkpoints?: { name?: string | null } | null; guards?: { full_name?: string | null } | null };
 type DatalogSubmission = { id: string; submitted_at?: string | null; datalog_value?: string | null; responses_json?: any; site_id?: string | null; checkpoint_id?: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
-type LiveCheckpointRow = { id: string; patrol_session_id?: string | null; status?: string | null; scheduled_at?: string | null; scheduled_order?: number | null; checkpoint_name_snapshot?: string | null; scanned_at?: string | null; checkpoints?: { name?: string | null } | null };
+type LiveCheckpointRow = { id: string; session_id?: string | null; patrol_session_id?: string | null; status?: string | null; scheduled_at?: string | null; scheduled_order?: number | null; checkpoint_name_snapshot?: string | null; scanned_at?: string | null; checkpoints?: { name?: string | null } | null };
 type AssistantCompany = { id: string; name: string; status?: string | null; site_count?: number; reference?: string | null };
 type AssistantSite = { id: string; company_id: string; company_name?: string | null; name: string; address?: string | null; gps_lat?: number | null; gps_lng?: number | null; status?: string | null; created_at?: string | null };
 
@@ -262,7 +262,7 @@ export default function CommandCenter() {
       const siteId = selectedSiteId!;
       const [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows] = await Promise.all([
         supabase.from('devices').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('last_seen_at', { ascending: false }).limit(100),
-        supabase.from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100),
+        supabase.from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
         supabase.from('incidents').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
         supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId).eq('site_id', siteId).order('scanned_at', { ascending: false }).limit(200),
         supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('sort_order').limit(200),
@@ -275,7 +275,7 @@ export default function CommandCenter() {
       const failed = results.find((result) => result.error);
       if (failed?.error) throw failed.error;
       const siteCheckpointIds = new Set((checkpointRows.data ?? []).map((c) => c.id));
-      const siteAlertsData = (alertRows.data ?? []).filter((a) => !a.checkpoint_id || siteCheckpointIds.has(a.checkpoint_id));
+      const siteAlertsData = (alertRows.data ?? []).filter((a) => a.site_id === siteId || (!!a.checkpoint_id && siteCheckpointIds.has(a.checkpoint_id)));
       return {
         devices: deviceRows.data ?? [],
         alerts: siteAlertsData,
@@ -295,8 +295,9 @@ export default function CommandCenter() {
   const siteCheckpointIdSet = new Set(((checkpoints.data ?? []) as any[]).map((cp) => cp.id));
   const siteAlerts = ownerData ? (ownerData.alerts as DashboardAlert[]) : ((alerts.data ?? []) as DashboardAlert[]).filter((row) => {
     if (!selectedSiteId) return true;
+    if (row.site_id) return row.site_id === selectedSiteId;
     if (row.checkpoint_id) return siteCheckpointIdSet.has(row.checkpoint_id);
-    return true;
+    return false;
   });
   const siteIncidents = ownerData ? (ownerData.incidents as DashboardIncident[]) : ((incidents.data ?? []) as DashboardIncident[]).filter((row) => !selectedSiteId || row.site_id === selectedSiteId);
   const sitePatrols = ownerData?.patrols ?? patrols.data ?? [];
@@ -317,14 +318,14 @@ export default function CommandCenter() {
       const client = supabase as any;
       const { data, error } = await client
         .from("patrol_session_checkpoints")
-        .select("id, patrol_session_id, status, scheduled_at, scheduled_order, checkpoint_name_snapshot, scanned_at, checkpoints(name)")
-        .in("patrol_session_id", livePatrolIds)
+        .select("id, session_id, status, scheduled_at, scheduled_order, checkpoint_name_snapshot, scanned_at, checkpoints(name)")
+        .in("session_id", livePatrolIds)
         .in("status", ["pending", "scheduled", "due", "overdue"])
         .order("scheduled_at", { ascending: true })
         .order("scheduled_order", { ascending: true })
         .limit(100);
       if (error) throw error;
-      return (data ?? []) as unknown as LiveCheckpointRow[];
+      return ((data ?? []) as LiveCheckpointRow[]).map((row) => ({ ...row, patrol_session_id: row.session_id ?? row.patrol_session_id ?? null }));
     },
   });
   const activeSosAlerts = useMemo(() => siteAlerts.filter((alert) => alert.type === 'panic_button' && !alert.is_read), [siteAlerts]);
@@ -1467,6 +1468,8 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` - ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` - ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
+
 
 
 

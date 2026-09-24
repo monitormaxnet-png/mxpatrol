@@ -951,14 +951,14 @@ function SosResolutionPanel({ alerts, siteName, canManage, resolvingId, acknowle
   return <div className='space-y-3'>
     {soundPrompt ? <button type='button' onClick={onEnableSound} className='w-full rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm font-black text-amber-100'>Enable SOS Sound</button> : null}
     {error ? <p className='rounded-md border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-100'>{error}</p> : null}
-    <div className='max-h-[13.5rem] space-y-2 overflow-y-auto pr-1' aria-label={siteName + ' SOS alerts'}>
+    <div className='h-[15rem] space-y-2 overflow-y-auto overscroll-contain pr-1 snap-y snap-mandatory' aria-label={siteName + ' SOS alerts'}>
     {rows.map((alert) => {
       const active = !alert.is_read;
       const acknowledged = acknowledgedIds.has(alert.id);
       const busy = resolvingId === alert.id;
       const device = alertField(alert.message, 'Device') ?? alertField(alert.message, 'Device ID') ?? 'Patrol device';
       const site = alertField(alert.message, 'Site') ?? siteName;
-      return <div key={alert.id} className={(active ? acknowledged ? 'border-amber-400/35 bg-amber-500/10' : 'border-rose-400/45 bg-rose-500/15 shadow-[0_0_24px_rgba(244,63,94,0.18)]' : 'border-white/10 bg-slate-950/70') + ' rounded-md border p-3'}>
+      return <div key={alert.id} className={(active ? acknowledged ? 'border-amber-400/35 bg-amber-500/10' : 'border-rose-400/45 bg-rose-500/15 shadow-[0_0_24px_rgba(244,63,94,0.18)]' : 'border-white/10 bg-slate-950/70') + ' min-h-[15rem] snap-start rounded-md border p-3'}>
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
             <p className={(active ? 'text-rose-100' : 'text-slate-200') + ' truncate text-sm font-black'}>{alert.title ?? 'SOS Alert'}</p>
@@ -1467,6 +1467,7 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` - ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` - ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
 
 
 

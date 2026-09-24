@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertTriangle, ArrowRight, Bell, Bot, CheckCircle2, ChevronDown, Clock3, Cpu, Lock, MapPin, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, Bell, Bot, Camera, CheckCircle2, ChevronDown, Clock3, Cpu, FileText, Lock, MapPin, Mic, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -68,9 +68,15 @@ type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | nu
 type DashboardIncident = { id: string; resolved?: boolean | null; severity?: string | null; title?: string | null; incident_type?: string | null; created_at?: string | null; site_id?: string | null };
 type DashboardScan = { id: string; scanned_at?: string | null; tag_status?: string | null; device_identifier?: string | null; checkpoints?: { name?: string | null } | null; guards?: { full_name?: string | null } | null };
 type DatalogSubmission = { id: string; submitted_at?: string | null; datalog_value?: string | null; responses_json?: any; site_id?: string | null; checkpoint_id?: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
+type IncidentPhotoActivity = { id: string; captured_at?: string | null; created_at?: string | null; company_id?: string | null; site_id?: string | null; device_identifier?: string | null; storage_path?: string | null };
+type RecordingActivity = { id: string; captured_at?: string | null; created_at?: string | null; company_id?: string | null; site_id?: string | null; device_identifier?: string | null; storage_path?: string | null; filename?: string | null };
+type ActivityType = 'scans' | 'photos' | 'datalog' | 'sos' | 'recordings';
+type ActivityAckRow = { activity_type: ActivityType; acknowledged_at: string | null };
 type LiveCheckpointRow = { id: string; session_id?: string | null; patrol_session_id?: string | null; status?: string | null; scheduled_at?: string | null; scheduled_order?: number | null; checkpoint_name_snapshot?: string | null; scanned_at?: string | null; checkpoints?: { name?: string | null } | null };
 type AssistantCompany = { id: string; name: string; status?: string | null; site_count?: number; reference?: string | null };
 type AssistantSite = { id: string; company_id: string; company_name?: string | null; name: string; address?: string | null; gps_lat?: number | null; gps_lng?: number | null; status?: string | null; created_at?: string | null };
+
+const ACTIVITY_TYPES: ActivityType[] = ['scans', 'photos', 'datalog', 'sos', 'recordings'];
 
 const PERIODS: Record<string, { label: string; from: () => Date; to: () => Date; range: string }> = {
   today: { label: 'Today', range: 'today', from: () => startOfDay(0), to: () => new Date() },
@@ -145,6 +151,7 @@ export default function CommandCenter() {
   const selectedSiteId = activeSite?.id ?? null;
   const selectedSite = activeSite?.name ?? 'No site assigned';
   const ownerScoped = isPlatformOwner && !!selectedCompanyId;
+  const activityCompanyId = selectedCompanyId ?? activeSite?.company_id ?? null;
   const mode: AssistantMode = state.mode;
 
   const devices = useDevices(selectedSiteId ?? 'all');
@@ -254,6 +261,46 @@ export default function CommandCenter() {
     },
   });
 
+  const incidentPhotoActivity = useQuery({
+    queryKey: ['dashboard_incident_photo_activity', activityCompanyId, selectedSiteId],
+    enabled: !!user && !!activityCompanyId && !!selectedSiteId,
+    queryFn: async () => {
+      const client = supabase as any;
+      const { data, error } = await client
+        .from('incident_report_photos')
+        .select('id, captured_at, created_at, company_id, site_id, device_identifier, storage_path')
+        .eq('company_id', activityCompanyId!)
+        .eq('site_id', selectedSiteId!)
+        .gte('captured_at', startOfDay(0).toISOString())
+        .order('captured_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []) as IncidentPhotoActivity[];
+    },
+  });
+
+  const recordingActivity = useQuery({
+    queryKey: ['dashboard_recording_activity', activityCompanyId, selectedSiteId],
+    enabled: !!user && !!activityCompanyId && !!selectedSiteId,
+    queryFn: async () => [] as RecordingActivity[],
+  });
+
+  const activityAcknowledgements = useQuery({
+    queryKey: ['dashboard_activity_acknowledgements', user?.id, activityCompanyId, selectedSiteId],
+    enabled: !!user?.id && !!activityCompanyId && !!selectedSiteId,
+    queryFn: async () => {
+      const client = supabase as any;
+      const { data, error } = await client
+        .from('user_activity_acknowledgements')
+        .select('activity_type, acknowledged_at')
+        .eq('user_id', user!.id)
+        .eq('company_id', activityCompanyId!)
+        .eq('site_id', selectedSiteId!)
+        .in('activity_type', ACTIVITY_TYPES);
+      if (error) throw error;
+      return (data ?? []) as ActivityAckRow[];
+    },
+  });
   const ownerScopedData = useQuery({
     queryKey: ['assistant_owner_scoped_dashboard', selectedCompanyId, selectedSiteId],
     enabled: !!user && ownerScoped && !!selectedCompanyId && !!selectedSiteId,
@@ -543,6 +590,28 @@ export default function CommandCenter() {
     }
   };
 
+  const acknowledgeActivity = async (activityType: ActivityType) => {
+    if (!user?.id || !activityCompanyId || !selectedSiteId) return;
+    const now = new Date().toISOString();
+    const client = supabase as any;
+    const { error } = await client.from('user_activity_acknowledgements').upsert({
+      user_id: user.id,
+      company_id: activityCompanyId,
+      site_id: selectedSiteId,
+      activity_type: activityType,
+      acknowledged_at: now,
+      updated_at: now,
+    }, { onConflict: 'user_id,company_id,site_id,activity_type' });
+    if (error) throw error;
+    await queryClient.invalidateQueries({ queryKey: ['dashboard_activity_acknowledgements'] });
+  };
+
+  const openActivityMetric = (activityType: ActivityType) => {
+    const title = activityTitle(activityType) + ' - ' + selectedSite;
+    addAssistant(title, <ActivityDrilldown type={activityType} site={selectedSite} scans={todayRows.scans} photos={todayIncidentPhotos} dataLogs={todayDataLogs} sosAlerts={todaySosAlerts} recordings={todayRecordings} />);
+    if (activityType === 'sos') todaySosAlerts.filter((alert) => !alert.is_read).forEach(handleAcknowledgeSos);
+    void acknowledgeActivity(activityType).catch((error) => addAssistant('ACKNOWLEDGEMENT FAILED', <p>{error instanceof Error ? error.message : 'Could not save activity acknowledgement.'}</p>));
+  };
   const runAction = (action: string) => {
     if (action === 'change_site') return addAssistant('CHANGE SITE', <SitePicker sites={availableSites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
     if (action === 'live') return addAssistant('LIVE NOW - ' + selectedSite, <Summary devices={siteDevices} alerts={todayRows.alerts} incidents={openIncidents} patrols={operationPatrolRows} scans={todayRows.scans} />);
@@ -683,16 +752,31 @@ export default function CommandCenter() {
     const value = new Date(row.submitted_at ?? 0).getTime();
     return Number.isFinite(value) && value >= startOfDay(0).getTime() && value <= Date.now();
   });
+  const todayIncidentPhotos = (incidentPhotoActivity.data ?? []).filter((row) => withinToday(row.captured_at ?? row.created_at));
+  const todayRecordings = (recordingActivity.data ?? []).filter((row) => withinToday(row.captured_at ?? row.created_at));
+  const todaySosAlerts = todayRows.alerts.filter((row) => row.type === 'panic_button');
+  const ackMap = new Map((activityAcknowledgements.data ?? []).map((row) => [row.activity_type, row.acknowledged_at]));
   const openIncidents = siteIncidents.filter((row) => !row.resolved);
   const operationPatrolRows = [...livePatrolRows, ...todayPatrolRows.filter((row) => !livePatrolRows.some((live) => live.id === row.id))];
   const onlineDevices = siteDevices.filter((device) => device.status === 'online').length;
   const activePatrolCount = livePatrolRows.length;
-  const sosAlertCount = todayRows.alerts.filter((row) => row.type === 'panic_button' && !row.is_read).length;
+  const sosAlertCount = todaySosAlerts.filter((row) => !row.is_read).length;
   const openIncidentCount = openIncidents.length;
   const todayIncidentCount = todayRows.incidents.length;
   const highPriorityIncidentCount = openIncidents.filter((row) => ['high', 'critical'].includes(String(row.severity))).length;
   const loadedScansToday = todayRows.scans.length;
   const scanCountValue = scanCountToday.data ?? loadedScansToday;
+  const photoCountValue = todayIncidentPhotos.length;
+  const datalogCountValue = todayDataLogs.length;
+  const recordingCountValue = todayRecordings.length;
+  const activityLatest: Record<ActivityType, string | null> = {
+    scans: latestIso(todayRows.scans, (row) => row.scanned_at),
+    photos: latestIso(todayIncidentPhotos, (row) => row.captured_at ?? row.created_at),
+    datalog: latestIso(todayDataLogs, (row) => row.submitted_at),
+    sos: latestIso(todaySosAlerts, (row) => row.created_at),
+    recordings: latestIso(todayRecordings, (row) => row.captured_at ?? row.created_at),
+  };
+  const activityUnseen = (activityType: ActivityType) => activityType === 'sos' && sosAlertCount > 0 ? true : isNewerThanAck(activityLatest[activityType], ackMap.get(activityType));
   const patrolCounts = patrolStatusCounts(todayPatrolRows);
   const totalPatrols = Object.values(patrolCounts).reduce((total, value) => total + value, 0) || todayPatrolRows.length;
   const activityBuckets = Array.from({ length: 12 }, (_, index) => {
@@ -758,9 +842,16 @@ export default function CommandCenter() {
         <section className='grid gap-3 md:grid-cols-2 xl:grid-cols-5'>
           <KpiCard title='Active Patrols' value={activePatrolCount} total={totalPatrols || undefined} note='Live sessions' icon={Users} tone='emerald' />
           <KpiCard title='Devices Online' value={onlineDevices} total={siteDevices.length || undefined} note='Reporting devices' icon={Smartphone} tone='cyan' />
-          <KpiCard title='SOS Alerts' value={sosAlertCount} note={sosAlertCount ? 'Action required' : 'All clear'} icon={ShieldAlert} tone='rose' />
+          <KpiCard title='SOS Alerts' value={sosAlertCount} note={sosAlertCount ? 'Action required' : 'All clear'} icon={ShieldAlert} tone='rose' unseen={activityUnseen('sos')} onClick={() => openActivityMetric('sos')} />
           <KpiCard title='Open Incidents' value={openIncidentCount} note={`${todayIncidentCount} today, ${highPriorityIncidentCount} high priority`} icon={Shield} tone='amber' />
-          <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${loadedScansToday} loaded today`} icon={ScanLine} tone='blue' />
+          <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${loadedScansToday} loaded today`} icon={ScanLine} tone='blue' unseen={activityUnseen('scans')} onClick={() => openActivityMetric('scans')} />
+        </section>
+
+        <section className='grid gap-3 md:grid-cols-3 xl:grid-cols-5'>
+          <KpiCard title='Photos' value={photoCountValue} note='Captured today' icon={Camera} tone='cyan' unseen={activityUnseen('photos')} onClick={() => openActivityMetric('photos')} />
+          <KpiCard title='Datalog' value={datalogCountValue} note='Entries today' icon={FileText} tone='emerald' unseen={activityUnseen('datalog')} onClick={() => openActivityMetric('datalog')} />
+          <KpiCard title='Recordings' value={recordingCountValue} note='Audio today' icon={Mic} tone='blue' unseen={activityUnseen('recordings')} onClick={() => openActivityMetric('recordings')} />
+          <div className='md:col-span-3 xl:col-span-2'><SiteActivityTodayMatrix site={selectedSite} counts={{ scans: scanCountValue, photos: photoCountValue, datalog: datalogCountValue, sos: sosAlertCount, recordings: recordingCountValue }} unseen={{ scans: activityUnseen('scans'), photos: activityUnseen('photos'), datalog: activityUnseen('datalog'), sos: activityUnseen('sos'), recordings: activityUnseen('recordings') }} onOpen={openActivityMetric} /></div>
         </section>
 
         <section className='grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]'>
@@ -885,20 +976,25 @@ function DashboardPanel({ title, icon: Icon, action, children, className = '', b
   );
 }
 
-function KpiCard({ title, value, total, note, icon: Icon, tone }: { title: string; value: number; total?: number; note: string; icon: typeof Bot; tone: Tone }) {
+function KpiCard({ title, value, total, note, icon: Icon, tone, unseen = false, onClick }: { title: string; value: number; total?: number; note: string; icon: typeof Bot; tone: Tone; unseen?: boolean; onClick?: () => void }) {
   const classes = toneClasses[tone];
-  return (
-    <article className={`rounded-lg border ${classes.border} bg-slate-950/75 p-5 ${classes.glow}`}>
-      <div className='flex items-start justify-between gap-4'>
-        <div className='min-w-0'>
-          <p className={`text-sm font-black uppercase tracking-[0.08em] ${classes.text}`}>{title}</p>
-          <p className='mt-3 flex items-end gap-2 font-mono'><span className='text-4xl font-black leading-none text-white'>{value}</span>{total ? <span className='pb-1 text-lg font-bold text-slate-400'>/ {total}</span> : null}</p>
-          <p className='mt-2 text-xs text-slate-400'>{note}</p>
-        </div>
-        <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full border ${classes.border} ${classes.bg}`}><Icon className={`h-7 w-7 ${classes.text}`} /></span>
+  const labelClass = 'text-sm font-black uppercase tracking-[0.08em] ' + (unseen ? 'text-rose-300' : classes.text);
+  const valueClass = (unseen ? 'text-rose-300 drop-shadow-[0_0_12px_rgba(244,63,94,0.55)]' : 'text-white') + ' text-4xl font-black leading-none';
+  const iconWrapClass = 'flex h-14 w-14 shrink-0 items-center justify-center rounded-full border ' + (unseen ? 'border-rose-400/45 bg-rose-500/15' : classes.border + ' ' + classes.bg);
+  const iconClass = 'h-7 w-7 ' + (unseen ? 'text-rose-300' : classes.text);
+  const cardClass = 'rounded-lg border ' + (unseen ? 'border-rose-400/45 bg-rose-950/25 shadow-[0_0_30px_rgba(244,63,94,0.18)]' : classes.border + ' bg-slate-950/75 ' + classes.glow) + ' p-5 text-left';
+  const content = (
+    <div className='flex items-start justify-between gap-4'>
+      <div className='min-w-0'>
+        <p className={labelClass}>{title}</p>
+        <p className='mt-3 flex items-end gap-2 font-mono'><span className={valueClass}>{value}</span>{total ? <span className='pb-1 text-lg font-bold text-slate-400'>/ {total}</span> : null}</p>
+        <p className='mt-2 text-xs text-slate-400'>{unseen ? 'New activity - click to view' : note}</p>
       </div>
-    </article>
+      <span className={iconWrapClass}><Icon className={iconClass} /></span>
+    </div>
   );
+  if (onClick) return <button type='button' onClick={onClick} className={cardClass + ' w-full transition hover:-translate-y-0.5 hover:border-rose-300/60 focus:outline-none focus:ring-2 focus:ring-rose-300/25'}>{content}</button>;
+  return <article className={cardClass}>{content}</article>;
 }
 
 function PatrolStatusDonut({ counts, total }: { counts: Record<PatrolStatusGroup, number>; total: number }) {
@@ -1010,6 +1106,57 @@ function FeedbackRow({ row }: { row: { title: string; detail: string; time: stri
   );
 }
 
+function SiteActivityTodayMatrix({ site, counts, unseen, onOpen }: { site: string; counts: Record<ActivityType, number>; unseen: Record<ActivityType, boolean>; onOpen: (type: ActivityType) => void }) {
+  const columns: Array<[ActivityType, string]> = [['scans', 'Scans'], ['photos', 'Photos'], ['datalog', 'Datalog'], ['sos', 'SOS Alerts'], ['recordings', 'Recordings']];
+  return <div className='h-full rounded-lg border border-cyan-400/15 bg-slate-950/75 p-4 shadow-[0_0_30px_rgba(14,165,233,0.07)]'>
+    <h2 className='text-sm font-black uppercase tracking-[0.08em] text-slate-100'>Site Activity - Today</h2>
+    <div className='mt-3 overflow-x-auto'>
+      <table className='w-full min-w-[28rem] text-left text-xs'>
+        <thead className='text-slate-500'><tr><th className='pb-2 pr-3'>Site</th>{columns.map(([, label]) => <th key={label} className='pb-2 px-2'>{label}</th>)}</tr></thead>
+        <tbody><tr className='border-t border-white/10'><td className='py-3 pr-3 font-bold text-white'>{site}</td>{columns.map(([type]) => <td key={type} className='px-2 py-3'><button type='button' onClick={() => onOpen(type)} className={(unseen[type] ? 'text-rose-300' : 'text-slate-100') + ' rounded-md px-2 py-1 font-mono text-sm font-black hover:bg-white/5'}>{unseen[type] ? 'red ' : ''}{counts[type]}</button></td>)}</tr></tbody>
+      </table>
+    </div>
+  </div>;
+}
+
+function ActivityDrilldown({ type, site, scans, photos, dataLogs, sosAlerts, recordings }: { type: ActivityType; site: string; scans: DashboardScan[]; photos: IncidentPhotoActivity[]; dataLogs: DatalogSubmission[]; sosAlerts: DashboardAlert[]; recordings: RecordingActivity[] }) {
+  const empty = <p className='text-slate-400'>No {activityTitle(type).toLowerCase()} records for {site} today.</p>;
+  if (type === 'scans') return scans.length ? <ReportRows rows={scans.slice(0, 12).map((row) => ({ label: row.checkpoints?.name ?? row.device_identifier ?? 'Checkpoint scan', value: assistantTime(row.scanned_at) ?? '--:--', meta: row.tag_status ?? undefined }))} /> : empty;
+  if (type === 'photos') return photos.length ? <ReportRows rows={photos.slice(0, 12).map((row) => ({ label: row.storage_path?.split('/').pop() ?? 'Incident photo', value: assistantTime(row.captured_at ?? row.created_at) ?? '--:--', meta: row.device_identifier ?? undefined }))} /> : empty;
+  if (type === 'datalog') return <CurrentDatalogEntries rows={dataLogs} />;
+  if (type === 'sos') return sosAlerts.length ? <AlertRows rows={sosAlerts} /> : empty;
+  return recordings.length ? <ReportRows rows={recordings.slice(0, 12).map((row) => ({ label: row.filename ?? row.storage_path?.split('/').pop() ?? 'Recording', value: assistantTime(row.captured_at ?? row.created_at) ?? '--:--', meta: row.device_identifier ?? undefined }))} /> : empty;
+}
+
+function activityTitle(type: ActivityType) {
+  const labels: Record<ActivityType, string> = { scans: 'Scans Today', photos: 'Photos Today', datalog: 'Datalog Today', sos: 'SOS Alerts Today', recordings: 'Recordings Today' };
+  return labels[type];
+}
+
+function withinToday(iso?: string | null) {
+  const value = new Date(iso ?? 0).getTime();
+  return Number.isFinite(value) && value >= startOfDay(0).getTime() && value <= Date.now();
+}
+
+function latestIso<T>(rows: T[], getIso: (row: T) => string | null | undefined) {
+  let latest: string | null = null;
+  let latestMs = -Infinity;
+  rows.forEach((row) => {
+    const iso = getIso(row);
+    const value = new Date(iso ?? 0).getTime();
+    if (Number.isFinite(value) && value > latestMs) {
+      latest = iso ?? null;
+      latestMs = value;
+    }
+  });
+  return latest;
+}
+
+function isNewerThanAck(latestIsoValue: string | null, acknowledgedAt?: string | null) {
+  if (!latestIsoValue) return false;
+  if (!acknowledgedAt) return true;
+  return new Date(latestIsoValue).getTime() > new Date(acknowledgedAt).getTime();
+}
 function ActivityTimeline({ buckets }: { buckets: Array<{ label: string; patrols: number; alerts: number }> }) {
   const max = Math.max(1, ...buckets.map((bucket) => bucket.patrols + bucket.alerts));
   return (
@@ -1468,6 +1615,7 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` - ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` - ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
 
 
 

@@ -108,6 +108,32 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("command_center_screen");
     expect(source).toContain("from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))')");
   });
+
+  it("persists per-user dashboard activity acknowledgements", () => {
+    const migration = read("supabase/migrations/20260924093000_user_activity_acknowledgements.sql");
+    expect(migration).toContain("create table if not exists public.user_activity_acknowledgements");
+    expect(migration).toContain("unique (user_id, company_id, site_id, activity_type)");
+    expect(migration).toContain("activity_type in ('scans', 'photos', 'datalog', 'sos', 'recordings')");
+    expect(migration).toContain("alter table public.user_activity_acknowledgements enable row level security");
+    expect(migration).toContain("user_id = auth.uid()");
+    expect(migration).toContain("from public.platform_admins pa");
+  });
+
+  it("shows and acknowledges unseen activity counts on the Command Center dashboard", () => {
+    const source = read("src/pages/CommandCenter.tsx");
+    expect(source).toContain("dashboard_activity_acknowledgements");
+    expect(source).toContain("user_activity_acknowledgements");
+    expect(source).toContain("incident_report_photos");
+    expect(source).toContain("activityUnseen('scans')");
+    expect(source).toContain("activityUnseen('photos')");
+    expect(source).toContain("activityUnseen('datalog')");
+    expect(source).toContain("activityUnseen('sos')");
+    expect(source).toContain("activityUnseen('recordings')");
+    expect(source).toContain("Site Activity - Today");
+    expect(source).toContain("New activity - click to view");
+    expect(source).toContain("activityType === 'sos' && sosAlertCount > 0");
+    expect(source).toContain("acknowledgeActivity(activityType)");
+  });
 });
 
 

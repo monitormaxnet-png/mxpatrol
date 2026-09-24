@@ -556,7 +556,9 @@ export function patrolSessionProgress(session: PatrolSessionRow) {
 }
 
 export function patrolSessionLabel(session: PatrolSessionRow) {
-  return session.patrol_templates?.name ?? session.patrol_routes?.name ?? session.patrol_schedules?.name ?? "Scheduled patrol";
+  return session.patrol_templates?.name ?? session.patrol_routes?.name ?? "Patrol session";
 }
+
+
 
 

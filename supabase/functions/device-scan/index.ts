@@ -141,7 +141,8 @@ async function buildPatrolResult(client: any, sessionId: string | null) {
   return {
     session_id: data.id,
     schedule_id: data.schedule_id ?? null,
-    name: schedule?.name ?? route?.name ?? null,
+    name: route?.name ?? null,
+    schedule_name: schedule?.name ?? null,
     status: data.status ?? null,
     completed: data.checkpoint_completed ?? 0,
     required: data.checkpoint_total ?? 0,
@@ -775,6 +776,7 @@ Deno.serve(async (req) => {
     });
   }
 });
+
 
 
 

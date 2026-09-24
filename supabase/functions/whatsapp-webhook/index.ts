@@ -81,7 +81,7 @@ function managementActor(identity: Identity): ManagementActor {
 }
 
 function siteChooser(sites: SiteRow[]): OutMessage {
-  const options = sites.slice(0, 9).map((site) => ({ id: `site:${site.id}`, label: site.name }));
+  const options = [{ id: "site:all", label: "All Sites" }, ...sites.slice(0, 8).map((site) => ({ id: `site:${site.id}`, label: site.name }))];
   return optionMenu("WHICH SITE?", ["Choose the site you want to work with."], options);
 }
 
@@ -221,6 +221,7 @@ async function createInboundWhatsAppAlert(ctx: Ctx, inbound: InboundWhatsAppMess
 
 /** Site context resolution: auto-select single site, remember choice, ask when ambiguous. */
 async function ensureSiteContext(ctx: Ctx): Promise<{ siteId: string | null; ask?: OutMessage }> {
+  if (ctx.session.site_scope === "all") return { siteId: null };
   if (ctx.session.current_site_id) return { siteId: ctx.session.current_site_id };
 
   const sites = await allowedSites(ctx.client, ctx.identity);
@@ -521,6 +522,19 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
     return mainMenu(ctx.identity, ctx.session);
   }
 
+  if (id === "site:all") {
+    ctx.session = await patchSession(ctx.client, ctx.session, {
+      current_site_id: null,
+      current_site_name: "All Sites",
+      site_scope: "all",
+    });
+    const pendingReportAction = typeof ctx.session.temporary_data?.pending_report_action === "string"
+      ? ctx.session.temporary_data.pending_report_action
+      : null;
+    if (pendingReportAction?.startsWith("report:")) return reportDateRangeMenu(pendingReportAction);
+    return await liveNow(ctx.client, ctx.identity, null);
+  }
+
   if (id.startsWith("site:")) {
     const value = id.slice(5);
     const sites = await allowedSites(ctx.client, ctx.identity);
@@ -749,6 +763,7 @@ serve(async (req) => {
     );
   }
 });
+
 
 
 

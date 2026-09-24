@@ -200,6 +200,27 @@ export default function PendingUnregisteredCheckpoints() {
                 Review & Register Tag
               </button>
             </div>
+            {pending.length > 1 && (
+              <div className="rounded-xl border border-border/60 bg-card/60 p-3">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Other pending tags</p>
+                <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                  {pending.slice(1).map((tag) => (
+                    <button
+                      key={`${tag.tag_uid}-${tag.site_id ?? "site"}-${tag.scanned_at}`}
+                      type="button"
+                      onClick={() => openRegisterDialog(tag)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/80 px-3 py-2 text-left text-sm transition hover:border-warning/50 hover:bg-warning/[0.06]"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-mono text-xs font-bold text-foreground">{tag.tag_uid}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{tag.sites?.name ?? "Unassigned"} - {format(new Date(tag.scanned_at), "yyyy-MM-dd HH:mm")}</span>
+                      </span>
+                      <span className="shrink-0 text-xs font-bold text-warning">Register</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

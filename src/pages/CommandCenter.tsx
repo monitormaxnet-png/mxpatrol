@@ -147,11 +147,12 @@ export default function CommandCenter() {
 
   const ownerCompanySites = (platformSites.data ?? []) as AssistantSite[];
   const availableSites = (isPlatformOwner ? ownerCompanySites : sites) as AssistantSite[];
-  const activeSite = availableSites.find((site) => site.id === state.activeSiteId) ?? availableSites[0] ?? null;
-  const selectedSiteId = activeSite?.id ?? null;
-  const selectedSite = activeSite?.name ?? 'No site assigned';
+  const allSitesSelected = state.activeSiteId === 'all';
+  const activeSite = allSitesSelected ? null : availableSites.find((site) => site.id === state.activeSiteId) ?? availableSites[0] ?? null;
+  const selectedSiteId = allSitesSelected ? null : activeSite?.id ?? null;
+  const selectedSite = allSitesSelected ? 'All Sites' : activeSite?.name ?? 'No site assigned';
   const ownerScoped = isPlatformOwner && !!selectedCompanyId;
-  const activityCompanyId = selectedCompanyId ?? activeSite?.company_id ?? null;
+  const activityCompanyId = selectedCompanyId ?? activeSite?.company_id ?? availableSites[0]?.company_id ?? null;
   const mode: AssistantMode = state.mode;
 
   const devices = useDevices(selectedSiteId ?? 'all');
@@ -247,15 +248,17 @@ export default function CommandCenter() {
     },
   });
   const dataLogSubmissions = useQuery({
-    queryKey: ['assistant_data_log_submissions', selectedSiteId],
-    enabled: !!selectedSiteId,
+    queryKey: ['assistant_data_log_submissions', selectedCompanyId, selectedSiteId],
+    enabled: !!user && (!isPlatformOwner || !!selectedCompanyId),
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('data_log_submissions')
         .select('id, submitted_at, datalog_value, responses_json, site_id, checkpoint_id, sites(name), checkpoints(name, data_log_label)')
-        .eq('site_id', selectedSiteId!)
         .order('submitted_at', { ascending: false })
         .limit(100);
+      if (ownerScoped && selectedCompanyId) query = query.eq('company_id', selectedCompanyId);
+      if (selectedSiteId) query = query.eq('site_id', selectedSiteId);
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as unknown as DatalogSubmission[];
     },
@@ -263,17 +266,18 @@ export default function CommandCenter() {
 
   const incidentPhotoActivity = useQuery({
     queryKey: ['dashboard_incident_photo_activity', activityCompanyId, selectedSiteId],
-    enabled: !!user && !!activityCompanyId && !!selectedSiteId,
+    enabled: !!user && !!activityCompanyId,
     queryFn: async () => {
       const client = supabase as any;
-      const { data, error } = await client
+      let query = client
         .from('incident_report_photos')
         .select('id, captured_at, created_at, company_id, site_id, device_identifier, storage_path')
         .eq('company_id', activityCompanyId!)
-        .eq('site_id', selectedSiteId!)
         .gte('captured_at', startOfDay(0).toISOString())
         .order('captured_at', { ascending: false })
         .limit(100);
+      if (selectedSiteId) query = query.eq('site_id', selectedSiteId);
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as IncidentPhotoActivity[];
     },
@@ -281,48 +285,50 @@ export default function CommandCenter() {
 
   const recordingActivity = useQuery({
     queryKey: ['dashboard_recording_activity', activityCompanyId, selectedSiteId],
-    enabled: !!user && !!activityCompanyId && !!selectedSiteId,
+    enabled: !!user && !!activityCompanyId,
     queryFn: async () => [] as RecordingActivity[],
   });
 
   const activityAcknowledgements = useQuery({
     queryKey: ['dashboard_activity_acknowledgements', user?.id, activityCompanyId, selectedSiteId],
-    enabled: !!user?.id && !!activityCompanyId && !!selectedSiteId,
+    enabled: !!user?.id && !!activityCompanyId,
     queryFn: async () => {
       const client = supabase as any;
-      const { data, error } = await client
+      let query = client
         .from('user_activity_acknowledgements')
         .select('activity_type, acknowledged_at')
         .eq('user_id', user!.id)
         .eq('company_id', activityCompanyId!)
-        .eq('site_id', selectedSiteId!)
         .in('activity_type', ACTIVITY_TYPES);
+      query = selectedSiteId ? query.eq('site_id', selectedSiteId) : query.is('site_id', null);
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as ActivityAckRow[];
     },
   });
   const ownerScopedData = useQuery({
     queryKey: ['assistant_owner_scoped_dashboard', selectedCompanyId, selectedSiteId],
-    enabled: !!user && ownerScoped && !!selectedCompanyId && !!selectedSiteId,
+    enabled: !!user && ownerScoped && !!selectedCompanyId,
     queryFn: async () => {
       const companyId = selectedCompanyId!;
-      const siteId = selectedSiteId!;
+      const siteId = selectedSiteId;
+      const siteScoped = (query: any) => siteId ? query.eq('site_id', siteId) : query;
       const [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows] = await Promise.all([
-        supabase.from('devices').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('last_seen_at', { ascending: false }).limit(100),
-        supabase.from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
-        supabase.from('incidents').select('*').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100),
-        supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId).eq('site_id', siteId).order('scanned_at', { ascending: false }).limit(200),
-        supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('sort_order').limit(200),
-        supabase.from('patrol_sessions').select('id, status, scheduled_start, scheduled_end, actual_start, finalized_at, checkpoint_completed, checkpoint_total, site_id, patrol_routes(id,name), patrol_templates(id,name), sites(name)').eq('company_id', companyId).eq('site_id', siteId).order('scheduled_start', { ascending: false }).limit(100),
-        supabase.from('data_log_submissions').select('id, submitted_at, datalog_value, responses_json, site_id, checkpoint_id, sites(name), checkpoints(name, data_log_label)').eq('company_id', companyId).eq('site_id', siteId).order('submitted_at', { ascending: false }).limit(100),
-        supabase.from('patrol_routes').select('id, name').eq('company_id', companyId).eq('site_id', siteId).eq('status', 'active').order('name'),
-        supabase.from('data_log_forms').select('id, name, site_id, data_log_form_fields(id)').eq('company_id', companyId).eq('is_active', true).or(`site_id.is.null,site_id.eq.${siteId}`).order('name'),
+        siteScoped(supabase.from('devices').select('*, sites(name)').eq('company_id', companyId)).order('last_seen_at', { ascending: false }).limit(100),
+        siteScoped(supabase.from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))').eq('company_id', companyId)).order('created_at', { ascending: false }).limit(100),
+        siteScoped(supabase.from('incidents').select('*').eq('company_id', companyId)).order('created_at', { ascending: false }).limit(100),
+        siteScoped(supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId)).order('scanned_at', { ascending: false }).limit(200),
+        siteScoped(supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId)).order('sort_order').limit(200),
+        siteScoped(supabase.from('patrol_sessions').select('id, status, scheduled_start, scheduled_end, actual_start, finalized_at, checkpoint_completed, checkpoint_total, site_id, patrol_routes(id,name), patrol_templates(id,name), sites(name)').eq('company_id', companyId)).order('scheduled_start', { ascending: false }).limit(100),
+        siteScoped(supabase.from('data_log_submissions').select('id, submitted_at, datalog_value, responses_json, site_id, checkpoint_id, sites(name), checkpoints(name, data_log_label)').eq('company_id', companyId)).order('submitted_at', { ascending: false }).limit(100),
+        siteScoped(supabase.from('patrol_routes').select('id, name').eq('company_id', companyId)).eq('status', 'active').order('name'),
+        siteId ? supabase.from('data_log_forms').select('id, name, site_id, data_log_form_fields(id)').eq('company_id', companyId).eq('is_active', true).or(`site_id.is.null,site_id.eq.${siteId}`).order('name') : supabase.from('data_log_forms').select('id, name, site_id, data_log_form_fields(id)').eq('company_id', companyId).eq('is_active', true).order('name'),
       ]);
       const results = [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows];
       const failed = results.find((result) => result.error);
       if (failed?.error) throw failed.error;
       const siteCheckpointIds = new Set((checkpointRows.data ?? []).map((c) => c.id));
-      const siteAlertsData = (alertRows.data ?? []).filter((a) => a.site_id === siteId || (!!a.checkpoint_id && siteCheckpointIds.has(a.checkpoint_id)));
+      const siteAlertsData = siteId ? (alertRows.data ?? []).filter((a) => a.site_id === siteId || (!!a.checkpoint_id && siteCheckpointIds.has(a.checkpoint_id))) : (alertRows.data ?? []);
       return {
         devices: deviceRows.data ?? [],
         alerts: siteAlertsData,
@@ -591,7 +597,7 @@ export default function CommandCenter() {
   };
 
   const acknowledgeActivity = async (activityType: ActivityType) => {
-    if (!user?.id || !activityCompanyId || !selectedSiteId) return;
+    if (!user?.id || !activityCompanyId) return;
     const now = new Date().toISOString();
     const client = supabase as any;
     const { error } = await client.from('user_activity_acknowledgements').upsert({
@@ -813,8 +819,9 @@ export default function CommandCenter() {
               <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-400/25 text-cyan-300'><MapPin className='h-4 w-4' /></span>
               <span className='min-w-0 flex-1'>
                 <span className='block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500'>Active Site</span>
-                <select value={selectedSiteId ?? ''} disabled={isPlatformOwner && !selectedCompanyId} onChange={(event) => setState((prev) => ({ ...prev, activeSiteId: event.target.value || null }))} className='w-full bg-transparent text-base font-bold text-white outline-none disabled:text-slate-500'>
+                <select value={allSitesSelected ? 'all' : selectedSiteId ?? ''} disabled={isPlatformOwner && !selectedCompanyId} onChange={(event) => setState((prev) => ({ ...prev, activeSiteId: event.target.value || null }))} className='w-full bg-transparent text-base font-bold text-white outline-none disabled:text-slate-500'>
                   <option value='' className='bg-slate-950'>{isPlatformOwner && !selectedCompanyId ? 'Choose company first' : availableSites.length ? 'Choose site' : 'No sites'}</option>
+                  {availableSites.length ? <option value='all' className='bg-slate-950'>All Sites</option> : null}
                   {availableSites.map((site) => <option key={site.id} value={site.id} className='bg-slate-950'>{site.name}</option>)}
                 </select>
               </span>

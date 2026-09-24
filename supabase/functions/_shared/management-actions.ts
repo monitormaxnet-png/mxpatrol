@@ -487,6 +487,23 @@ export async function createCheckpoint(client: SupabaseClient, actor: Management
     .maybeSingle();
 
   if (error || !data) throw new ManagementActionError(error?.message ?? "Checkpoint could not be created", 500);
+  if (nfcTagId) {
+    await client
+      .from("scan_logs")
+      .update({ checkpoint_id: data.id, tag_status: "registered" })
+      .eq("company_id", actor.company_id)
+      .eq("site_id", site.id)
+      .eq("tag_uid", nfcTagId)
+      .is("checkpoint_id", null);
+
+    await client
+      .from("pending_nfc_tags")
+      .update({ status: "approved", checkpoint_id: data.id, reviewed_by: actor.user_id ?? null, reviewed_at: new Date().toISOString() })
+      .eq("company_id", actor.company_id)
+      .eq("site_id", site.id)
+      .eq("tag_uid", nfcTagId)
+      .eq("status", "pending");
+  }
 
   await client.from("checkpoint_audit_logs").insert({
     company_id: actor.company_id,

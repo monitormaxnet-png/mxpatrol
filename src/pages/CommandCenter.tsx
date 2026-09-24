@@ -1,4 +1,4 @@
-﻿import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, AlertTriangle, ArrowRight, Bell, Bot, CheckCircle2, ChevronDown, Clock3, Cpu, Lock, MapPin, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
@@ -763,38 +763,7 @@ export default function CommandCenter() {
         </section>
 
         <section className='grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]'>
-          <DashboardPanel title='SOS Alerts' icon={ShieldAlert} action={sosAlertCount ? 'Action required' : 'All clear'} className={sosAlertCount ? 'border-rose-400/30 bg-rose-950/20 shadow-[0_0_34px_rgba(244,63,94,0.14)]' : ''}>
-            <SosResolutionPanel alerts={siteAlerts} siteName={selectedSite} canManage={canManage} resolvingId={resolvingSosId} acknowledgedIds={acknowledgedSosIds} soundPrompt={sosSoundPrompt} onAcknowledge={handleAcknowledgeSos} onEnableSound={handleEnableSosSound} onResolve={handleResolveSos} />
-          </DashboardPanel>
-          <DashboardPanel title='Current SOS Rules' icon={ShieldCheck} action='Acknowledge != Resolve'>
-            <div className='grid gap-3 text-sm text-slate-300'>
-              <p><b className='text-amber-200'>Acknowledge</b> stops the siren and marks the alert seen on this dashboard.</p>
-              <p><b className='text-emerald-200'>Resolve SOS</b> closes the real SOS record and removes it from the active count.</p>
-              <p className='text-xs text-slate-500'>Resolved SOS records remain available in reports and history.</p>
-            </div>
-          </DashboardPanel>
-        </section>
-
-        <main className='grid min-h-0 flex-1 gap-3 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
-          <div className='flex min-h-0 flex-col gap-3'>
-            <DashboardPanel title="Today's Patrol Status" icon={ShieldCheck} action='Today'>
-              <PatrolStatusDonut counts={patrolCounts} total={totalPatrols} />
-            </DashboardPanel>
-            <DashboardPanel title="Live Patrol Tracker" icon={Route} action={livePatrolRows.length ? "In progress" : "Idle"}>
-              <LivePatrolTracker rows={livePatrolRows} checkpoints={livePatrolCheckpoints.data ?? []} loading={patrols.isLoading || livePatrolCheckpoints.isLoading} />
-            </DashboardPanel>
-            <DashboardPanel title='Device Feedback' icon={Cpu} action='View all' className='flex-1'>
-              <DeviceFeedbackRows devices={siteDevices} scans={todayRows.scans} alerts={todayRows.alerts} />
-            </DashboardPanel>
-          </div>
-
-          <DashboardPanel title={`Live Map - ${selectedSite}`} icon={MapPin} action='Map Controls' className='min-h-[34rem] overflow-hidden' bodyClassName='min-h-[32rem] p-0'>
-            <Suspense fallback={<div className='flex h-full min-h-[32rem] items-center justify-center text-sm text-slate-400'>Loading live map...</div>}>
-              <LiveMap operationsMode resizeSignal={messages.length} />
-            </Suspense>
-          </DashboardPanel>
-
-          <section className='flex h-[min(52rem,calc(100vh-15rem))] min-h-[34rem] flex-col overflow-hidden rounded-lg border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_35px_rgba(14,165,233,0.08)]'>
+          <section className='flex h-[24rem] min-h-[24rem] flex-col overflow-hidden rounded-lg border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_35px_rgba(14,165,233,0.08)]'>
             <div className='shrink-0 border-b border-white/10 px-4 py-3'>
               <div className='flex items-start justify-between gap-3'>
                 <div>
@@ -828,6 +797,37 @@ export default function CommandCenter() {
               </form>
             </div>
           </section>
+          <DashboardPanel title='Current SOS Rules' icon={ShieldCheck} action='Acknowledge != Resolve'>
+            <div className='grid gap-3 text-sm text-slate-300'>
+              <p><b className='text-amber-200'>Acknowledge</b> stops the siren and marks the alert seen on this dashboard.</p>
+              <p><b className='text-emerald-200'>Resolve SOS</b> closes the real SOS record and removes it from the active count.</p>
+              <p className='text-xs text-slate-500'>Resolved SOS records remain available in reports and history.</p>
+            </div>
+          </DashboardPanel>
+        </section>
+
+        <main className='grid min-h-0 flex-1 gap-3 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
+          <div className='flex min-h-0 flex-col gap-3'>
+            <DashboardPanel title="Today's Patrol Status" icon={ShieldCheck} action='Today'>
+              <PatrolStatusDonut counts={patrolCounts} total={totalPatrols} />
+            </DashboardPanel>
+            <DashboardPanel title="Live Patrol Tracker" icon={Route} action={livePatrolRows.length ? "In progress" : "Idle"}>
+              <LivePatrolTracker rows={livePatrolRows} checkpoints={livePatrolCheckpoints.data ?? []} loading={patrols.isLoading || livePatrolCheckpoints.isLoading} />
+            </DashboardPanel>
+            <DashboardPanel title='Device Feedback' icon={Cpu} action='View all' className='flex-1'>
+              <DeviceFeedbackRows devices={siteDevices} scans={todayRows.scans} alerts={todayRows.alerts} />
+            </DashboardPanel>
+          </div>
+
+          <DashboardPanel title={`Live Map - ${selectedSite}`} icon={MapPin} action='Map Controls' className='min-h-[34rem] overflow-hidden' bodyClassName='min-h-[32rem] p-0'>
+            <Suspense fallback={<div className='flex h-full min-h-[32rem] items-center justify-center text-sm text-slate-400'>Loading live map...</div>}>
+              <LiveMap operationsMode resizeSignal={messages.length} />
+            </Suspense>
+          </DashboardPanel>
+
+          <DashboardPanel title='SOS Alerts' icon={ShieldAlert} action={sosAlertCount ? 'Action required' : 'All clear'} className={(sosAlertCount ? 'border-rose-400/30 bg-rose-950/20 shadow-[0_0_34px_rgba(244,63,94,0.14)] ' : '') + 'min-h-[34rem]'}>
+            <SosResolutionPanel alerts={siteAlerts} siteName={selectedSite} canManage={canManage} resolvingId={resolvingSosId} acknowledgedIds={acknowledgedSosIds} soundPrompt={sosSoundPrompt} onAcknowledge={handleAcknowledgeSos} onEnableSound={handleEnableSosSound} onResolve={handleResolveSos} />
+          </DashboardPanel>
         </main>
 
         {canManage ? <section className='rounded-lg border border-emerald-400/20 bg-slate-950/75 p-4 shadow-[0_0_30px_rgba(14,165,233,0.07)]'>
@@ -1467,6 +1467,7 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` - ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` - ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
 
 
 

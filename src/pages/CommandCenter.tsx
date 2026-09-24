@@ -776,7 +776,7 @@ export default function CommandCenter() {
     sos: latestIso(todaySosAlerts, (row) => row.created_at),
     recordings: latestIso(todayRecordings, (row) => row.captured_at ?? row.created_at),
   };
-  const activityUnseen = (activityType: ActivityType) => activityType === 'sos' && sosAlertCount > 0 ? true : isNewerThanAck(activityLatest[activityType], ackMap.get(activityType));
+  const activityUnseen = (activityType: ActivityType) => isNewerThanAck(activityLatest[activityType], ackMap.get(activityType));
   const patrolCounts = patrolStatusCounts(todayPatrolRows);
   const totalPatrols = Object.values(patrolCounts).reduce((total, value) => total + value, 0) || todayPatrolRows.length;
   const activityBuckets = Array.from({ length: 12 }, (_, index) => {
@@ -842,7 +842,7 @@ export default function CommandCenter() {
         <section className='grid gap-3 md:grid-cols-2 xl:grid-cols-5'>
           <KpiCard title='Active Patrols' value={activePatrolCount} total={totalPatrols || undefined} note='Live sessions' icon={Users} tone='emerald' />
           <KpiCard title='Devices Online' value={onlineDevices} total={siteDevices.length || undefined} note='Reporting devices' icon={Smartphone} tone='cyan' />
-          <KpiCard title='SOS Alerts' value={sosAlertCount} note={sosAlertCount ? 'Action required' : 'All clear'} icon={ShieldAlert} tone='rose' unseen={activityUnseen('sos')} onClick={() => openActivityMetric('sos')} />
+          <KpiCard title='SOS Alerts' value={todaySosAlerts.length} note={sosAlertCount ? 'Action required' : 'All clear'} icon={ShieldAlert} tone='rose' unseen={activityUnseen('sos')} onClick={() => openActivityMetric('sos')} />
           <KpiCard title='Open Incidents' value={openIncidentCount} note={`${todayIncidentCount} today, ${highPriorityIncidentCount} high priority`} icon={Shield} tone='amber' />
           <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${loadedScansToday} loaded today`} icon={ScanLine} tone='blue' unseen={activityUnseen('scans')} onClick={() => openActivityMetric('scans')} />
         </section>
@@ -851,7 +851,7 @@ export default function CommandCenter() {
           <KpiCard title='Photos' value={photoCountValue} note='Captured today' icon={Camera} tone='cyan' unseen={activityUnseen('photos')} onClick={() => openActivityMetric('photos')} />
           <KpiCard title='Datalog' value={datalogCountValue} note='Entries today' icon={FileText} tone='emerald' unseen={activityUnseen('datalog')} onClick={() => openActivityMetric('datalog')} />
           <KpiCard title='Recordings' value={recordingCountValue} note='Audio today' icon={Mic} tone='blue' unseen={activityUnseen('recordings')} onClick={() => openActivityMetric('recordings')} />
-          <div className='md:col-span-3 xl:col-span-2'><SiteActivityTodayMatrix site={selectedSite} counts={{ scans: scanCountValue, photos: photoCountValue, datalog: datalogCountValue, sos: sosAlertCount, recordings: recordingCountValue }} unseen={{ scans: activityUnseen('scans'), photos: activityUnseen('photos'), datalog: activityUnseen('datalog'), sos: activityUnseen('sos'), recordings: activityUnseen('recordings') }} onOpen={openActivityMetric} /></div>
+          <div className='md:col-span-3 xl:col-span-2'><SiteActivityTodayMatrix site={selectedSite} counts={{ scans: scanCountValue, photos: photoCountValue, datalog: datalogCountValue, sos: todaySosAlerts.length, recordings: recordingCountValue }} unseen={{ scans: activityUnseen('scans'), photos: activityUnseen('photos'), datalog: activityUnseen('datalog'), sos: activityUnseen('sos'), recordings: activityUnseen('recordings') }} onOpen={openActivityMetric} /></div>
         </section>
 
         <section className='grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]'>
@@ -1113,7 +1113,7 @@ function SiteActivityTodayMatrix({ site, counts, unseen, onOpen }: { site: strin
     <div className='mt-3 overflow-x-auto'>
       <table className='w-full min-w-[28rem] text-left text-xs'>
         <thead className='text-slate-500'><tr><th className='pb-2 pr-3'>Site</th>{columns.map(([, label]) => <th key={label} className='pb-2 px-2'>{label}</th>)}</tr></thead>
-        <tbody><tr className='border-t border-white/10'><td className='py-3 pr-3 font-bold text-white'>{site}</td>{columns.map(([type]) => <td key={type} className='px-2 py-3'><button type='button' onClick={() => onOpen(type)} className={(unseen[type] ? 'text-rose-300' : 'text-slate-100') + ' rounded-md px-2 py-1 font-mono text-sm font-black hover:bg-white/5'}>{unseen[type] ? 'red ' : ''}{counts[type]}</button></td>)}</tr></tbody>
+        <tbody><tr className='border-t border-white/10'><td className='py-3 pr-3 font-bold text-white'>{site}</td>{columns.map(([type]) => <td key={type} className='px-2 py-3'><button type='button' onClick={() => onOpen(type)} className={(unseen[type] ? 'text-rose-300' : 'text-slate-100') + ' rounded-md px-2 py-1 font-mono text-sm font-black hover:bg-white/5'}>{counts[type]}</button></td>)}</tr></tbody>
       </table>
     </div>
   </div>;
@@ -1121,11 +1121,11 @@ function SiteActivityTodayMatrix({ site, counts, unseen, onOpen }: { site: strin
 
 function ActivityDrilldown({ type, site, scans, photos, dataLogs, sosAlerts, recordings }: { type: ActivityType; site: string; scans: DashboardScan[]; photos: IncidentPhotoActivity[]; dataLogs: DatalogSubmission[]; sosAlerts: DashboardAlert[]; recordings: RecordingActivity[] }) {
   const empty = <p className='text-slate-400'>No {activityTitle(type).toLowerCase()} records for {site} today.</p>;
-  if (type === 'scans') return scans.length ? <ReportRows rows={scans.slice(0, 12).map((row) => ({ label: row.checkpoints?.name ?? row.device_identifier ?? 'Checkpoint scan', value: assistantTime(row.scanned_at) ?? '--:--', meta: row.tag_status ?? undefined }))} /> : empty;
-  if (type === 'photos') return photos.length ? <ReportRows rows={photos.slice(0, 12).map((row) => ({ label: row.storage_path?.split('/').pop() ?? 'Incident photo', value: assistantTime(row.captured_at ?? row.created_at) ?? '--:--', meta: row.device_identifier ?? undefined }))} /> : empty;
+  if (type === 'scans') return scans.length ? <ReportRows rows={scans.slice(0, 12).map((row) => ({ label: row.checkpoints?.name ?? row.device_identifier ?? 'Checkpoint scan', value: assistantTime(row.scanned_at) ?? '--:--', meta: row.tag_status ?? undefined }))} empty='' /> : empty;
+  if (type === 'photos') return photos.length ? <ReportRows rows={photos.slice(0, 12).map((row) => ({ label: row.storage_path?.split('/').pop() ?? 'Incident photo', value: assistantTime(row.captured_at ?? row.created_at) ?? '--:--', meta: row.device_identifier ?? undefined }))} empty='' /> : empty;
   if (type === 'datalog') return <CurrentDatalogEntries rows={dataLogs} />;
   if (type === 'sos') return sosAlerts.length ? <AlertRows rows={sosAlerts} /> : empty;
-  return recordings.length ? <ReportRows rows={recordings.slice(0, 12).map((row) => ({ label: row.filename ?? row.storage_path?.split('/').pop() ?? 'Recording', value: assistantTime(row.captured_at ?? row.created_at) ?? '--:--', meta: row.device_identifier ?? undefined }))} /> : empty;
+  return recordings.length ? <ReportRows rows={recordings.slice(0, 12).map((row) => ({ label: row.filename ?? row.storage_path?.split('/').pop() ?? 'Recording', value: assistantTime(row.captured_at ?? row.created_at) ?? '--:--', meta: row.device_identifier ?? undefined }))} empty='' /> : empty;
 }
 
 function activityTitle(type: ActivityType) {

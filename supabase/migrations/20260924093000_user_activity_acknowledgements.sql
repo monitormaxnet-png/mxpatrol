@@ -62,3 +62,7 @@ with check (
 );
 
 notify pgrst, 'reload schema';
+
+grant select, insert, update on public.user_activity_acknowledgements to authenticated;
+grant all on public.user_activity_acknowledgements to service_role;
+notify pgrst, 'reload schema';

@@ -9,7 +9,7 @@ import {
   Eye,
   FileText,
   Loader2,
-  Plus,
+
   Search,
   Share2,
   ShieldCheck,
@@ -34,10 +34,12 @@ import { SocPageShell } from "@/components/dashboard/SocComponents";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
 import { usePatrolSessionReports, usePatrolSessions, usePatrolTemplates } from "@/hooks/useScheduledPatrols";
 import { buildIncidentEvidencePackage, downloadBlob } from "@/lib/incidentEvidencePackage";
-import { MX_PDF_REPORT_TYPES, openMxPdfReport, type MxPdfIncidentEvidence, type MxPdfReportInput, type MxPdfReportType } from "@/lib/mxPdfReports";
+import { MX_PDF_REPORT_TYPES, buildMxPdfReportResult, downloadMxPdfReport, type MxPdfIncidentEvidence, type MxPdfReportInput, type MxPdfReportType } from "@/lib/mxPdfReports";
 
 type DateRange = "today" | "7d" | "30d";
 type ReportTab = "all" | "generated" | "scheduled" | "pending" | "failed";
+type ReportFlowState = "selecting" | "generating" | "generated" | "error";
+type GeneratedReportResult = ReturnType<typeof buildMxPdfReportResult>;
 type DatalogReportRow = { id: string; submitted_at: string | null; datalog_value: string | null; responses_json: any; site_id: string | null; checkpoint_id: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
 type DatalogCheckpointOption = { id: string; name: string; site_id: string | null };
 type IncidentPhotoEvidenceRow = { id: string; site_id: string | null; device_identifier: string | null; storage_path: string; captured_at: string | null; created_at?: string | null; signed_url?: string | null };
@@ -181,6 +183,9 @@ const Reports = () => {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [reportFlowState, setReportFlowState] = useState<ReportFlowState>("selecting");
+  const [generatedReport, setGeneratedReport] = useState<GeneratedReportResult | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const realtime = useRealtimeConnectionStatus("reports-management");
   const since = useMemo(() => dateRangeStart(dateRange), [dateRange]);
   const { data: scans = [], isLoading: scansLoading, error: scansError } = useLivePatrolScans(250, siteId);
@@ -392,14 +397,27 @@ const Reports = () => {
 
   const handleGenerate = (overrideType?: MxPdfReportType) => {
     setGenerating(true);
+    setReportFlowState("generating");
+    setReportError(null);
     try {
-      openMxPdfReport(buildPdfInput(overrideType));
-      toast.success("PDF report opened");
+      const result = buildMxPdfReportResult(buildPdfInput(overrideType));
+      setGeneratedReport(result);
+      setReportFlowState("generated");
+      toast.success("Report generated inside MX Patrol");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to open PDF report");
+      const message = error instanceof Error ? error.message : "Failed to generate report";
+      setReportError(message);
+      setReportFlowState("error");
+      toast.error(message);
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleDownloadGeneratedReport = () => {
+    if (!generatedReport) return;
+    downloadMxPdfReport(generatedReport.input, generatedReport.filename);
+    toast.success("PDF download started");
   };
 
   const handleDownloadIncidentPackage = async () => {
@@ -482,10 +500,10 @@ const Reports = () => {
           </div>
           <div className="flex gap-2">
             <button onClick={() => void handleGenerate()} disabled={generating} className="inline-flex h-11 items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 text-sm font-bold text-sky-200 disabled:opacity-50">
-              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Generate PDF
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} Generate Report
             </button>
-            <button onClick={() => void handleGenerate()} disabled={generating} className="inline-flex h-11 items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 text-sm font-bold text-emerald-100 disabled:opacity-50">
-              <Plus className="h-4 w-4" /> Open PDF
+            <button onClick={handleDownloadGeneratedReport} disabled={!generatedReport || generating} className="inline-flex h-11 items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 text-sm font-bold text-emerald-100 disabled:opacity-50">
+              <Download className="h-4 w-4" /> Download PDF
             </button>
           </div>
         </section>
@@ -498,6 +516,8 @@ const Reports = () => {
           <MetricCard icon={FileText} tone="cyan" label="Total Scans" value={scansLoading ? "--" : periodScans.length} detail="Registered scans only" />
         </section>
 
+
+        <GeneratedReportPanel state={reportFlowState} result={generatedReport} error={reportError} onGenerate={() => handleGenerate()} onDownload={handleDownloadGeneratedReport} onChangeFilters={() => setReportFlowState("selecting")} />
 
         <ExecutiveSummary compliance={compliance} completed={completedExpectedSessions.length} expected={expectedSessions.length} scans={periodScans.length} patrolMinutes={patrolMinutes} incidents={metrics?.incidents ?? 0} sos={metrics?.sos ?? 0} />
 
@@ -539,6 +559,20 @@ const Reports = () => {
     </SocPageShell>
   );
 };
+
+function GeneratedReportPanel({ state, result, error, onGenerate, onDownload, onChangeFilters }: { state: ReportFlowState; result: GeneratedReportResult | null; error: string | null; onGenerate: () => void; onDownload: () => void; onChangeFilters: () => void }) {
+  if (state === "selecting" && !result) return null;
+  if (state === "generating") return <State icon={Loader2} spin message="Generating report..." />;
+  if (state === "error") return <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-red-100"><p className="font-bold">Report generation failed</p><p className="mt-1 text-sm">{error ?? "Could not generate the report."}</p><button onClick={onGenerate} className="mt-3 rounded-lg border border-red-300/40 px-3 py-2 text-sm font-bold">Retry</button></div>;
+  if (!result) return null;
+  return <section className="rounded-xl border border-emerald-400/20 bg-slate-950/72">
+    <div className="flex flex-col gap-3 border-b border-white/10 p-4 lg:flex-row lg:items-center lg:justify-between">
+      <div><h2 className="text-sm font-black uppercase tracking-[0.12em] text-white">Report Generated</h2><p className="mt-1 text-xs text-slate-400">{result.filename}</p></div>
+      <div className="flex flex-wrap gap-2"><button onClick={onDownload} className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 text-sm font-bold text-emerald-100"><Download className="h-4 w-4" />Download PDF</button><button onClick={onChangeFilters} className="inline-flex h-9 items-center rounded-lg border border-white/10 px-3 text-sm font-bold text-slate-300">Change Filters</button></div>
+    </div>
+    <iframe title="MX Patrol report preview" srcDoc={result.html} className="h-[720px] w-full rounded-b-xl bg-white" sandbox="allow-same-origin" />
+  </section>;
+}
 function DatalogReportTable({ rows, checkpoints, checkpointId, onCheckpointChange, loading, error, dateRange }: { rows: DatalogReportRow[]; checkpoints: DatalogCheckpointOption[]; checkpointId: string; onCheckpointChange: (value: string) => void; loading: boolean; error: unknown; dateRange: string }) {
   return (
     <section className="rounded-xl border border-white/10 bg-slate-950/72">
@@ -726,7 +760,7 @@ function ReportRow({ report, selected, companyName, siteLabel, onSelect, onExpor
       <td className="px-3 py-3">
         <div className="flex gap-1">
           <IconButton label="Preview" icon={Eye} onClick={() => onSelect(report.id)} />
-          
+
           <IconButton label="Share unavailable" icon={Share2} disabled />
         </div>
       </td>
@@ -974,10 +1008,10 @@ function QuickActions({ generating, onGenerate, onExecutive, onIncidentPackage }
     <div className="rounded-xl border border-white/10 bg-slate-950/72 p-4">
       <h3 className="mb-3 font-bold text-white">Quick Actions</h3>
       <div className="grid gap-2">
-        <ActionButton icon={Zap} label="Generate PDF" onClick={onGenerate} disabled={generating} />
-        <ActionButton icon={ShieldCheck} label="Patrol PDF" onClick={onExecutive} disabled={generating} />
+        <ActionButton icon={Zap} label="Generate Report" onClick={onGenerate} disabled={generating} />
+        <ActionButton icon={ShieldCheck} label="Generate Patrol Report" onClick={onExecutive} disabled={generating} />
         <ActionButton icon={CalendarClock} label="Create Schedule" disabled />
-        <ActionButton icon={FileText} label="Open Selected PDF" onClick={onGenerate} />
+        <ActionButton icon={FileText} label="View Current Report" onClick={onGenerate} />
         <ActionButton icon={Download} label="Download Incident Package" onClick={onIncidentPackage} disabled={generating} />
         <ActionButton icon={Share2} label="Share Report" disabled />
       </div>
@@ -1019,14 +1053,3 @@ function formatDuration(minutes: number) {
 }
 
 export default Reports;
-
-
-
-
-
-
-
-
-
-
-

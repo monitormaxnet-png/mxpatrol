@@ -44,7 +44,7 @@ import {
   type WorkflowState,
 } from '@/lib/assistantWorkflows';
 import { reportMenuItems } from '@/lib/assistantReportDefinitions';
-import { openMxPdfReport, reportTypeFromAction } from '@/lib/mxPdfReports';
+import { buildMxPdfReportHtml, downloadMxPdfReport, reportTypeFromAction, type MxPdfReportInput } from '@/lib/mxPdfReports';
 import { resolveSosAlert } from '@/lib/resolveSosAlert';
 import { setFeedbackSoundEnabled } from '@/lib/feedbackSound';
 import { startSosSiren, stopSosSiren } from '@/lib/sosSirenManager';
@@ -77,6 +77,8 @@ type AssistantCompany = { id: string; name: string; status?: string | null; site
 type AssistantSite = { id: string; company_id: string; company_name?: string | null; name: string; address?: string | null; gps_lat?: number | null; gps_lng?: number | null; status?: string | null; created_at?: string | null };
 
 const ACTIVITY_TYPES: ActivityType[] = ['scans', 'photos', 'datalog', 'sos', 'recordings'];
+const isAudioEvidencePath = (path?: string | null) => /\.(m4a|mp3|wav|aac|ogg|webm)$/i.test(path ?? '');
+const isImageEvidencePath = (path?: string | null) => /\.(jpe?g|png|webp|gif)$/i.test(path ?? '');
 
 const PERIODS: Record<string, { label: string; from: () => Date; to: () => Date; range: string }> = {
   today: { label: 'Today', range: 'today', from: () => startOfDay(0), to: () => new Date() },
@@ -286,7 +288,22 @@ export default function CommandCenter() {
   const recordingActivity = useQuery({
     queryKey: ['dashboard_recording_activity', activityCompanyId, selectedSiteId],
     enabled: !!user && !!activityCompanyId,
-    queryFn: async () => [] as RecordingActivity[],
+    queryFn: async () => {
+      const client = supabase as any;
+      let query = client
+        .from('incident_report_photos')
+        .select('id, captured_at, created_at, company_id, site_id, device_identifier, storage_path')
+        .eq('company_id', activityCompanyId!)
+        .gte('captured_at', startOfDay(0).toISOString())
+        .order('captured_at', { ascending: false })
+        .limit(200);
+      if (selectedSiteId) query = query.eq('site_id', selectedSiteId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return ((data ?? []) as RecordingActivity[])
+        .filter((row) => isAudioEvidencePath(row.storage_path))
+        .map((row) => ({ ...row, filename: row.filename ?? row.storage_path?.split('/').pop() ?? null }));
+    },
   });
 
   const activityAcknowledgements = useQuery({
@@ -299,7 +316,8 @@ export default function CommandCenter() {
         .select('activity_type, acknowledged_at')
         .eq('user_id', user!.id)
         .eq('company_id', activityCompanyId!)
-        .in('activity_type', ACTIVITY_TYPES);
+        .in('activity_type', ACTIVITY_TYPES)
+        .order('acknowledged_at', { ascending: false });
       query = selectedSiteId ? query.eq('site_id', selectedSiteId) : query.is('site_id', null);
       const { data, error } = await query;
       if (error) throw error;
@@ -313,9 +331,12 @@ export default function CommandCenter() {
       const companyId = selectedCompanyId!;
       const siteId = selectedSiteId;
       const siteScoped = (query: any) => siteId ? query.eq('site_id', siteId) : query;
+      const alertQuery = siteId
+        ? supabase.from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))').eq('company_id', companyId).eq('site_id', siteId).order('created_at', { ascending: false }).limit(100)
+        : supabase.from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100);
       const [deviceRows, alertRows, incidentRows, scanRows, checkpointRows, patrolRows, dataLogRows, routeRows, formRows] = await Promise.all([
         siteScoped(supabase.from('devices').select('*, sites(name)').eq('company_id', companyId)).order('last_seen_at', { ascending: false }).limit(100),
-        siteScoped(supabase.from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))').eq('company_id', companyId)).order('created_at', { ascending: false }).limit(100),
+        alertQuery,
         siteScoped(supabase.from('incidents').select('*').eq('company_id', companyId)).order('created_at', { ascending: false }).limit(100),
         siteScoped(supabase.from('scan_logs').select('*, sites(name), guards(full_name, badge_number), checkpoints(name)').eq('company_id', companyId)).order('scanned_at', { ascending: false }).limit(200),
         siteScoped(supabase.from('checkpoints').select('*, sites(name)').eq('company_id', companyId)).order('sort_order').limit(200),
@@ -600,15 +621,46 @@ export default function CommandCenter() {
     if (!user?.id || !activityCompanyId) return;
     const now = new Date().toISOString();
     const client = supabase as any;
-    const { error } = await client.from('user_activity_acknowledgements').upsert({
-      user_id: user.id,
-      company_id: activityCompanyId,
-      site_id: selectedSiteId,
-      activity_type: activityType,
-      acknowledged_at: now,
-      updated_at: now,
-    }, { onConflict: 'user_id,company_id,site_id,activity_type' });
-    if (error) throw error;
+    if (selectedSiteId) {
+      const { error } = await client.from('user_activity_acknowledgements').upsert({
+        user_id: user.id,
+        company_id: activityCompanyId,
+        site_id: selectedSiteId,
+        activity_type: activityType,
+        acknowledged_at: now,
+        updated_at: now,
+      }, { onConflict: 'user_id,company_id,site_id,activity_type' });
+      if (error) throw error;
+    } else {
+      const existing = await client
+        .from('user_activity_acknowledgements')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('company_id', activityCompanyId)
+        .eq('activity_type', activityType)
+        .is('site_id', null)
+        .order('acknowledged_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+      if (existing.data?.id) {
+        const { error } = await client
+          .from('user_activity_acknowledgements')
+          .update({ acknowledged_at: now, updated_at: now })
+          .eq('id', existing.data.id);
+        if (error) throw error;
+      } else {
+        const { error } = await client.from('user_activity_acknowledgements').insert({
+          user_id: user.id,
+          company_id: activityCompanyId,
+          site_id: null,
+          activity_type: activityType,
+          acknowledged_at: now,
+          updated_at: now,
+        });
+        if (error) throw error;
+      }
+    }
     await queryClient.invalidateQueries({ queryKey: ['dashboard_activity_acknowledgements'] });
   };
 
@@ -659,23 +711,19 @@ export default function CommandCenter() {
       if (action.startsWith('report:device_security:') && !isPlatformOwner) return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can access Device Security Reports.</p>);
       const reportType = reportTypeFromAction(action);
       if (!reportType) return addAssistant('REPORT UNAVAILABLE', <p>This report has been retired. Choose one of the six PDF reports from Reports.</p>);
-      try {
-        openMxPdfReport({
-          type: reportType,
-          companyName: selectedCompanyName,
-          siteName: selectedSite,
-          periodLabel: 'Today / selected site data',
-          scans: siteScans,
-          patrols: sitePatrols,
-          alerts: siteAlerts,
-          incidents: siteIncidents,
-          datalogs: siteDataLogs,
-          checkpoints: siteCheckpoints,
-        });
-        return addAssistant('PDF REPORT READY', <p>{reportTitle(action)} opened in a print-ready PDF layout. Use the browser print dialog to save or download the PDF.</p>);
-      } catch (error) {
-        return addAssistant('PDF REPORT BLOCKED', <p>{error instanceof Error ? error.message : 'Could not open the PDF report.'}</p>);
-      }
+      const reportInput: MxPdfReportInput = {
+        type: reportType,
+        companyName: selectedCompanyName,
+        siteName: selectedSite,
+        periodLabel: 'Today / selected site data',
+        scans: siteScans,
+        patrols: sitePatrols,
+        alerts: siteAlerts,
+        incidents: siteIncidents,
+        datalogs: siteDataLogs,
+        checkpoints: siteCheckpoints,
+      };
+      return addAssistant('REPORT GENERATED', <InlineReportPreview title={reportTitle(action)} input={reportInput} />);
     }
     if (action === 'saved_reports') return addAssistant('SAVED REPORTS - ' + selectedSite, <SavedReports jobs={siteReportJobs} loading={reportJobs.isLoading} />);
     if (action === 'generate_report') {
@@ -759,10 +807,16 @@ export default function CommandCenter() {
     const value = new Date(row.submitted_at ?? 0).getTime();
     return Number.isFinite(value) && value >= startOfDay(0).getTime() && value <= Date.now();
   });
-  const todayIncidentPhotos = (incidentPhotoActivity.data ?? []).filter((row) => withinToday(row.captured_at ?? row.created_at));
+  const todayIncidentPhotos = (incidentPhotoActivity.data ?? []).filter((row) => withinToday(row.captured_at ?? row.created_at) && isImageEvidencePath(row.storage_path));
   const todayRecordings = (recordingActivity.data ?? []).filter((row) => withinToday(row.captured_at ?? row.created_at));
   const todaySosAlerts = todayRows.alerts.filter((row) => row.type === 'panic_button');
-  const ackMap = new Map((activityAcknowledgements.data ?? []).map((row) => [row.activity_type, row.acknowledged_at]));
+  const ackMap = new Map<ActivityType, string | null>();
+  for (const row of activityAcknowledgements.data ?? []) {
+    const current = ackMap.get(row.activity_type);
+    const currentTime = current ? new Date(current).getTime() : 0;
+    const rowTime = row.acknowledged_at ? new Date(row.acknowledged_at).getTime() : 0;
+    if (!current || rowTime > currentTime) ackMap.set(row.activity_type, row.acknowledged_at);
+  }
   const openIncidents = siteIncidents.filter((row) => !row.resolved);
   const operationPatrolRows = [...livePatrolRows, ...todayPatrolRows.filter((row) => !livePatrolRows.some((live) => live.id === row.id))];
   const onlineDevices = siteDevices.filter((device) => device.status === 'online').length;
@@ -1403,6 +1457,15 @@ function AssistantBubble({ title, children }: { title: string; children: ReactNo
 function UserBubble({ children }: { children: ReactNode }) { return <div className='ml-auto max-w-xl rounded-2xl bg-emerald-600 px-4 py-3 text-sm text-white'>{children}</div>; }
 function Shortcut({ icon: Icon, label, onClick }: { icon: typeof Bot; label: string; onClick: () => void }) { return <button type='button' onClick={onClick} className='flex w-full items-center justify-between rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-left text-sm font-semibold text-slate-100 hover:border-emerald-400/30'><span className='flex items-center gap-3'><Icon className='h-5 w-5 text-emerald-300' />{label}</span><ArrowRight className='h-4 w-4 text-slate-500' /></button>; }
 function SitePicker({ sites, selectedId, onSelect }: { sites: Array<{ id: string; name: string; status?: string | null }>; selectedId: string | null; onSelect: (site: { id: string; name: string; status?: string | null }) => void }) { if (!sites.length) return <p>No sites are assigned to your account yet.</p>; return <div className='grid gap-2'>{sites.map((site) => <button key={site.id} onClick={() => onSelect(site)} className={(site.id === selectedId ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-slate-950/70 text-slate-300') + ' rounded-xl border px-3 py-2 text-left'}>{site.name}</button>)}</div>; }
+function InlineReportPreview({ title, input }: { title: string; input: MxPdfReportInput }) {
+  const html = useMemo(() => buildMxPdfReportHtml(input), [input]);
+  return <div className='space-y-3'>
+    <p className='text-slate-300'>{title} generated inside MX Patrol.</p>
+    <button type='button' onClick={() => downloadMxPdfReport(input)} className='rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-2 text-sm font-bold text-emerald-100'>Download PDF</button>
+    <iframe title={title + ' preview'} srcDoc={html} className='h-96 w-full rounded-lg bg-white' sandbox='allow-same-origin' />
+  </div>;
+}
+
 function CompanyList({ rows, loading, selectedId, onSelect }: { rows: AssistantCompany[]; loading: boolean; selectedId: string | null; onSelect: (company: AssistantCompany) => void }) {
   if (loading) return <p>Loading companies...</p>;
   if (!rows.length) return <p>No companies found.</p>;
@@ -1623,28 +1686,3 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` - ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` - ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

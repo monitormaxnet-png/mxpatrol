@@ -119,11 +119,26 @@ describe("remaining partial item regressions", () => {
     expect(migration).toContain("from public.platform_admins pa");
   });
 
+  it("captures patrol checkpoint alias and all-sites acknowledgement fixes in migrations", () => {
+    const migration = read("supabase/migrations/20260925090000_command_center_activity_and_patrol_compat.sql");
+    expect(migration).toContain("add column if not exists patrol_session_id");
+    expect(migration).toContain("sync_patrol_session_checkpoint_session_aliases");
+    expect(migration).toContain("before insert or update of session_id, patrol_session_id");
+    expect(migration).toContain("user_activity_acknowledgements_unique_all_sites");
+    expect(migration).toContain("where site_id is null");
+  });
+
   it("shows and acknowledges unseen activity counts on the Command Center dashboard", () => {
     const source = read("src/pages/CommandCenter.tsx");
     expect(source).toContain("dashboard_activity_acknowledgements");
     expect(source).toContain("user_activity_acknowledgements");
     expect(source).toContain("incident_report_photos");
+    expect(source).toContain("isAudioEvidencePath(row.storage_path)");
+    expect(source).toContain("isImageEvidencePath(row.storage_path)");
+    expect(source).toContain(".select('id')");
+    expect(source).toContain(".is('site_id', null)");
+    expect(source).toContain(".maybeSingle()");
+    expect(source).not.toContain("queryFn: async () => [] as RecordingActivity[]");
     expect(source).toContain("activityUnseen('scans')");
     expect(source).toContain("activityUnseen('photos')");
     expect(source).toContain("activityUnseen('datalog')");
@@ -134,12 +149,23 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("const activityUnseen = (activityType: ActivityType) => isNewerThanAck(");
     expect(source).toContain("acknowledgeActivity(activityType)");
   });
+
+
+  it("keeps PDF reports inside MX Patrol and downloads without new tabs", () => {
+    const pdf = read("src/lib/mxPdfReports.ts");
+    const reports = read("src/pages/Reports.tsx");
+    const commandCenter = read("src/pages/CommandCenter.tsx");
+    expect(pdf).not.toContain("window.open");
+    expect(pdf).not.toContain("_blank");
+    expect(pdf).toContain("buildMxPdfReportResult");
+    expect(pdf).toContain("downloadMxPdfReport");
+    expect(pdf).toContain("URL.createObjectURL(buildMxPdfReportBlob(input))");
+    expect(reports).toContain("GeneratedReportPanel");
+    expect(reports).toContain("srcDoc={result.html}");
+    expect(reports).toContain("Download PDF");
+    expect(reports).not.toContain("Open PDF");
+    expect(commandCenter).toContain("InlineReportPreview");
+    expect(commandCenter).toContain("srcDoc={html}");
+    expect(commandCenter).not.toContain("openMxPdfReport");
+  });
 });
-
-
-
-
-
-
-
-

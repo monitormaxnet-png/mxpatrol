@@ -317,15 +317,87 @@ export function buildMxPdfReportHtml(input: MxPdfReportInput): string {
   </style></head><body><main class="page"><header><div class="brand"><div class="shield">MX</div><div><h1>MX PATROL</h1><div class="tagline">SECURITY MONITORING MADE SIMPLE</div></div></div><div class="meta"><b>Company:</b><span>${escapeHtml(input.companyName)}</span><b>Site:</b><span>${escapeHtml(input.siteName)}</span><b>Report Type:</b><span>${escapeHtml(content.title)}</span><b>Report Period:</b><span>${escapeHtml(input.periodLabel)}</span><b>Generated On:</b><span>${escapeHtml(formatReportDateTime(generatedAt))}</span></div></header><section class="title"><div><h2>${escapeHtml(content.title)}</h2><p>${escapeHtml(content.subtitle)}</p></div><div>People | Sites | Security | Safer Tomorrow</div></section>${content.html}<div class="totals">${escapeHtml(content.totals)}</div>${evidenceHtml}<div class="wave"></div><footer><span>Security Today. A Safer Tomorrow.</span><span>Page 1 of 1&nbsp;&nbsp; MX PATROL</span></footer></main></body></html>`;
 }
 
-export function openMxPdfReport(input: MxPdfReportInput): void {
-  const html = buildMxPdfReportHtml(input);
-  const win = window.open("", "_blank", "noopener,noreferrer,width=1200,height=800");
-  if (!win) throw new Error("Popup blocked. Allow popups to generate the PDF report.");
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 350);
+function pdfEscape(value: unknown): string {
+  return String(value ?? "").split("").map((char) => {
+    const code = char.charCodeAt(0);
+    if (char === "\\" || char === "(" || char === ")") return "\\" + char;
+    if (code === 10 || code === 13) return " ";
+    return char;
+  }).join("");
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<br\s*\/?\s*>/gi, " | ")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function reportFilename(input: MxPdfReportInput): string {
+  const type = input.type.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("-");
+  const period = input.periodLabel.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "Report";
+  return "MX-Patrol-" + type + "-Report-" + period + ".pdf";
+}
+
+export function buildMxPdfReportBlob(input: MxPdfReportInput): Blob {
+  const content = contentFor(input);
+  const lines = [
+    "MX PATROL",
+    content.title,
+    content.subtitle,
+    "Company: " + input.companyName,
+    "Site: " + input.siteName,
+    "Report Period: " + input.periodLabel,
+    "Generated On: " + formatReportDateTime(input.generatedAt ?? new Date()),
+    "",
+    stripHtml(content.html),
+    "",
+    content.totals,
+  ].flatMap((line) => String(line).match(/.{1,105}(\s|$)|\S+/g) ?? [String(line)]).slice(0, 46);
+
+  const objects: string[] = [];
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+  objects.push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>");
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+  const text = ["BT", "/F2 22 Tf", "42 552 Td", "(" + pdfEscape(content.title) + ") Tj", "/F1 9 Tf", "0 -22 Td", ...lines.map((line) => "(" + pdfEscape(line) + ") Tj 0 -11 Td"), "ET"].join("\n");
+  objects.push("<< /Length " + text.length + " >>\nstream\n" + text + "\nendstream");
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += (index + 1) + " 0 obj\n" + object + "\nendobj\n";
+  });
+  const xref = pdf.length;
+  pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
+  offsets.slice(1).forEach((offset) => { pdf += String(offset).padStart(10, "0") + " 00000 n \n"; });
+  pdf += "trailer << /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
+  return new Blob([pdf], { type: "application/pdf" });
+}
+
+export function downloadMxPdfReport(input: MxPdfReportInput, filename = reportFilename(input)): void {
+  const url = URL.createObjectURL(buildMxPdfReportBlob(input));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function buildMxPdfReportResult(input: MxPdfReportInput) {
+  return { input, html: buildMxPdfReportHtml(input), filename: reportFilename(input) };
 }
 
 export function reportTypeFromAction(action: string): MxPdfReportType | null {
@@ -337,11 +409,3 @@ export function reportTypeFromAction(action: string): MxPdfReportType | null {
   if (action === "report:datalog" || action.includes("data_log") || action.includes("datalog")) return "datalog";
   return null;
 }
-
-
-
-
-
-
-
-

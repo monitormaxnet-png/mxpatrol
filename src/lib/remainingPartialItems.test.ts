@@ -151,6 +151,18 @@ describe("remaining partial item regressions", () => {
   });
 
 
+  it("renders downloaded PDF reports as structured tables instead of flattened text", () => {
+    const pdf = read("src/lib/mxPdfReports.ts");
+    expect(pdf).toContain("type PdfTableModel");
+    expect(pdf).toContain("reportTableModel(input)");
+    expect(pdf).toContain("buildCheckpointScanMatrix(scans");
+    expect(pdf).toContain("buildDeviceScanMatrix(scans)");
+    expect(pdf).toContain("tableChunks(model, maxDataColumns)");
+    expect(pdf).toContain("pdfRect(x, page.y - rowHeight");
+    expect(pdf).toContain("wrapPdfText(cell");
+    expect(pdf).toContain('"Page " + (index + 1) + " of "');
+  });
+
   it("keeps PDF reports inside MX Patrol and downloads without new tabs", () => {
     const pdf = read("src/lib/mxPdfReports.ts");
     const reports = read("src/pages/Reports.tsx");

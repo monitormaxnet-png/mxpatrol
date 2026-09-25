@@ -326,20 +326,7 @@ function pdfEscape(value: unknown): string {
   }).join("");
 }
 
-function stripHtml(value: string): string {
-  return value
-    .replace(/<br\s*\/?\s*>/gi, " | ")
-    .replace(/<\/tr>/gi, "\n")
-    .replace(/<\/h[1-6]>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/\s+/g, " ")
-    .trim();
-}
+type PdfTableModel = { title: string; subtitle: string; totals: string; orientation: "portrait" | "landscape"; firstHeader: string; headers: string[]; rows: string[][]; evidence?: string[][] };
 
 function reportFilename(input: MxPdfReportInput): string {
   const type = input.type.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("-");
@@ -347,36 +334,182 @@ function reportFilename(input: MxPdfReportInput): string {
   return "MX-Patrol-" + type + "-Report-" + period + ".pdf";
 }
 
-export function buildMxPdfReportBlob(input: MxPdfReportInput): Blob {
+function reportTableModel(input: MxPdfReportInput): PdfTableModel {
   const content = contentFor(input);
-  const lines = [
-    "MX PATROL",
-    content.title,
-    content.subtitle,
-    "Company: " + input.companyName,
-    "Site: " + input.siteName,
-    "Report Period: " + input.periodLabel,
-    "Generated On: " + formatReportDateTime(input.generatedAt ?? new Date()),
-    "",
-    stripHtml(content.html),
-    "",
-    content.totals,
-  ].flatMap((line) => String(line).match(/.{1,105}(\s|$)|\S+/g) ?? [String(line)]).slice(0, 46);
+  const scans = input.scans ?? [];
+  const patrols = input.patrols ?? [];
+  const alerts = input.alerts ?? [];
+  const incidents = input.incidents ?? [];
+  const datalogs = input.datalogs ?? [];
+  if (input.type === "checkpoint_scan") {
+    const matrix = buildCheckpointScanMatrix(scans, input.checkpoints ?? []);
+    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Checkpoint", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]) };
+  }
+  if (input.type === "device_scan") {
+    const matrix = buildDeviceScanMatrix(scans);
+    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Device", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]) };
+  }
+  if (input.type === "patrol") {
+    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Patrol", headers: ["Site", "Date", "Scheduled", "Actual Start", "Completion", "Status", "Completed", "Missed", "Late"], rows: patrols.map((row) => [row.patrol_name ?? row.patrol_routes?.name ?? row.patrol_templates?.name ?? "Patrol", siteName(row), reportDate(row.scheduled_start), reportTime(row.scheduled_start), reportTime(row.actual_start), reportTime(row.actual_end ?? row.finalized_at ?? row.completed_at), statusText(row.status), String(row.checkpoint_completed ?? row.completed_checkpoints ?? 0), String(row.missed_checkpoint_count ?? Math.max((row.checkpoint_total ?? row.expected_checkpoints ?? 0) - (row.checkpoint_completed ?? row.completed_checkpoints ?? 0), 0)), lateDuration(row)]) };
+  }
+  if (input.type === "sos") {
+    const sos = alerts.filter((alert) => String(alert.type ?? "").includes("panic") || String(alert.title ?? "").toLowerCase().includes("sos"));
+    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "portrait", firstHeader: "Date & Time", headers: ["Device", "Site", "Status", "Response", "Resolved"], rows: sos.map((row) => [formatReportDateTime(row.created_at), deviceName(row), siteName(row), row.is_read ? "Resolved" : "Active", reportTime(row.acknowledged_at ?? row.updated_at), reportTime(row.resolved_at)]) };
+  }
+  if (input.type === "incident") {
+    const evidenceRows: string[][] = [];
+    incidents.forEach((row) => {
+      const evidence = incidentEvidenceFor(input, row);
+      evidence.photos.forEach((photo, index) => evidenceRows.push([incidentId(row), "Photo " + (index + 1), photo.filename ?? filenameFromPath(photo.storage_path), formatReportDateTime(photo.captured_at ?? photo.created_at ?? row.created_at)]));
+      evidence.audio.forEach((audio, index) => evidenceRows.push([incidentId(row), "Audio " + (index + 1), audio.filename ?? filenameFromPath(audio.storage_path), durationLabel(audio.duration_seconds)]));
+    });
+    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Incident ID", headers: ["Date & Time", "Site", "Device", "Type", "Priority", "Description", "Status", "Photos", "Audio"], rows: incidents.map((row) => { const counts = evidenceCounts(input, row); return [incidentId(row), formatReportDateTime(row.created_at), siteName(row), deviceName(row), row.incident_type ?? row.type ?? "Incident", row.severity ?? row.priority ?? "Normal", row.title ?? row.description ?? row.message ?? "-", row.resolved ? "Resolved" : "Open", String(counts.photos), String(counts.audio)]; }), evidence: evidenceRows };
+  }
+  return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "portrait", firstHeader: "Date & Time", headers: ["Site", "Checkpoint", "Device", "Datalog Text"], rows: datalogs.map((row) => [formatReportDateTime(row.submitted_at ?? row.created_at), siteName(row), row.checkpoints?.name ?? row.checkpoint_name ?? "Checkpoint", deviceName(row), row.datalog_value ?? row.responses_json?.datalog_value ?? row.responses_json?.value ?? "-"]) };
+}
 
+function wrapPdfText(value: unknown, maxChars: number): string[] {
+  const source = String(value ?? "-").replace(/\r/g, "").split("\n");
+  const lines: string[] = [];
+  source.forEach((part) => {
+    const words = part.split(/\s+/).filter(Boolean);
+    let line = "";
+    words.forEach((word) => {
+      if (!line) line = word;
+      else if ((line + " " + word).length <= maxChars) line += " " + word;
+      else { lines.push(line); line = word; }
+      while (line.length > maxChars) { lines.push(line.slice(0, maxChars)); line = line.slice(maxChars); }
+    });
+    lines.push(line || "-");
+  });
+  return lines.slice(0, 8);
+}
+
+function pdfTextAt(x: number, y: number, text: string, size = 8, bold = false): string {
+  return "BT /" + (bold ? "F2" : "F1") + " " + size + " Tf " + x.toFixed(1) + " " + y.toFixed(1) + " Td (" + pdfEscape(text) + ") Tj ET\n";
+}
+
+function pdfRect(x: number, y: number, w: number, h: number, fill = false): string {
+  return x.toFixed(1) + " " + y.toFixed(1) + " " + w.toFixed(1) + " " + h.toFixed(1) + " re " + (fill ? "f" : "S") + "\n";
+}
+
+function tableChunks(model: PdfTableModel, maxDataColumns: number) {
+  const chunks: Array<{ headers: string[]; rows: string[][] }> = [];
+  const dataHeaders = model.headers.length ? model.headers : [];
+  if (dataHeaders.length <= maxDataColumns) return [{ headers: [model.firstHeader, ...dataHeaders], rows: model.rows }];
+  for (let i = 0; i < dataHeaders.length; i += maxDataColumns) {
+    const headers = [model.firstHeader, ...dataHeaders.slice(i, i + maxDataColumns)];
+    const rows = model.rows.map((row) => [row[0], ...row.slice(i + 1, i + 1 + maxDataColumns)]);
+    chunks.push({ headers, rows });
+  }
+  return chunks;
+}
+
+function buildTablePages(input: MxPdfReportInput): { width: number; height: number; streams: string[] } {
+  const model = reportTableModel(input);
+  const landscape = model.orientation === "landscape";
+  const width = landscape ? 842 : 595;
+  const height = landscape ? 595 : 842;
+  const margin = 34;
+  const top = height - margin;
+  const bottom = margin + 26;
+  const usableWidth = width - margin * 2;
+  const maxDataColumns = landscape ? 6 : 4;
+  const chunks = tableChunks(model, maxDataColumns);
+  const streams: string[] = [];
+  const addPage = (chunkTitle: string) => {
+    let stream = "0.02 w\n";
+    stream += pdfTextAt(margin, top, "MX PATROL", 18, true);
+    stream += pdfTextAt(margin, top - 16, model.title + (chunkTitle ? " - " + chunkTitle : ""), 14, true);
+    stream += pdfTextAt(margin, top - 31, model.subtitle, 9);
+    stream += pdfTextAt(width - 255, top, "Company: " + input.companyName, 9, true);
+    stream += pdfTextAt(width - 255, top - 13, "Site: " + input.siteName, 9);
+    stream += pdfTextAt(width - 255, top - 26, "Report Period: " + input.periodLabel, 9);
+    stream += pdfTextAt(width - 255, top - 39, "Generated: " + formatReportDateTime(input.generatedAt ?? new Date()), 9);
+    stream += "0.75 0.82 0.90 RG " + margin + " " + (top - 50) + " " + usableWidth + " 0 m S\n0 0 0 RG\n";
+    return { stream, y: top - 72 };
+  };
+  chunks.forEach((chunk, chunkIndex) => {
+    const label = chunks.length > 1 ? "Columns " + (chunkIndex + 1) + " of " + chunks.length : "";
+    let page = addPage(label);
+    const colCount = chunk.headers.length;
+    const firstWidth = Math.min(130, usableWidth * 0.25);
+    const otherWidth = (usableWidth - firstWidth) / Math.max(1, colCount - 1);
+    const widths = chunk.headers.map((_, index) => index === 0 ? firstWidth : otherWidth);
+    const headerHeight = 24;
+    const drawHeader = () => {
+      let x = margin;
+      page.stream += "0.04 0.22 0.42 rg\n";
+      chunk.headers.forEach((header, index) => { page.stream += pdfRect(x, page.y - headerHeight, widths[index], headerHeight, true); x += widths[index]; });
+      page.stream += "1 1 1 rg\n";
+      x = margin;
+      chunk.headers.forEach((header, index) => { page.stream += pdfTextAt(x + 4, page.y - 15, header, 7.5, true); x += widths[index]; });
+      page.stream += "0 0 0 rg 0.65 0.72 0.80 RG\n";
+      page.y -= headerHeight;
+    };
+    drawHeader();
+    chunk.rows.forEach((row) => {
+      const wrapped = row.map((cell, index) => wrapPdfText(cell, Math.max(8, Math.floor(widths[index] / 4.2))));
+      const rowHeight = Math.max(22, Math.max(...wrapped.map((lines) => lines.length)) * 9 + 10);
+      if (page.y - rowHeight < bottom) {
+        streams.push(page.stream);
+        page = addPage(label);
+        drawHeader();
+      }
+      let x = margin;
+      wrapped.forEach((lines, colIndex) => {
+        page.stream += pdfRect(x, page.y - rowHeight, widths[colIndex], rowHeight);
+        lines.forEach((line, lineIndex) => { page.stream += pdfTextAt(x + 4, page.y - 11 - lineIndex * 9, line, 7.2, colIndex === 0); });
+        x += widths[colIndex];
+      });
+      page.y -= rowHeight;
+    });
+    page.stream += pdfTextAt(margin, Math.max(bottom - 4, page.y - 16), model.totals, 9, true);
+    streams.push(page.stream);
+  });
+  if (model.evidence?.length) {
+    let page = addPage("Evidence");
+    const evidence = { headers: ["Incident", "Evidence", "File", "Time / Duration"], rows: model.evidence };
+    const widths = [100, 80, usableWidth - 300, 120];
+    const headerHeight = 24;
+    let x = margin;
+    page.stream += "0.04 0.22 0.42 rg\n";
+    evidence.headers.forEach((header, index) => { page.stream += pdfRect(x, page.y - headerHeight, widths[index], headerHeight, true); x += widths[index]; });
+    page.stream += "1 1 1 rg\n";
+    x = margin;
+    evidence.headers.forEach((header, index) => { page.stream += pdfTextAt(x + 4, page.y - 15, header, 7.5, true); x += widths[index]; });
+    page.stream += "0 0 0 rg 0.65 0.72 0.80 RG\n";
+    page.y -= headerHeight;
+    evidence.rows.forEach((row) => {
+      const wrapped = row.map((cell, index) => wrapPdfText(cell, Math.max(8, Math.floor(widths[index] / 4.2))));
+      const rowHeight = Math.max(22, Math.max(...wrapped.map((lines) => lines.length)) * 9 + 10);
+      if (page.y - rowHeight < bottom) { streams.push(page.stream); page = addPage("Evidence"); }
+      let x = margin;
+      wrapped.forEach((lines, colIndex) => { page.stream += pdfRect(x, page.y - rowHeight, widths[colIndex], rowHeight); lines.forEach((line, lineIndex) => { page.stream += pdfTextAt(x + 4, page.y - 11 - lineIndex * 9, line, 7.2, colIndex === 0); }); x += widths[colIndex]; });
+      page.y -= rowHeight;
+    });
+    streams.push(page.stream);
+  }
+  return { width, height, streams: streams.map((stream, index) => stream + pdfTextAt(width - 100, 18, "Page " + (index + 1) + " of " + streams.length, 8) + pdfTextAt(margin, 18, "MX PATROL", 8, true)) };
+}
+
+export function buildMxPdfReportBlob(input: MxPdfReportInput): Blob {
+  const pages = buildTablePages(input);
   const objects: string[] = [];
+  const pageObjectIds = pages.streams.map((_, index) => 3 + index * 2);
   objects.push("<< /Type /Catalog /Pages 2 0 R >>");
-  objects.push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
-  objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>");
+  objects.push("<< /Type /Pages /Kids [" + pageObjectIds.map((id) => id + " 0 R").join(" ") + "] /Count " + pages.streams.length + " >>");
+  pages.streams.forEach((stream, index) => {
+    const pageId = pageObjectIds[index];
+    const contentId = pageId + 1;
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + pages.width + " " + pages.height + "] /Resources << /Font << /F1 " + (pageObjectIds.length * 2 + 3) + " 0 R /F2 " + (pageObjectIds.length * 2 + 4) + " 0 R >> >> /Contents " + contentId + " 0 R >>");
+    objects.push("<< /Length " + stream.length + " >>\nstream\n" + stream + "\nendstream");
+  });
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
-  const text = ["BT", "/F2 22 Tf", "42 552 Td", "(" + pdfEscape(content.title) + ") Tj", "/F1 9 Tf", "0 -22 Td", ...lines.map((line) => "(" + pdfEscape(line) + ") Tj 0 -11 Td"), "ET"].join("\n");
-  objects.push("<< /Length " + text.length + " >>\nstream\n" + text + "\nendstream");
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
-  objects.forEach((object, index) => {
-    offsets.push(pdf.length);
-    pdf += (index + 1) + " 0 obj\n" + object + "\nendobj\n";
-  });
+  objects.forEach((object, index) => { offsets.push(pdf.length); pdf += (index + 1) + " 0 obj\n" + object + "\nendobj\n"; });
   const xref = pdf.length;
   pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
   offsets.slice(1).forEach((offset) => { pdf += String(offset).padStart(10, "0") + " 00000 n \n"; });

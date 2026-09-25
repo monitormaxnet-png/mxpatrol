@@ -171,7 +171,11 @@ describe("remaining partial item regressions", () => {
     expect(pdf).not.toContain("_blank");
     expect(pdf).toContain("buildMxPdfReportResult");
     expect(pdf).toContain("downloadMxPdfReport");
-    expect(pdf).toContain("URL.createObjectURL(buildMxPdfReportBlob(input))");
+    expect(pdf).toContain('pdf.startsWith("%PDF-")');
+    expect(pdf).toContain("new TextEncoder().encode(pdf)");
+    expect(pdf).toContain('type: "application/pdf"');
+    expect(pdf).toContain("ensurePdfFilename(filename)");
+    expect(pdf).toContain("URL.createObjectURL(pdfBlob)");
     expect(reports).toContain("GeneratedReportPanel");
     expect(reports).toContain("srcDoc={result.html}");
     expect(reports).toContain("Download PDF");

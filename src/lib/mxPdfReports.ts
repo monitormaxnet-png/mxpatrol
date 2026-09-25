@@ -385,6 +385,19 @@ function wrapPdfText(value: unknown, maxChars: number): string[] {
   return lines.slice(0, 8);
 }
 
+function pdfByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+function pdfBlobFromString(pdf: string): Blob {
+  if (!pdf.startsWith("%PDF-")) throw new Error("PDF generation failed: invalid PDF header.");
+  return new Blob([new TextEncoder().encode(pdf)], { type: "application/pdf" });
+}
+
+function ensurePdfFilename(filename: string): string {
+  return filename.toLowerCase().endsWith(".pdf") ? filename : filename.replace(/\.[^.]+$/, "") + ".pdf";
+}
+
 function pdfTextAt(x: number, y: number, text: string, size = 8, bold = false): string {
   return "BT /" + (bold ? "F2" : "F1") + " " + size + " Tf " + x.toFixed(1) + " " + y.toFixed(1) + " Td (" + pdfEscape(text) + ") Tj ET\n";
 }
@@ -503,7 +516,7 @@ export function buildMxPdfReportBlob(input: MxPdfReportInput): Blob {
     const pageId = pageObjectIds[index];
     const contentId = pageId + 1;
     objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + pages.width + " " + pages.height + "] /Resources << /Font << /F1 " + (pageObjectIds.length * 2 + 3) + " 0 R /F2 " + (pageObjectIds.length * 2 + 4) + " 0 R >> >> /Contents " + contentId + " 0 R >>");
-    objects.push("<< /Length " + stream.length + " >>\nstream\n" + stream + "\nendstream");
+    objects.push("<< /Length " + pdfByteLength(stream) + " >>\nstream\n" + stream + "\nendstream");
   });
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
@@ -514,14 +527,16 @@ export function buildMxPdfReportBlob(input: MxPdfReportInput): Blob {
   pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
   offsets.slice(1).forEach((offset) => { pdf += String(offset).padStart(10, "0") + " 00000 n \n"; });
   pdf += "trailer << /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
-  return new Blob([pdf], { type: "application/pdf" });
+  return pdfBlobFromString(pdf);
 }
 
 export function downloadMxPdfReport(input: MxPdfReportInput, filename = reportFilename(input)): void {
-  const url = URL.createObjectURL(buildMxPdfReportBlob(input));
+  const pdfBlob = buildMxPdfReportBlob(input);
+  if (pdfBlob.type !== "application/pdf") throw new Error("PDF generation failed: expected application/pdf output.");
+  const url = URL.createObjectURL(pdfBlob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  link.download = ensurePdfFilename(filename);
   link.rel = "noopener";
   document.body.appendChild(link);
   link.click();

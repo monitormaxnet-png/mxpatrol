@@ -22,17 +22,9 @@ export const MANAGEMENT_HOME = 'management_home';
 export const ASSISTANT_MENUS: Record<string, MenuNode> = {
   [USER_HOME]: {
     key: USER_HOME,
-    title: "TODAY'S OPERATIONS",
+    title: 'USER MODE - REPORTS',
     parent: null,
-    items: [
-      { label: 'Patrol Status', action: 'menu:patrol_status' },
-      { label: 'Missed Checkpoints Today', action: 'missed_checkpoints' },
-      { label: 'Incidents', action: 'incidents' },
-      { label: 'Datalog Today', action: 'datalog_today' },
-      { label: 'Reports', action: 'menu:user_reports' },
-      { label: 'Change Site', action: 'change_site' },
-      { label: 'Management', action: 'switch_management' },
-    ],
+    items: REPORT_ROOT_ITEMS,
   },
   user_patrol_status: {
     key: 'user_patrol_status',
@@ -194,6 +186,25 @@ const PLATFORM_OWNER_ONLY_ACTIONS = new Set([
   'view_companies',
 ]);
 
+const USER_MODE_DASHBOARD_ACTIONS = new Set([
+  'menu:patrol_status',
+  'patrol_status',
+  'missed_checkpoints',
+  'missed_sessions',
+  'late_sessions',
+  'missed_patrols',
+  'late_patrols',
+  'incomplete_patrols',
+  'completed_patrols',
+  'devices_offline',
+  'devices',
+  'incidents',
+  'datalog_today',
+  'live',
+  'attention',
+  'checkpoints',
+]);
+
 const MANAGEMENT_ONLY_ACTIONS = new Set([
   'secure_devices',
   'register_device',
@@ -285,6 +296,10 @@ function applyAction(state: RouterState, action: string, canManage: boolean, isP
   if (action === 'switch_user') {
     const next: RouterState = { ...state, mode: 'user', activeMenu: USER_HOME };
     return { kind: 'menu', state: next, menuKey: USER_HOME };
+  }
+
+  if (state.mode === 'user' && USER_MODE_DASHBOARD_ACTIONS.has(action)) {
+    return { kind: 'action', state, action: 'dashboard_guidance' };
   }
 
   if (action.startsWith('menu:')) {

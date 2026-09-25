@@ -77,20 +77,13 @@ export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
   };
 }
 
-export function userModeMenu(_identity: Identity, session: SessionRow): OutMessage {
+export function userModeMenu(identity: Identity, session: SessionRow): OutMessage {
   const context = session.current_site_name ? 'Site: ' + session.current_site_name : 'Choose a site to continue.';
   return {
-    title: "TODAY'S OPERATIONS",
+    title: 'USER MODE - REPORTS',
     menuKey: 'user_home',
-    lines: [context, 'Current operations only. Use Reports for history.'],
-    options: [
-      { id: 'patrol_status', label: 'Patrol Status' },
-      { id: 'missed_checkpoints', label: 'Missed Checkpoints Today' },
-      { id: 'incidents', label: 'Incidents' },
-      { id: 'datalog_today', label: 'Datalog Today' },
-      { id: 'reports', label: 'Reports' },
-      { id: 'back', label: 'Back' },
-    ],
+    lines: [context, 'Choose a report category.'],
+    options: reportRootOptions(identity),
   };
 }
 

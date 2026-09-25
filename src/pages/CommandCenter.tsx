@@ -620,6 +620,7 @@ export default function CommandCenter() {
   };
   const runAction = (action: string) => {
     if (action === 'change_site') return addAssistant('CHANGE SITE', <SitePicker sites={availableSites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
+    if (action === 'dashboard_guidance') return addAssistant('DASHBOARD', <p>User Mode is for reports only. Use the Dashboard panels for live/current operations such as patrol status, devices, SOS, incidents, datalog, and live activity.</p>);
     if (action === 'live') return addAssistant('LIVE NOW - ' + selectedSite, <Summary devices={siteDevices} alerts={todayRows.alerts} incidents={openIncidents} patrols={operationPatrolRows} scans={todayRows.scans} />);
     if (action === 'attention') return addAssistant('ATTENTION TODAY - ' + selectedSite, <Attention devices={siteDevices} alerts={todayRows.alerts} patrols={todayPatrolRows} />);
     if (action === 'devices') return addAssistant('DEVICES - ' + selectedSite, <DeviceList devices={siteDevices} />);
@@ -878,8 +879,8 @@ export default function CommandCenter() {
                 <AssistantBubble title={homeNode.title}><MenuView site={selectedSite} node={homeNode} isPlatformOwner={isPlatformOwner} /></AssistantBubble>
                 <div className='grid gap-2 sm:grid-cols-2'>
                   {mode === 'management' || canManage ? <Shortcut onClick={switchMode} icon={mode === 'management' ? Bot : Lock} label={mode === 'management' ? 'User Assistant' : 'Management'} /> : null}
-                  <Shortcut onClick={() => submit('live now')} icon={ShieldCheck} label='Live Now' />
-                  <Shortcut onClick={() => submit('which devices are offline')} icon={Smartphone} label='Offline Devices' />
+                  <Shortcut onClick={() => submit('checkpoint scan report')} icon={ScanLine} label='Checkpoint Report' />
+                  <Shortcut onClick={() => submit('patrol report')} icon={FileText} label='Patrol Report' />
                   <Shortcut onClick={() => { setInlinePanel(null); submit('menu'); }} icon={X} label='Close Inline Panel' />
                 </div>
                 {messages.map((message) => message.from === 'user' ? <UserBubble key={message.id}>{message.body}</UserBubble> : <AssistantBubble key={message.id} title={message.title ?? 'MX PATROL'}>{message.body}</AssistantBubble>)}

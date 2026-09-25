@@ -38,13 +38,18 @@ describe("context-aware numeric menu routing", () => {
     });
   });
 
-  it("user home 1 opens Patrol Status and 5 opens Reports", () => {
-    expect(resolveAssistantInput(userState(), "1", guard)).toMatchObject({ kind: "menu", menuKey: "user_patrol_status" });
-    expect(resolveAssistantInput(userState(), "5", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
+  it("user home shows report actions only", () => {
+    expect(resolveAssistantInput(userState(), "1", guard)).toMatchObject({ kind: "action", action: "report:checkpoint_scan" });
+    expect(resolveAssistantInput(userState(), "2", guard)).toMatchObject({ kind: "action", action: "report:device_scan" });
+    expect(resolveAssistantInput(userState(), "3", guard)).toMatchObject({ kind: "action", action: "report:patrol" });
+    expect(resolveAssistantInput(userState(), "4", guard)).toMatchObject({ kind: "action", action: "report:sos" });
+    expect(resolveAssistantInput(userState(), "5", guard)).toMatchObject({ kind: "action", action: "report:incident" });
+    expect(resolveAssistantInput(userState(), "6", guard)).toMatchObject({ kind: "action", action: "report:datalog" });
+    expect(resolveAssistantInput(userState(), "7", guard)).toMatchObject({ kind: "menu", menuKey: USER_HOME });
   });
 
-  it("user home 6 changes site", () => {
-    expect(resolveAssistantInput(userState(), "6", guard)).toMatchObject({ action: "change_site" });
+  it("user home has no operational numeric shortcuts", () => {
+    expect(resolveAssistantInput(userState(), "8", guard)).toMatchObject({ kind: "unknown" });
   });
 
   it("numeric meaning changes after submenu navigation", () => {
@@ -71,23 +76,20 @@ describe("context-aware numeric menu routing", () => {
 });
 
 describe("Patrol Status replaces the separate patrol outcome items", () => {
-  it("removes the individual outcome items from the parent menus", () => {
-    const removed = ["completed_patrols", "incomplete_patrols", "late_patrols", "missed_patrols"];
-    for (const key of [USER_HOME, "management_operations"]) {
-      const actions = ASSISTANT_MENUS[key].items.map((item) => item.action);
-      for (const action of removed) expect(actions).not.toContain(action);
-      expect(actions).toContain("menu:patrol_status");
-    }
+  it("keeps patrol status out of User Mode and only in management operations", () => {
+    const removed = ["completed_patrols", "incomplete_patrols", "late_patrols", "missed_patrols", "menu:patrol_status"];
+    const userActions = ASSISTANT_MENUS[USER_HOME].items.map((item) => item.action);
+    for (const action of removed) expect(userActions).not.toContain(action);
+    const managementActions = ASSISTANT_MENUS["management_operations"].items.map((item) => item.action);
+    expect(managementActions).toContain("menu:patrol_status");
   });
 
-  it("drills into each detailed status list from Patrol Status", () => {
-    for (const state of [userState("user_patrol_status"), mgmtState("management_patrol_status")]) {
-      const canManage = state.mode === "management" ? manager : guard;
-      expect(resolveAssistantInput(state, "1", canManage)).toMatchObject({ action: "completed_patrols" });
-      expect(resolveAssistantInput(state, "2", canManage)).toMatchObject({ action: "incomplete_patrols" });
-      expect(resolveAssistantInput(state, "3", canManage)).toMatchObject({ action: "late_patrols" });
-      expect(resolveAssistantInput(state, "4", canManage)).toMatchObject({ action: "missed_patrols" });
-    }
+  it("keeps management Patrol Status drill-downs working", () => {
+    const state = mgmtState("management_patrol_status");
+    expect(resolveAssistantInput(state, "1", manager)).toMatchObject({ action: "completed_patrols" });
+    expect(resolveAssistantInput(state, "2", manager)).toMatchObject({ action: "incomplete_patrols" });
+    expect(resolveAssistantInput(state, "3", manager)).toMatchObject({ action: "late_patrols" });
+    expect(resolveAssistantInput(state, "4", manager)).toMatchObject({ action: "missed_patrols" });
   });
 
   it("back from Patrol Status returns to the correct parent menu", () => {
@@ -98,8 +100,8 @@ describe("Patrol Status replaces the separate patrol outcome items", () => {
     });
   });
 
-  it("routes patrol status language to the Patrol Status screen in both modes", () => {
-    expect(resolveAssistantInput(userState(), "patrol status", guard)).toMatchObject({ menuKey: "user_patrol_status" });
+  it("routes User Mode operational language to Dashboard guidance and Management Mode to management screens", () => {
+    expect(resolveAssistantInput(userState(), "patrol status", guard)).toMatchObject({ kind: "action", action: "dashboard_guidance" });
     expect(resolveAssistantInput(mgmtState("management_devices"), "show patrol status", manager)).toMatchObject({
       menuKey: "management_patrol_status",
     });
@@ -126,17 +128,15 @@ describe("Patrol Status replaces the separate patrol outcome items", () => {
 });
 
 describe("permission-checked mode switching", () => {
-  it("switches an authorized user into management mode only", () => {
-    const result = resolveAssistantInput(userState(), "7", manager);
-    expect(result.kind).toBe("menu");
-    expect(result.state.mode).toBe("management");
-    expect(result.state.activeMenu).toBe(MANAGEMENT_HOME);
+  it("keeps User Mode numeric options report-only for authorized and unauthorized users", () => {
+    expect(resolveAssistantInput(userState(), "7", manager)).toMatchObject({ kind: "menu", menuKey: USER_HOME });
+    expect(resolveAssistantInput(userState(), "7", guard)).toMatchObject({ kind: "menu", menuKey: USER_HOME });
   });
 
-  it("denies management switching for unauthorized users", () => {
-    const result = resolveAssistantInput(userState(), "7", guard);
-    expect(result).toMatchObject({ kind: "denied" });
-    expect(result.state.mode).toBe("user");
+
+  it("allows management switching by explicit text for authorized users only", () => {
+    expect(resolveAssistantInput(userState(), "management", manager)).toMatchObject({ kind: "menu", menuKey: MANAGEMENT_HOME });
+    expect(resolveAssistantInput(userState(), "management", guard)).toMatchObject({ kind: "denied" });
   });
 
   it("blocks management actions typed directly by unauthorized users", () => {
@@ -173,13 +173,13 @@ describe("natural language stays independent of numeric routing", () => {
     expect(resolveAssistantInput(mgmtState(), "generate patrol report", manager)).toMatchObject({ action: "generate_report" });
   });
 
-  it("routes patrol outcomes directly to the detailed lists from any menu", () => {
+  it("routes management operational language normally but redirects User Mode operations to Dashboard guidance", () => {
     expect(resolveAssistantInput(mgmtState("management_devices"), "which checkpoints were missed?", manager)).toMatchObject({ action: "missed_checkpoints" });
-    expect(resolveAssistantInput(userState("user_reports"), "show missed patrols", guard)).toMatchObject({ action: "missed_patrols" });
-    expect(resolveAssistantInput(userState(), "show completed patrols", guard)).toMatchObject({ action: "completed_patrols" });
-    expect(resolveAssistantInput(userState(), "late patrols", guard)).toMatchObject({ action: "late_patrols" });
-    expect(resolveAssistantInput(userState(), "incomplete patrols", guard)).toMatchObject({ action: "incomplete_patrols" });
-    expect(resolveAssistantInput(userState(), "which devices are offline", guard)).toMatchObject({ action: "devices_offline" });
+    expect(resolveAssistantInput(userState("user_reports"), "show missed patrols", guard)).toMatchObject({ action: "dashboard_guidance" });
+    expect(resolveAssistantInput(userState(), "show completed patrols", guard)).toMatchObject({ action: "dashboard_guidance" });
+    expect(resolveAssistantInput(userState(), "late patrols", guard)).toMatchObject({ action: "dashboard_guidance" });
+    expect(resolveAssistantInput(userState(), "incomplete patrols", guard)).toMatchObject({ action: "dashboard_guidance" });
+    expect(resolveAssistantInput(userState(), "which devices are offline", guard)).toMatchObject({ action: "dashboard_guidance" });
   });
 
   it("keeps the active site across navigation", () => {
@@ -236,7 +236,7 @@ describe("patrol output includes canonical times", () => {
 
 describe("Reports category menu", () => {
   it("shows the six simplified PDF report actions", () => {
-    expect(resolveAssistantInput(userState(), "5", guard)).toMatchObject({ kind: "menu", menuKey: "user_reports" });
+    expect(resolveAssistantInput(userState(), "1", guard)).toMatchObject({ kind: "action", action: "report:checkpoint_scan" });
     expect(resolveAssistantInput(userState("user_reports"), "1", guard)).toMatchObject({ kind: "action", action: "report:checkpoint_scan" });
     expect(resolveAssistantInput(userState("user_reports"), "2", guard)).toMatchObject({ kind: "action", action: "report:device_scan" });
     expect(resolveAssistantInput(userState("user_reports"), "3", guard)).toMatchObject({ kind: "action", action: "report:patrol" });

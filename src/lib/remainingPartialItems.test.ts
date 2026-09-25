@@ -150,6 +150,27 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("acknowledgeActivity(activityType)");
   });
 
+  it("filters report source rows by selected period before previewing or downloading PDFs", () => {
+    const commandCenter = read("src/pages/CommandCenter.tsx");
+    const reports = read("src/pages/Reports.tsx");
+    expect(commandCenter).toContain("const rows = periodRows('today');");
+    expect(commandCenter).toContain("scans: rows.scans");
+    expect(commandCenter).toContain("patrols: rows.sessions");
+    expect(commandCenter).toContain("alerts: rows.alerts");
+    expect(commandCenter).toContain("incidents: rows.incidents");
+    expect(commandCenter).toContain("datalogs: rows.dataLogs");
+    expect(commandCenter).not.toContain("scans: siteScans,\n        patrols: sitePatrols");
+    expect(reports).toContain("const dateRangeBounds = (range: DateRange)");
+    expect(reports).toContain('.gte("submitted_at", periodStart)');
+    expect(reports).toContain('.lte("submitted_at", periodEnd)');
+    expect(reports).toContain('.gte("created_at", periodStart).lte("created_at", periodEnd)');
+    expect(reports).toContain('.gte("captured_at", periodStart)');
+    expect(reports).toContain('.lte("captured_at", periodEnd)');
+    expect(reports).toContain("isWithinRange(scan.scanned_at, periodStart, periodEnd)");
+    expect(reports).toContain("isWithinRange(session.scheduled_start, periodStart, periodEnd)");
+    expect(reports).toContain("if (row.site_id) return row.site_id === siteId;");
+  });
+
 
   it("renders downloaded PDF reports as structured tables instead of flattened text", () => {
     const pdf = read("src/lib/mxPdfReports.ts");

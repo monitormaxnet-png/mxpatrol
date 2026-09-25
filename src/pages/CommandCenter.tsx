@@ -567,6 +567,7 @@ export default function CommandCenter() {
       scans: siteScans.filter((row: any) => within(row.scanned_at)),
       incidents: siteIncidents.filter((row: any) => within(row.created_at)),
       alerts: siteAlerts.filter((row: any) => within(row.created_at)),
+      dataLogs: siteDataLogs.filter((row: any) => within(row.submitted_at ?? row.created_at)),
     };
   };
 
@@ -711,16 +712,17 @@ export default function CommandCenter() {
       if (action.startsWith('report:device_security:') && !isPlatformOwner) return addAssistant('OWNER ACCESS REQUIRED', <p>Only MX Patrol platform owners can access Device Security Reports.</p>);
       const reportType = reportTypeFromAction(action);
       if (!reportType) return addAssistant('REPORT UNAVAILABLE', <p>This report has been retired. Choose one of the six PDF reports from Reports.</p>);
+      const rows = periodRows('today');
       const reportInput: MxPdfReportInput = {
         type: reportType,
         companyName: selectedCompanyName,
         siteName: selectedSite,
-        periodLabel: 'Today / selected site data',
-        scans: siteScans,
-        patrols: sitePatrols,
-        alerts: siteAlerts,
-        incidents: siteIncidents,
-        datalogs: siteDataLogs,
+        periodLabel: PERIODS.today.label,
+        scans: rows.scans,
+        patrols: rows.sessions,
+        alerts: rows.alerts,
+        incidents: rows.incidents,
+        datalogs: rows.dataLogs,
         checkpoints: siteCheckpoints,
       };
       return addAssistant('REPORT GENERATED', <InlineReportPreview title={reportTitle(action)} input={reportInput} />);

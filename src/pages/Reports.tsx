@@ -94,13 +94,16 @@ const db = supabase as unknown as SupabaseQueryClient;
 
 const reportTypeLabels: Record<string, string> = Object.fromEntries(MX_PDF_REPORT_TYPES.map((report) => [report.type, report.label]));
 
-const dateRangeStart = (range: DateRange) => {
-  const date = new Date();
-  if (range === "today") date.setHours(0, 0, 0, 0);
-  if (range === "7d") date.setDate(date.getDate() - 7);
-  if (range === "30d") date.setDate(date.getDate() - 30);
-  return date.toISOString();
+const dateRangeBounds = (range: DateRange) => {
+  const from = new Date();
+  const to = new Date();
+  if (range === "today") from.setHours(0, 0, 0, 0);
+  if (range === "7d") from.setDate(from.getDate() - 7);
+  if (range === "30d") from.setDate(from.getDate() - 30);
+  return { from: from.toISOString(), to: to.toISOString() };
 };
+
+const isWithinRange = (value: string | null | undefined, from: string, to: string) => Boolean(value && value >= from && value <= to);
 
 const titleCase = (value: string) => value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 const reportLabel = (type?: string | null) => reportTypeLabels[type ?? ""] ?? `${titleCase(type ?? "custom")} Report`;
@@ -160,8 +163,8 @@ function buildTemplateOptions(...sources: Array<Array<Record<string, any>>>) {
 }
 
 
-async function countRows(table: string, companyId: string, since: string, apply?: (query: QueryLike<CountRow>) => QueryLike<CountRow>) {
-  let query = db.from<CountRow>(table).select("id", { count: "exact", head: true }).eq("company_id", companyId).gte("created_at", since);
+async function countRows(table: string, companyId: string, from: string, to: string, apply?: (query: QueryLike<CountRow>) => QueryLike<CountRow>) {
+  let query = db.from<CountRow>(table).select("id", { count: "exact", head: true }).eq("company_id", companyId).gte("created_at", from).lte("created_at", to);
   if (apply) query = apply(query);
   const { count, error } = await query;
   if (error) throw error;
@@ -187,7 +190,7 @@ const Reports = () => {
   const [generatedReport, setGeneratedReport] = useState<GeneratedReportResult | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const realtime = useRealtimeConnectionStatus("reports-management");
-  const since = useMemo(() => dateRangeStart(dateRange), [dateRange]);
+  const { from: periodStart, to: periodEnd } = useMemo(() => dateRangeBounds(dateRange), [dateRange]);
   const { data: scans = [], isLoading: scansLoading, error: scansError } = useLivePatrolScans(250, siteId);
   const { data: reportSessions = [] } = usePatrolSessions(250, siteId);
   const { data: sessionReportRows = [], isLoading: sessionReportsLoading, error: sessionReportsError } = usePatrolSessionReports(250, siteId);
@@ -206,14 +209,15 @@ const Reports = () => {
   });
 
   const { data: datalogRows = [], isLoading: datalogLoading, error: datalogError } = useQuery({
-    queryKey: ["reports_datalog_submissions", companyId, siteId, since, datalogCheckpointId],
+    queryKey: ["reports_datalog_submissions", companyId, siteId, periodStart, periodEnd, datalogCheckpointId],
     enabled: !!companyId,
     queryFn: async () => {
       let query = supabase
         .from("data_log_submissions")
         .select("id, submitted_at, datalog_value, responses_json, site_id, checkpoint_id, sites(name), checkpoints(name, data_log_label)")
         .eq("company_id", companyId!)
-        .gte("submitted_at", since)
+        .gte("submitted_at", periodStart)
+        .lte("submitted_at", periodEnd)
         .order("submitted_at", { ascending: false })
         .limit(250);
       if (siteId !== "all") query = query.eq("site_id", siteId);
@@ -225,10 +229,10 @@ const Reports = () => {
   });
 
   const { data: incidentRows = [] } = useQuery({
-    queryKey: ["reports_incident_rows", companyId, siteId, since],
+    queryKey: ["reports_incident_rows", companyId, siteId, periodStart, periodEnd],
     enabled: !!companyId,
     queryFn: async () => {
-      let query = supabase.from("incidents").select("*, sites(name)").eq("company_id", companyId!).gte("created_at", since).order("created_at", { ascending: false }).limit(250);
+      let query = supabase.from("incidents").select("*, sites(name)").eq("company_id", companyId!).gte("created_at", periodStart).lte("created_at", periodEnd).order("created_at", { ascending: false }).limit(250);
       if (siteId !== "all") query = query.eq("site_id", siteId);
       const { data, error } = await query;
       if (error) throw error;
@@ -237,14 +241,15 @@ const Reports = () => {
   });
 
   const { data: incidentPhotoRows = [] } = useQuery({
-    queryKey: ["reports_incident_photo_evidence", companyId, siteId, since],
+    queryKey: ["reports_incident_photo_evidence", companyId, siteId, periodStart, periodEnd],
     enabled: !!companyId,
     queryFn: async () => {
       let query = supabase
         .from("incident_report_photos" as never)
         .select("id, site_id, device_identifier, storage_path, captured_at, created_at")
         .eq("company_id", companyId!)
-        .gte("captured_at", since)
+        .gte("captured_at", periodStart)
+        .lte("captured_at", periodEnd)
         .order("captured_at", { ascending: false })
         .limit(300);
       if (siteId !== "all") query = query.eq("site_id", siteId);
@@ -258,16 +263,19 @@ const Reports = () => {
     },
   });
   const { data: sosRows = [] } = useQuery({
-    queryKey: ["reports_sos_rows", companyId, siteId, since],
+    queryKey: ["reports_sos_rows", companyId, siteId, periodStart, periodEnd],
     enabled: !!companyId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("alerts").select("*").eq("company_id", companyId!).eq("type", "panic_button").gte("created_at", since).order("created_at", { ascending: false }).limit(250);
+      const { data, error } = await supabase.from("alerts").select("*").eq("company_id", companyId!).eq("type", "panic_button").gte("created_at", periodStart).lte("created_at", periodEnd).order("created_at", { ascending: false }).limit(250);
       if (error) throw error;
       const rows = (data ?? []) as any[];
       if (siteId === "all") return rows;
       const { data: cps } = await supabase.from("checkpoints").select("id").eq("site_id", siteId);
       const checkpointIds = new Set(((cps ?? []) as any[]).map((cp) => cp.id));
-      return rows.filter((row) => !row.checkpoint_id || checkpointIds.has(row.checkpoint_id));
+      return rows.filter((row) => {
+        if (row.site_id) return row.site_id === siteId;
+        return Boolean(row.checkpoint_id && checkpointIds.has(row.checkpoint_id));
+      });
     },
   });
 
@@ -282,13 +290,13 @@ const Reports = () => {
   });
 
   const { data: metrics, isLoading: metricsLoading } = useQuery({
-    queryKey: ["reports_metrics", companyId, since],
+    queryKey: ["reports_metrics", companyId, periodStart, periodEnd],
     enabled: !!companyId,
     staleTime: 20_000,
     queryFn: async () => {
       const [incidents, sos] = await Promise.all([
-        countRows("incidents", companyId!, since),
-        countRows("alerts", companyId!, since, (query) => query.eq("type", "panic_button")),
+        countRows("incidents", companyId!, periodStart, periodEnd),
+        countRows("alerts", companyId!, periodStart, periodEnd, (query) => query.eq("type", "panic_button")),
       ]);
       return { incidents, sos };
     },
@@ -315,7 +323,7 @@ const Reports = () => {
   const registeredScans = useMemo(() => scans.filter((scan) => scan.tag_status === "registered" || !!scan.checkpoint_id), [scans]);
   const templateOptions = useMemo(() => buildTemplateOptions(patrolTemplates, sessionReportRows, reportSessions), [patrolTemplates, reportSessions, sessionReportRows]);
   const selectedTemplateName = useMemo(() => templateOptions.find((template) => template.id === patrolTemplateId)?.name ?? "All Patrol Templates", [patrolTemplateId, templateOptions]);
-  const periodScans = useMemo(() => registeredScans.filter((scan) => scan.scanned_at >= since && matchesTemplate(scan, patrolTemplateId)), [patrolTemplateId, registeredScans, since]);
+  const periodScans = useMemo(() => registeredScans.filter((scan) => isWithinRange(scan.scanned_at, periodStart, periodEnd) && matchesTemplate(scan, patrolTemplateId)), [patrolTemplateId, periodEnd, periodStart, registeredScans]);
   const reportTypes = MX_PDF_REPORT_TYPES;
   const selectedSiteLabel = siteId === "all" ? "All Sites" : sites.find((site) => site.id === siteId)?.name ?? "Selected site";
 
@@ -323,11 +331,11 @@ const Reports = () => {
     const data = report.data as ReportData | null;
     const title = data?.title ?? reportLabel(report.report_type);
     const text = `${title} ${report.report_type} ${report.summary_text ?? ""}`.toLowerCase();
-    return report.generated_at >= since
+    return isWithinRange(report.generated_at, periodStart, periodEnd)
       && report.report_type === reportType
       && (activeTab === "all" || activeTab === "generated")
       && (!search || text.includes(search.toLowerCase()));
-  }), [activeTab, reportType, reports, search, since]);
+  }), [activeTab, reportType, reports, search, periodStart, periodEnd]);
   const filteredJobs = useMemo(() => reportJobs.filter((job) => {
     const statusMatch = activeTab === "scheduled"
       ? job.status === "scheduled"
@@ -340,15 +348,15 @@ const Reports = () => {
     const siteMatch = siteId === "all" || job.site_id === siteId;
     const text = `${reportLabel(job.report_type)} ${job.report_type} ${job.status} ${job.error_message ?? ""} ${job.sites?.name ?? ""}`.toLowerCase();
     return statusMatch
-      && time >= since
+      && isWithinRange(time, periodStart, periodEnd)
       && siteMatch
       && job.report_type === reportType
       && (!search || text.includes(search.toLowerCase()));
-  }), [activeTab, reportJobs, reportType, search, since, siteId]);
+  }), [activeTab, periodEnd, periodStart, reportJobs, reportType, search, siteId]);
 
   const selected = useMemo(() => filteredReports.find((report) => report.id === selectedId) ?? filteredReports[0] ?? null, [filteredReports, selectedId]);
-  const sessionReports = useMemo(() => sessionReportRows.filter((session) => (session.scheduled_start ?? "") >= since && matchesTemplate(session, patrolTemplateId)), [patrolTemplateId, sessionReportRows, since]);
-  const expectedSessions = reportSessions.filter((session) => session.scheduled_start >= since && session.status !== "cancelled" && matchesTemplate(session, patrolTemplateId));
+  const sessionReports = useMemo(() => sessionReportRows.filter((session) => isWithinRange(session.scheduled_start, periodStart, periodEnd) && matchesTemplate(session, patrolTemplateId)), [patrolTemplateId, periodEnd, periodStart, sessionReportRows]);
+  const expectedSessions = reportSessions.filter((session) => isWithinRange(session.scheduled_start, periodStart, periodEnd) && session.status !== "cancelled" && matchesTemplate(session, patrolTemplateId));
   const completedExpectedSessions = expectedSessions.filter((session) => ["completed", "completed_late"].includes(session.status));
   const compliance = expectedSessions.length === 0 ? (periodScans.length === 0 ? 0 : Math.round((periodScans.filter((scan) => scan.checkpoint_id || scan.tag_status === "registered").length / periodScans.length) * 1000) / 10) : Math.round((completedExpectedSessions.length / expectedSessions.length) * 1000) / 10;
   const patrolMinutes = useMemo(() => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildStoredZip, evidenceFilename } from "./incidentEvidencePackage";
-import { buildCheckpointScanMatrix, buildDeviceScanMatrix, buildMxPdfReportHtml, formatReportDateTime, MX_PATROL_REPORT_LOGO_SRC } from "./mxPdfReports";
+import { buildCheckpointScanMatrix, buildDeviceScanMatrix, buildMxPdfReportBlob, buildMxPdfReportHtml, formatReportDateTime, MX_PATROL_REPORT_LOGO_SRC } from "./mxPdfReports";
 
 const scans = [
   { id: "1", scanned_at: "2026-09-16T06:02:00.000Z", device_identifier: "Guard-01", checkpoints: { name: "Main Gate" } },
@@ -51,6 +51,27 @@ describe("MX PDF report helpers", () => {
     expect(deviceHtml).toContain("<th>Device</th>");
     expect(deviceHtml).toContain("<th>Main Gate</th>");
     expect(deviceHtml).toContain("<th>Lobby</th>");
+  });
+
+  it("fits a normal checkpoint scan report on one PDF page with all hourly columns", async () => {
+    const checkpoints = ["AI Verify Checkpoint", "Gate", "bedRoom", "kitchen", "sittingRoom"].map((name) => ({ name }));
+    const todayScans = [
+      { id: "scan-1", scanned_at: "2026-09-26T07:52:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "Gate" } },
+      { id: "scan-2", scanned_at: "2026-09-26T14:21:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "sittingRoom" } },
+    ];
+    const matrix = buildCheckpointScanMatrix(todayScans, checkpoints, { oneDay: true });
+    expect(matrix.columns).toHaveLength(18);
+    expect(matrix.columns[0]).toBe("06:00");
+    expect(matrix.columns[matrix.columns.length - 1]).toBe("23:00");
+    expect(matrix.rows.find((row) => row.label === "Gate")?.cells.flat()).toContain("09:52");
+    expect(matrix.rows.find((row) => row.label === "Gate")?.cells.flat().join(" ")).not.toContain("2026");
+
+    const blob = buildMxPdfReportBlob({ type: "checkpoint_scan", companyName: "Acme", siteName: "Tlokweng", periodLabel: "Today", scans: [], checkpoints });
+    const pdf = new TextDecoder().decode(await blob.arrayBuffer());
+    expect(pdf).toContain("/Count 1");
+    expect(pdf).not.toContain("Columns 1 of");
+    expect(pdf).toContain("06:00");
+    expect(pdf).toContain("23:00");
   });
 
   it("adds incident evidence pages with photo previews and audio metadata", () => {

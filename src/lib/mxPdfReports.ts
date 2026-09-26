@@ -87,6 +87,20 @@ function reportDate(value?: string | null): string {
   return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: TZ }).format(date);
 }
 
+function compactScanCellTime(value?: string | null, oneDay = false): string {
+  if (!value) return "-";
+  const time = reportTime(value);
+  if (oneDay) return time;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return time;
+  const day = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", timeZone: TZ }).format(date).replace(/\s/g, " ");
+  return day + " " + time;
+}
+
+function isOneDayReportPeriod(periodLabel?: string | null): boolean {
+  const label = String(periodLabel ?? "").toLowerCase();
+  return label === "today" || label === "yesterday" || /^\d{1,2}\s+[a-z]{3,}\s+\d{4}$/.test(label);
+}
 function timeBucket(value?: string | null): string {
   const time = reportTime(value);
   return time === "-" ? "Unknown" : `${time.slice(0, 2)}:00`;
@@ -141,22 +155,22 @@ function checkpointOptionName(checkpoint: any): string {
   return String(checkpoint?.name ?? checkpoint?.checkpoint_name ?? checkpoint?.checkpoint_name_snapshot ?? "Checkpoint");
 }
 
-export function buildCheckpointScanMatrix(scans: any[], checkpoints: any[] = []) {
+export function buildCheckpointScanMatrix(scans: any[], checkpoints: any[] = [], options: { oneDay?: boolean } = {}) {
   const checkpointNames = new Set<string>();
   checkpoints.forEach((checkpoint) => checkpointNames.add(checkpointOptionName(checkpoint)));
   scans.forEach((scan) => checkpointNames.add(checkpointName(scan)));
   const scannedColumns = Array.from(new Set(scans.map((scan) => timeBucket(scan.scanned_at)))).sort();
-  const columns = scannedColumns.length ? scannedColumns : DEFAULT_CHECKPOINT_SCAN_TIME_COLUMNS;
+  const columns = options.oneDay ? DEFAULT_CHECKPOINT_SCAN_TIME_COLUMNS : scannedColumns.length ? scannedColumns : DEFAULT_CHECKPOINT_SCAN_TIME_COLUMNS;
   const rows = Array.from(checkpointNames).sort().map((checkpoint) => {
     const cells = columns.map((column) => scans
       .filter((scan) => checkpointName(scan) === checkpoint && timeBucket(scan.scanned_at) === column)
-      .map((scan) => formatReportDateTime(scan.scanned_at)));
+      .map((scan) => compactScanCellTime(scan.scanned_at, options.oneDay)));
     return { label: checkpoint, cells };
   });
   return { columns, rows };
 }
 
-export function buildDeviceScanMatrix(scans: any[], checkpoints: any[] = []) {
+export function buildDeviceScanMatrix(scans: any[], checkpoints: any[] = [], options: { oneDay?: boolean } = {}) {
   const devices = Array.from(new Set(scans.map(deviceName))).sort();
   const configuredCheckpointNames = checkpoints.map(checkpointOptionName).filter(Boolean);
   const scannedCheckpointNames = scans.map(checkpointName);
@@ -164,7 +178,7 @@ export function buildDeviceScanMatrix(scans: any[], checkpoints: any[] = []) {
   const rows = devices.map((device) => {
     const cells = columns.map((checkpoint) => scans
       .filter((scan) => deviceName(scan) === device && checkpointName(scan) === checkpoint)
-      .map((scan) => formatReportDateTime(scan.scanned_at)));
+      .map((scan) => compactScanCellTime(scan.scanned_at, options.oneDay)));
     return { label: device, cells };
   });
   return { columns, rows };
@@ -198,11 +212,11 @@ function contentFor(input: MxPdfReportInput): { title: string; subtitle: string;
   const datalogs = input.datalogs ?? [];
 
   if (input.type === "checkpoint_scan") {
-    const matrix = buildCheckpointScanMatrix(scans, input.checkpoints ?? []);
+    const matrix = buildCheckpointScanMatrix(scans, input.checkpoints ?? [], { oneDay: isOneDayReportPeriod(input.periodLabel) });
     return { title: "Checkpoint Scan Report", subtitle: "Checkpoint scans by time", html: matrixTable("Checkpoint", matrix.columns, matrix.rows), totals: `Total Checkpoints: ${matrix.rows.length}` };
   }
   if (input.type === "device_scan") {
-    const matrix = buildDeviceScanMatrix(scans, input.checkpoints ?? []);
+    const matrix = buildDeviceScanMatrix(scans, input.checkpoints ?? [], { oneDay: isOneDayReportPeriod(input.periodLabel) });
     return { title: "Device Scan Report", subtitle: "Device scans by checkpoint", html: matrixTable("Device", matrix.columns, matrix.rows), totals: `Total Devices: ${matrix.rows.length}` };
   }
   if (input.type === "patrol") {
@@ -341,7 +355,7 @@ function pdfEscape(value: unknown): string {
   }).join("");
 }
 
-type PdfTableModel = { title: string; subtitle: string; totals: string; orientation: "portrait" | "landscape"; firstHeader: string; headers: string[]; rows: string[][]; evidence?: string[][] };
+type PdfTableModel = { title: string; subtitle: string; totals: string; orientation: "portrait" | "landscape"; firstHeader: string; headers: string[]; rows: string[][]; evidence?: string[][]; compactWide?: boolean };
 type PdfReportLogo = { width: number; height: number; hex: string };
 
 function reportFilename(input: MxPdfReportInput): string {
@@ -358,11 +372,11 @@ function reportTableModel(input: MxPdfReportInput): PdfTableModel {
   const incidents = input.incidents ?? [];
   const datalogs = input.datalogs ?? [];
   if (input.type === "checkpoint_scan") {
-    const matrix = buildCheckpointScanMatrix(scans, input.checkpoints ?? []);
-    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Checkpoint", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]) };
+    const matrix = buildCheckpointScanMatrix(scans, input.checkpoints ?? [], { oneDay: isOneDayReportPeriod(input.periodLabel) });
+    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Checkpoint", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]), compactWide: matrix.columns.length <= 18 && matrix.rows.length <= 10 };
   }
   if (input.type === "device_scan") {
-    const matrix = buildDeviceScanMatrix(scans, input.checkpoints ?? []);
+    const matrix = buildDeviceScanMatrix(scans, input.checkpoints ?? [], { oneDay: isOneDayReportPeriod(input.periodLabel) });
     return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Device", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]) };
   }
   if (input.type === "patrol") {
@@ -459,6 +473,7 @@ function pdfRect(x: number, y: number, w: number, h: number, fill = false): stri
 function tableChunks(model: PdfTableModel, maxDataColumns: number) {
   const chunks: Array<{ headers: string[]; rows: string[][] }> = [];
   const dataHeaders = model.headers.length ? model.headers : [];
+  if (model.compactWide) return [{ headers: [model.firstHeader, ...dataHeaders], rows: model.rows }];
   if (dataHeaders.length <= maxDataColumns) return [{ headers: [model.firstHeader, ...dataHeaders], rows: model.rows }];
   for (let i = 0; i < dataHeaders.length; i += maxDataColumns) {
     const headers = [model.firstHeader, ...dataHeaders.slice(i, i + maxDataColumns)];
@@ -473,11 +488,11 @@ function buildTablePages(input: MxPdfReportInput, logo?: PdfReportLogo | null): 
   const landscape = model.orientation === "landscape";
   const width = landscape ? 842 : 595;
   const height = landscape ? 595 : 842;
-  const margin = 34;
+  const margin = model.compactWide ? 22 : 34;
   const top = height - margin;
   const bottom = margin + 26;
   const usableWidth = width - margin * 2;
-  const maxDataColumns = landscape ? 6 : 4;
+  const maxDataColumns = model.compactWide ? Math.max(1, model.headers.length) : landscape ? 6 : 4;
   const chunks = tableChunks(model, maxDataColumns);
   const streams: string[] = [];
   const drawLogo = (x: number, y: number, maxWidth: number, maxHeight: number) => {
@@ -503,24 +518,24 @@ function buildTablePages(input: MxPdfReportInput, logo?: PdfReportLogo | null): 
     const label = chunks.length > 1 ? "Columns " + (chunkIndex + 1) + " of " + chunks.length : "";
     let page = addPage(label);
     const colCount = chunk.headers.length;
-    const firstWidth = Math.min(130, usableWidth * 0.25);
+    const firstWidth = model.compactWide ? Math.min(170, Math.max(140, usableWidth * 0.22)) : Math.min(130, usableWidth * 0.25);
     const otherWidth = (usableWidth - firstWidth) / Math.max(1, colCount - 1);
     const widths = chunk.headers.map((_, index) => index === 0 ? firstWidth : otherWidth);
-    const headerHeight = 24;
+    const headerHeight = model.compactWide ? 20 : 24;
     const drawHeader = () => {
       let x = margin;
       page.stream += "0.04 0.22 0.42 rg\n";
       chunk.headers.forEach((header, index) => { page.stream += pdfRect(x, page.y - headerHeight, widths[index], headerHeight, true); x += widths[index]; });
       page.stream += "1 1 1 rg\n";
       x = margin;
-      chunk.headers.forEach((header, index) => { page.stream += pdfTextAt(x + 4, page.y - 15, header, 7.5, true); x += widths[index]; });
+      chunk.headers.forEach((header, index) => { page.stream += pdfTextAt(x + (model.compactWide ? 2 : 4), page.y - (model.compactWide ? 13 : 15), header, model.compactWide ? 6.6 : 7.5, true); x += widths[index]; });
       page.stream += "0 0 0 rg 0.65 0.72 0.80 RG\n";
       page.y -= headerHeight;
     };
     drawHeader();
     chunk.rows.forEach((row) => {
-      const wrapped = row.map((cell, index) => wrapPdfText(cell, Math.max(8, Math.floor(widths[index] / 4.2))));
-      const rowHeight = Math.max(22, Math.max(...wrapped.map((lines) => lines.length)) * 9 + 10);
+      const wrapped = row.map((cell, index) => wrapPdfText(cell, index === 0 ? Math.max(16, Math.floor(widths[index] / 4.8)) : Math.max(5, Math.floor(widths[index] / 4.2))));
+      const rowHeight = model.compactWide ? Math.max(19, Math.max(...wrapped.map((lines) => lines.length)) * 7.6 + 7) : Math.max(22, Math.max(...wrapped.map((lines) => lines.length)) * 9 + 10);
       if (page.y - rowHeight < bottom) {
         streams.push(page.stream);
         page = addPage(label);
@@ -529,7 +544,7 @@ function buildTablePages(input: MxPdfReportInput, logo?: PdfReportLogo | null): 
       let x = margin;
       wrapped.forEach((lines, colIndex) => {
         page.stream += pdfRect(x, page.y - rowHeight, widths[colIndex], rowHeight);
-        lines.forEach((line, lineIndex) => { page.stream += pdfTextAt(x + 4, page.y - 11 - lineIndex * 9, line, 7.2, colIndex === 0); });
+        lines.forEach((line, lineIndex) => { page.stream += pdfTextAt(x + (model.compactWide ? 2 : 4), page.y - (model.compactWide ? 10 : 11) - lineIndex * (model.compactWide ? 7.6 : 9), line, model.compactWide ? 6.5 : 7.2, colIndex === 0); });
         x += widths[colIndex];
       });
       page.y -= rowHeight;

@@ -577,12 +577,19 @@ function GeneratedReportPanel({ state, result, error, onGenerate, onDownload, on
   if (state === "generating") return <State icon={Loader2} spin message="Generating report..." />;
   if (state === "error") return <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-red-100"><p className="font-bold">Report generation failed</p><p className="mt-1 text-sm">{error ?? "Could not generate the report."}</p><button onClick={onGenerate} className="mt-3 rounded-lg border border-red-300/40 px-3 py-2 text-sm font-bold">Retry</button></div>;
   if (!result) return null;
-  return <section className="rounded-xl border border-emerald-400/20 bg-slate-950/72">
-    <div className="flex flex-col gap-3 border-b border-white/10 p-4 lg:flex-row lg:items-center lg:justify-between">
-      <div><h2 className="text-sm font-black uppercase tracking-[0.12em] text-white">Report Generated</h2><p className="mt-1 text-xs text-slate-400">{result.filename}</p></div>
-      <div className="flex flex-wrap gap-2"><button onClick={onDownload} className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 text-sm font-bold text-emerald-100"><Download className="h-4 w-4" />Download PDF</button><button onClick={onChangeFilters} className="inline-flex h-9 items-center rounded-lg border border-white/10 px-3 text-sm font-bold text-slate-300">Change Filters</button></div>
+  return <section className="overflow-hidden rounded-xl border border-emerald-400/20 bg-slate-950/72 shadow-[0_0_32px_rgba(16,185,129,0.08)]">
+    <div className="border-b border-white/10 bg-emerald-400/10 px-4 py-3">
+      <p className="text-xs font-black uppercase tracking-[0.12em] text-emerald-200">Report Generated</p>
+      <p className="mt-1 text-sm text-slate-200">Report generated successfully inside MX Patrol.</p>
     </div>
-    <iframe title="MX Patrol report preview" srcDoc={result.html} className="h-[720px] w-full rounded-b-xl bg-white" sandbox="allow-same-origin" />
+    <div className="flex flex-col gap-3 border-b border-white/10 p-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="min-w-0"><h2 className="truncate text-sm font-black uppercase tracking-[0.12em] text-white">Embedded Report Preview</h2><p className="mt-1 truncate text-xs text-slate-400">{result.filename}</p></div>
+      <div className="flex flex-wrap gap-2"><button onClick={onDownload} className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 text-sm font-bold text-emerald-100"><Download className="h-4 w-4" />Download PDF</button><button onClick={onChangeFilters} className="inline-flex h-9 items-center rounded-lg border border-white/10 px-3 text-sm font-bold text-slate-300">Change Filters</button><button onClick={onChangeFilters} className="inline-flex h-9 items-center rounded-lg border border-white/10 px-3 text-sm font-bold text-slate-300">Back to Reports</button></div>
+    </div>
+    <div className="max-h-[72vh] min-h-[28rem] overflow-hidden bg-white">
+      <iframe title="MX Patrol report preview" srcDoc={result.html} className="h-[72vh] min-h-[28rem] w-full bg-white" sandbox="allow-same-origin" />
+    </div>
+    <p className="border-t border-white/10 px-4 py-2 text-xs text-slate-500">Scrollable report area. Matrix reports scroll inside the preview without opening a new tab.</p>
   </section>;
 }
 function DatalogReportTable({ rows, checkpoints, checkpointId, onCheckpointChange, loading, error, dateRange }: { rows: DatalogReportRow[]; checkpoints: DatalogCheckpointOption[]; checkpointId: string; onCheckpointChange: (value: string) => void; loading: boolean; error: unknown; dateRange: string }) {

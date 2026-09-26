@@ -195,6 +195,22 @@ describe("remaining partial item regressions", () => {
     expect(pdf).toContain("wrapPdfText(cell");
     expect(pdf).toContain('"Page " + (index + 1) + " of "');
   });
+  it("contains generated report previews inside assistant and report panels", () => {
+    const commandCenter = read("src/pages/CommandCenter.tsx");
+    const reports = read("src/pages/Reports.tsx");
+    const pdf = read("src/lib/mxPdfReports.ts");
+    expect(commandCenter).toContain("function InlineReportPreview");
+    expect(commandCenter).toContain("max-h-[20rem]");
+    expect(commandCenter).toContain("Scrollable report preview");
+    expect(commandCenter).toContain("onBack={() => showMenu(mode === 'management' ? 'management_reports' : 'user_reports')}");
+    expect(commandCenter).toContain("w-full max-w-full rounded-2xl");
+    expect(reports).toContain("max-h-[72vh]");
+    expect(reports).toContain("Scrollable report area");
+    expect(reports).toContain("Back to Reports");
+    expect(pdf).toContain("position: sticky; top: 0");
+    expect(pdf).toContain("th:first-child, td:first-child");
+  });
+
 
   it("keeps PDF reports inside MX Patrol and downloads without new tabs", () => {
     const pdf = read("src/lib/mxPdfReports.ts");

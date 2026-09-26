@@ -725,7 +725,7 @@ export default function CommandCenter() {
         datalogs: rows.dataLogs,
         checkpoints: siteCheckpoints,
       };
-      return addAssistant('REPORT GENERATED', <InlineReportPreview title={reportTitle(action)} input={reportInput} />);
+      return addAssistant('REPORT GENERATED', <InlineReportPreview title={reportTitle(action)} input={reportInput} onBack={() => showMenu(mode === 'management' ? 'management_reports' : 'user_reports')} />);
     }
     if (action === 'saved_reports') return addAssistant('SAVED REPORTS - ' + selectedSite, <SavedReports jobs={siteReportJobs} loading={reportJobs.isLoading} />);
     if (action === 'generate_report') {
@@ -1455,16 +1455,33 @@ function MenuView({ site, node, isPlatformOwner = false }: { site: string; node:
   return <div><p>Viewing: <b>{site}</b></p><p className='mt-2'>What would you like to do?</p><NumberList items={items.map((item) => item.label)} /><p className='mt-3 text-slate-300'>Reply with a number, or type your request.</p></div>;
 }
 function NumberList({ items }: { items: readonly string[] }) { return <ol className='mt-3 space-y-1'>{items.map((item, index) => <li key={item + index}><span className='text-emerald-300'>{index + 1}.</span> {item}</li>)}</ol>; }
-function AssistantBubble({ title, children }: { title: string; children: ReactNode }) { return <div className='max-w-2xl rounded-2xl border border-white/10 bg-slate-900/75 p-4 text-sm text-white'><p className='mb-2 font-black uppercase tracking-[0.08em] text-emerald-300'>{title}</p><div className='leading-6 text-slate-100'>{children}</div></div>; }
+function AssistantBubble({ title, children }: { title: string; children: ReactNode }) { return <div className='w-full max-w-full rounded-2xl border border-white/10 bg-slate-900/75 p-4 text-sm text-white'><p className='mb-2 font-black uppercase tracking-[0.08em] text-emerald-300'>{title}</p><div className='min-w-0 leading-6 text-slate-100'>{children}</div></div>; }
 function UserBubble({ children }: { children: ReactNode }) { return <div className='ml-auto max-w-xl rounded-2xl bg-emerald-600 px-4 py-3 text-sm text-white'>{children}</div>; }
 function Shortcut({ icon: Icon, label, onClick }: { icon: typeof Bot; label: string; onClick: () => void }) { return <button type='button' onClick={onClick} className='flex w-full items-center justify-between rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-left text-sm font-semibold text-slate-100 hover:border-emerald-400/30'><span className='flex items-center gap-3'><Icon className='h-5 w-5 text-emerald-300' />{label}</span><ArrowRight className='h-4 w-4 text-slate-500' /></button>; }
 function SitePicker({ sites, selectedId, onSelect }: { sites: Array<{ id: string; name: string; status?: string | null }>; selectedId: string | null; onSelect: (site: { id: string; name: string; status?: string | null }) => void }) { if (!sites.length) return <p>No sites are assigned to your account yet.</p>; return <div className='grid gap-2'>{sites.map((site) => <button key={site.id} onClick={() => onSelect(site)} className={(site.id === selectedId ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-slate-950/70 text-slate-300') + ' rounded-xl border px-3 py-2 text-left'}>{site.name}</button>)}</div>; }
-function InlineReportPreview({ title, input }: { title: string; input: MxPdfReportInput }) {
+function InlineReportPreview({ title, input, onBack }: { title: string; input: MxPdfReportInput; onBack: () => void }) {
   const html = useMemo(() => buildMxPdfReportHtml(input), [input]);
-  return <div className='space-y-3'>
-    <p className='text-slate-300'>{title} generated inside MX Patrol.</p>
-    <button type='button' onClick={() => { void downloadMxPdfReport(input); }} className='rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-2 text-sm font-bold text-emerald-100'>Download PDF</button>
-    <iframe title={title + ' preview'} srcDoc={html} className='h-96 w-full rounded-lg bg-white' sandbox='allow-same-origin' />
+  return <div className='min-w-0 space-y-3'>
+    <div className='rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-3 py-2'>
+      <p className='text-xs font-black uppercase tracking-[0.12em] text-emerald-200'>Report Generated</p>
+      <p className='mt-1 text-sm text-slate-200'>{title} generated successfully inside MX Patrol.</p>
+    </div>
+    <section className='min-w-0 overflow-hidden rounded-2xl border border-cyan-400/20 bg-slate-950/85 shadow-[0_0_28px_rgba(14,165,233,0.08)]'>
+      <div className='flex flex-col gap-3 border-b border-white/10 p-3 sm:flex-row sm:items-start sm:justify-between'>
+        <div className='min-w-0'>
+          <p className='truncate text-sm font-black text-white'>{title}</p>
+          <p className='mt-1 text-xs text-slate-400'>{input.companyName} - {input.siteName} - {input.periodLabel}</p>
+        </div>
+        <div className='flex shrink-0 flex-wrap gap-2'>
+          <button type='button' onClick={() => { void downloadMxPdfReport(input); }} className='rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-2 text-xs font-bold text-emerald-100'>Download PDF</button>
+          <button type='button' onClick={onBack} className='rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-slate-300'>Back to Reports</button>
+        </div>
+      </div>
+      <div className='max-h-[20rem] min-h-[16rem] overflow-hidden border-t border-white/5 bg-white'>
+        <iframe title={title + ' preview'} srcDoc={html} className='h-[20rem] w-full bg-white' sandbox='allow-same-origin' />
+      </div>
+      <p className='border-t border-white/10 px-3 py-2 text-[11px] text-slate-500'>Scrollable report preview. Use Download PDF for the full document.</p>
+    </section>
   </div>;
 }
 

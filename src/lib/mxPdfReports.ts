@@ -291,8 +291,8 @@ export function buildMxPdfReportHtml(input: MxPdfReportInput): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(content.title)}</title><style>
     @page { size: A4 landscape; margin: 11mm; }
     * { box-sizing: border-box; }
-    body { margin: 0; color: #08254a; font-family: Arial, Helvetica, sans-serif; background: #fff; }
-    .page { min-height: 186mm; display: flex; flex-direction: column; }
+    body { margin: 0; color: #08254a; font-family: Arial, Helvetica, sans-serif; background: #fff; overflow: auto; }
+    .page { min-height: 186mm; min-width: 980px; display: flex; flex-direction: column; }
     header { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; align-items: start; border-bottom: 3px solid #0d477d; padding-bottom: 12px; }
     .brand { display: flex; align-items: center; min-height: 72px; }
     .brand-logo { width: 172px; max-height: 76px; object-fit: contain; object-position: left center; }
@@ -301,10 +301,14 @@ export function buildMxPdfReportHtml(input: MxPdfReportInput): string {
     .title { margin: 20px 0 12px; display: flex; justify-content: space-between; gap: 20px; }
     .title h2 { margin: 0; color: #0a2f5f; font-size: 24px; }
     .title p { margin: 3px 0 0; font-size: 14px; color: #064989; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10px; }
-    th { background: #0a376a; color: #fff; padding: 8px 6px; text-align: left; border: 1px solid #7ea4c7; }
-    td { padding: 7px 6px; border: 1px solid #c8d8e8; vertical-align: top; color: #102a43; word-break: break-word; }
+    table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; table-layout: auto; font-size: 10px; }
+    th { position: sticky; top: 0; z-index: 3; min-width: 108px; background: #0a376a; color: #fff; padding: 8px 6px; text-align: left; border: 1px solid #7ea4c7; }
+    td { min-width: 108px; padding: 7px 6px; border: 1px solid #c8d8e8; vertical-align: top; color: #102a43; overflow-wrap: anywhere; word-break: normal; }
+    th:first-child, td:first-child { position: sticky; left: 0; min-width: 150px; max-width: 220px; z-index: 2; }
+    th:first-child { z-index: 4; }
+    td:first-child { background: #fff; font-weight: 700; color: #08254a; }
     tbody tr:nth-child(even) td { background: #f6fbff; }
+    tbody tr:nth-child(even) td:first-child { background: #f6fbff; }
     .totals { margin-top: 14px; padding: 10px 14px; background: #eef6fd; border-radius: 4px; font-weight: 800; color: #0a2f5f; }
     .evidence-section { page-break-before: always; margin-top: 18px; }
     .section-title { display: flex; justify-content: space-between; gap: 18px; align-items: center; margin-bottom: 14px; padding: 10px 12px; background: #eef6fd; border-radius: 4px; }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildStoredZip, evidenceFilename } from "./incidentEvidencePackage";
-import { buildCheckpointScanMatrix, buildDeviceScanMatrix, buildMxPdfReportHtml, formatReportDateTime } from "./mxPdfReports";
+import { buildCheckpointScanMatrix, buildDeviceScanMatrix, buildMxPdfReportHtml, formatReportDateTime, MX_PATROL_REPORT_LOGO_SRC } from "./mxPdfReports";
 
 const scans = [
   { id: "1", scanned_at: "2026-09-16T06:02:00.000Z", device_identifier: "Guard-01", checkpoints: { name: "Main Gate" } },
@@ -30,9 +30,12 @@ describe("MX PDF report helpers", () => {
     expect(guard?.cells.flat().join(" ")).toContain("09:10");
   });
 
-  it("builds PDF-only report HTML with standard MX Patrol header", () => {
+  it("builds report HTML with the production TTECH MX Patrol logo", () => {
     const html = buildMxPdfReportHtml({ type: "checkpoint_scan", companyName: "Acme", siteName: "Main Office", periodLabel: "Today", scans });
-    expect(html).toContain("MX PATROL");
+    expect(MX_PATROL_REPORT_LOGO_SRC).toBe("/branding/ttech-mxpatrol-logo.png");
+    expect(html).toContain('src="/branding/ttech-mxpatrol-logo.png"');
+    expect(html).toContain('alt="TTECH MX Patrol"');
+    expect(html).not.toContain('<div class="shield">MX</div>');
     expect(html).toContain("Checkpoint Scan Report");
     expect(html).toContain("Report Period:");
   });

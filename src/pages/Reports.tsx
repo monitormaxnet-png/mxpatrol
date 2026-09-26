@@ -422,10 +422,14 @@ const Reports = () => {
     }
   };
 
-  const handleDownloadGeneratedReport = () => {
+  const handleDownloadGeneratedReport = async () => {
     if (!generatedReport) return;
-    downloadMxPdfReport(generatedReport.input, generatedReport.filename);
-    toast.success("PDF download started");
+    try {
+      await downloadMxPdfReport(generatedReport.input, generatedReport.filename);
+      toast.success("PDF download started");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to download PDF report");
+    }
   };
 
   const handleDownloadIncidentPackage = async () => {

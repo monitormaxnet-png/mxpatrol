@@ -53,6 +53,8 @@ export const MX_PDF_REPORT_TYPES: Array<{ type: MxPdfReportType; label: string; 
 ];
 
 const TZ = "Africa/Johannesburg";
+export const MX_PATROL_REPORT_LOGO_SRC = "/branding/ttech-mxpatrol-logo.png";
+const MX_PATROL_REPORT_TAGLINE = "Security Technology for a Safer Tomorrow";
 
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char] ?? char));
 
@@ -283,10 +285,8 @@ export function buildMxPdfReportHtml(input: MxPdfReportInput): string {
     body { margin: 0; color: #08254a; font-family: Arial, Helvetica, sans-serif; background: #fff; }
     .page { min-height: 186mm; display: flex; flex-direction: column; }
     header { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; align-items: start; border-bottom: 3px solid #0d477d; padding-bottom: 12px; }
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .shield { width: 54px; height: 54px; border-radius: 14px; background: #0a2f5f; color: white; display: grid; place-items: center; font-size: 28px; font-weight: 900; }
-    h1 { margin: 0; font-size: 30px; letter-spacing: 0.02em; color: #0a2f5f; }
-    .tagline { margin-top: 2px; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: #245b91; }
+    .brand { display: flex; align-items: center; min-height: 72px; }
+    .brand-logo { width: 172px; max-height: 76px; object-fit: contain; object-position: left center; }
     .meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 11px; }
     .meta b { color: #0a2f5f; }
     .title { margin: 20px 0 12px; display: flex; justify-content: space-between; gap: 20px; }
@@ -312,9 +312,11 @@ export function buildMxPdfReportHtml(input: MxPdfReportInput): string {
     .empty-evidence { padding: 12px; border: 1px dashed #aac3dc; color: #42627f; }
     .incident-divider { display: none; }
     footer { margin-top: auto; display: flex; justify-content: space-between; align-items: end; padding-top: 16px; color: #0a2f5f; font-size: 11px; font-weight: 700; }
+    .footer-brand { display: flex; align-items: center; gap: 12px; }
+    .footer-brand img { width: 96px; height: auto; object-fit: contain; }
     .wave { height: 28px; margin-top: 10px; background: linear-gradient(160deg, transparent 0 45%, rgba(80, 169, 229, 0.22) 46% 100%); }
     @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
-  </style></head><body><main class="page"><header><div class="brand"><div class="shield">MX</div><div><h1>MX PATROL</h1><div class="tagline">SECURITY MONITORING MADE SIMPLE</div></div></div><div class="meta"><b>Company:</b><span>${escapeHtml(input.companyName)}</span><b>Site:</b><span>${escapeHtml(input.siteName)}</span><b>Report Type:</b><span>${escapeHtml(content.title)}</span><b>Report Period:</b><span>${escapeHtml(input.periodLabel)}</span><b>Generated On:</b><span>${escapeHtml(formatReportDateTime(generatedAt))}</span></div></header><section class="title"><div><h2>${escapeHtml(content.title)}</h2><p>${escapeHtml(content.subtitle)}</p></div><div>People | Sites | Security | Safer Tomorrow</div></section>${content.html}<div class="totals">${escapeHtml(content.totals)}</div>${evidenceHtml}<div class="wave"></div><footer><span>Security Today. A Safer Tomorrow.</span><span>Page 1 of 1&nbsp;&nbsp; MX PATROL</span></footer></main></body></html>`;
+  </style></head><body><main class="page"><header><div class="brand"><img class="brand-logo" src="${MX_PATROL_REPORT_LOGO_SRC}" alt="TTECH MX Patrol" /></div><div class="meta"><b>Company:</b><span>${escapeHtml(input.companyName)}</span><b>Site:</b><span>${escapeHtml(input.siteName)}</span><b>Report Type:</b><span>${escapeHtml(content.title)}</span><b>Report Period:</b><span>${escapeHtml(input.periodLabel)}</span><b>Generated On:</b><span>${escapeHtml(formatReportDateTime(generatedAt))}</span></div></header><section class="title"><div><h2>${escapeHtml(content.title)}</h2><p>${escapeHtml(content.subtitle)}</p></div><div>People | Sites | Security | Safer Tomorrow</div></section>${content.html}<div class="totals">${escapeHtml(content.totals)}</div>${evidenceHtml}<div class="wave"></div><footer><span class="footer-brand"><img src="${MX_PATROL_REPORT_LOGO_SRC}" alt="TTECH MX Patrol" /><span>${escapeHtml(MX_PATROL_REPORT_TAGLINE)}</span></span><span>Page 1 of 1</span></footer></main></body></html>`;
 }
 
 function pdfEscape(value: unknown): string {
@@ -327,6 +329,7 @@ function pdfEscape(value: unknown): string {
 }
 
 type PdfTableModel = { title: string; subtitle: string; totals: string; orientation: "portrait" | "landscape"; firstHeader: string; headers: string[]; rows: string[][]; evidence?: string[][] };
+type PdfReportLogo = { width: number; height: number; hex: string };
 
 function reportFilename(input: MxPdfReportInput): string {
   const type = input.type.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("-");
@@ -389,6 +392,40 @@ function pdfByteLength(value: string): number {
   return new TextEncoder().encode(value).length;
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("") + ">";
+}
+
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  const base64 = dataUrl.split(",")[1] ?? "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function loadReportLogoForPdf(): Promise<PdfReportLogo | null> {
+  if (typeof window === "undefined" || typeof Image === "undefined" || typeof document === "undefined") return null;
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (!context) return resolve(null);
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0);
+      const bytes = dataUrlToBytes(canvas.toDataURL("image/jpeg", 0.92));
+      resolve({ width: canvas.width, height: canvas.height, hex: bytesToHex(bytes) });
+    };
+    image.onerror = () => resolve(null);
+    image.src = MX_PATROL_REPORT_LOGO_SRC;
+  });
+}
+
 function pdfBlobFromString(pdf: string): Blob {
   if (!pdf.startsWith("%PDF-")) throw new Error("PDF generation failed: invalid PDF header.");
   return new Blob([new TextEncoder().encode(pdf)], { type: "application/pdf" });
@@ -418,7 +455,7 @@ function tableChunks(model: PdfTableModel, maxDataColumns: number) {
   return chunks;
 }
 
-function buildTablePages(input: MxPdfReportInput): { width: number; height: number; streams: string[] } {
+function buildTablePages(input: MxPdfReportInput, logo?: PdfReportLogo | null): { width: number; height: number; streams: string[] } {
   const model = reportTableModel(input);
   const landscape = model.orientation === "landscape";
   const width = landscape ? 842 : 595;
@@ -430,17 +467,24 @@ function buildTablePages(input: MxPdfReportInput): { width: number; height: numb
   const maxDataColumns = landscape ? 6 : 4;
   const chunks = tableChunks(model, maxDataColumns);
   const streams: string[] = [];
+  const drawLogo = (x: number, y: number, maxWidth: number, maxHeight: number) => {
+    if (!logo) return pdfTextAt(x, y + maxHeight - 16, "TTECH", 18, true) + pdfTextAt(x + 38, y + maxHeight - 31, "MX PATROL", 8, true);
+    const scale = Math.min(maxWidth / logo.width, maxHeight / logo.height);
+    const imageWidth = logo.width * scale;
+    const imageHeight = logo.height * scale;
+    return "q\n" + imageWidth.toFixed(1) + " 0 0 " + imageHeight.toFixed(1) + " " + x.toFixed(1) + " " + y.toFixed(1) + " cm\n/ImLogo Do\nQ\n";
+  };
   const addPage = (chunkTitle: string) => {
     let stream = "0.02 w\n";
-    stream += pdfTextAt(margin, top, "MX PATROL", 18, true);
-    stream += pdfTextAt(margin, top - 16, model.title + (chunkTitle ? " - " + chunkTitle : ""), 14, true);
-    stream += pdfTextAt(margin, top - 31, model.subtitle, 9);
+    stream += drawLogo(margin, top - 41, 132, 42);
+    stream += pdfTextAt(margin, top - 56, model.title + (chunkTitle ? " - " + chunkTitle : ""), 14, true);
+    stream += pdfTextAt(margin, top - 71, model.subtitle, 9);
     stream += pdfTextAt(width - 255, top, "Company: " + input.companyName, 9, true);
     stream += pdfTextAt(width - 255, top - 13, "Site: " + input.siteName, 9);
     stream += pdfTextAt(width - 255, top - 26, "Report Period: " + input.periodLabel, 9);
     stream += pdfTextAt(width - 255, top - 39, "Generated: " + formatReportDateTime(input.generatedAt ?? new Date()), 9);
-    stream += "0.75 0.82 0.90 RG " + margin + " " + (top - 50) + " " + usableWidth + " 0 m S\n0 0 0 RG\n";
-    return { stream, y: top - 72 };
+    stream += "0.75 0.82 0.90 RG " + margin + " " + (top - 82) + " " + usableWidth + " 0 m S\n0 0 0 RG\n";
+    return { stream, y: top - 104 };
   };
   chunks.forEach((chunk, chunkIndex) => {
     const label = chunks.length > 1 ? "Columns " + (chunkIndex + 1) + " of " + chunks.length : "";
@@ -503,11 +547,11 @@ function buildTablePages(input: MxPdfReportInput): { width: number; height: numb
     });
     streams.push(page.stream);
   }
-  return { width, height, streams: streams.map((stream, index) => stream + pdfTextAt(width - 100, 18, "Page " + (index + 1) + " of " + streams.length, 8) + pdfTextAt(margin, 18, "MX PATROL", 8, true)) };
+  return { width, height, streams: streams.map((stream, index) => stream + drawLogo(margin, 12, 82, 18) + pdfTextAt(margin + 96, 18, MX_PATROL_REPORT_TAGLINE, 7) + pdfTextAt(width - 100, 18, "Page " + (index + 1) + " of " + streams.length, 8)) };
 }
 
-export function buildMxPdfReportBlob(input: MxPdfReportInput): Blob {
-  const pages = buildTablePages(input);
+export function buildMxPdfReportBlob(input: MxPdfReportInput, logo?: PdfReportLogo | null): Blob {
+  const pages = buildTablePages(input, logo);
   const objects: string[] = [];
   const pageObjectIds = pages.streams.map((_, index) => 3 + index * 2);
   objects.push("<< /Type /Catalog /Pages 2 0 R >>");
@@ -515,11 +559,16 @@ export function buildMxPdfReportBlob(input: MxPdfReportInput): Blob {
   pages.streams.forEach((stream, index) => {
     const pageId = pageObjectIds[index];
     const contentId = pageId + 1;
-    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + pages.width + " " + pages.height + "] /Resources << /Font << /F1 " + (pageObjectIds.length * 2 + 3) + " 0 R /F2 " + (pageObjectIds.length * 2 + 4) + " 0 R >> >> /Contents " + contentId + " 0 R >>");
+    const font1Id = pageObjectIds.length * 2 + 3;
+    const font2Id = pageObjectIds.length * 2 + 4;
+    const imageId = logo ? pageObjectIds.length * 2 + 5 : null;
+    const xObject = imageId ? " /XObject << /ImLogo " + imageId + " 0 R >>" : "";
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + pages.width + " " + pages.height + "] /Resources << /Font << /F1 " + font1Id + " 0 R /F2 " + font2Id + " 0 R >>" + xObject + " >> /Contents " + contentId + " 0 R >>");
     objects.push("<< /Length " + pdfByteLength(stream) + " >>\nstream\n" + stream + "\nendstream");
   });
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+  if (logo) objects.push("<< /Type /XObject /Subtype /Image /Width " + logo.width + " /Height " + logo.height + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length " + logo.hex.length + " >>\nstream\n" + logo.hex + "\nendstream");
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   objects.forEach((object, index) => { offsets.push(pdf.length); pdf += (index + 1) + " 0 obj\n" + object + "\nendobj\n"; });
@@ -530,8 +579,8 @@ export function buildMxPdfReportBlob(input: MxPdfReportInput): Blob {
   return pdfBlobFromString(pdf);
 }
 
-export function downloadMxPdfReport(input: MxPdfReportInput, filename = reportFilename(input)): void {
-  const pdfBlob = buildMxPdfReportBlob(input);
+export async function downloadMxPdfReport(input: MxPdfReportInput, filename = reportFilename(input)): Promise<void> {
+  const pdfBlob = buildMxPdfReportBlob(input, await loadReportLogoForPdf());
   if (pdfBlob.type !== "application/pdf") throw new Error("PDF generation failed: expected application/pdf output.");
   const url = URL.createObjectURL(pdfBlob);
   const link = document.createElement("a");

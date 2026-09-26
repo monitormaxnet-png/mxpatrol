@@ -171,6 +171,18 @@ describe("remaining partial item regressions", () => {
     expect(reports).toContain("if (row.site_id) return row.site_id === siteId;");
   });
 
+  it("uses the production TTECH MX Patrol branding asset in report previews and PDFs", () => {
+    const pdf = read("src/lib/mxPdfReports.ts");
+    const logo = read("src/components/branding/TTechMxPatrolLogo.tsx");
+    expect(logo).toContain("/branding/ttech-mxpatrol-logo.png");
+    expect(pdf).toContain('MX_PATROL_REPORT_LOGO_SRC = "/branding/ttech-mxpatrol-logo.png"');
+    expect(pdf).toContain('<img class="brand-logo" src="${MX_PATROL_REPORT_LOGO_SRC}"');
+    expect(pdf).toContain("/ImLogo Do");
+    expect(pdf).toContain("/Subtype /Image");
+    expect(pdf).toContain("loadReportLogoForPdf");
+    expect(pdf).not.toContain('<div class="shield">MX</div>');
+  });
+
 
   it("renders downloaded PDF reports as structured tables instead of flattened text", () => {
     const pdf = read("src/lib/mxPdfReports.ts");

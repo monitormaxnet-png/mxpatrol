@@ -1463,7 +1463,7 @@ function InlineReportPreview({ title, input }: { title: string; input: MxPdfRepo
   const html = useMemo(() => buildMxPdfReportHtml(input), [input]);
   return <div className='space-y-3'>
     <p className='text-slate-300'>{title} generated inside MX Patrol.</p>
-    <button type='button' onClick={() => downloadMxPdfReport(input)} className='rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-2 text-sm font-bold text-emerald-100'>Download PDF</button>
+    <button type='button' onClick={() => { void downloadMxPdfReport(input); }} className='rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-3 py-2 text-sm font-bold text-emerald-100'>Download PDF</button>
     <iframe title={title + ' preview'} srcDoc={html} className='h-96 w-full rounded-lg bg-white' sandbox='allow-same-origin' />
   </div>;
 }

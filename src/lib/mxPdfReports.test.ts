@@ -40,6 +40,19 @@ describe("MX PDF report helpers", () => {
     expect(html).toContain("Report Period:");
   });
 
+  it("keeps checkpoint and device report table headings when today's scan rows are empty", () => {
+    const checkpoints = [{ id: "gate", name: "Main Gate" }, { id: "lobby", name: "Lobby" }];
+    const checkpointHtml = buildMxPdfReportHtml({ type: "checkpoint_scan", companyName: "Acme", siteName: "Main Office", periodLabel: "Today", scans: [], checkpoints });
+    expect(checkpointHtml).toContain("<th>Checkpoint</th>");
+    expect(checkpointHtml).toContain("<th>08:00</th>");
+    expect(checkpointHtml).toContain("Main Gate");
+
+    const deviceHtml = buildMxPdfReportHtml({ type: "device_scan", companyName: "Acme", siteName: "Main Office", periodLabel: "Today", scans: [], checkpoints });
+    expect(deviceHtml).toContain("<th>Device</th>");
+    expect(deviceHtml).toContain("<th>Main Gate</th>");
+    expect(deviceHtml).toContain("<th>Lobby</th>");
+  });
+
   it("adds incident evidence pages with photo previews and audio metadata", () => {
     const html = buildMxPdfReportHtml({
       type: "incident",

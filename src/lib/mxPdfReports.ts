@@ -135,11 +135,18 @@ function statusText(value: unknown): string {
   return String(value ?? "-").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+const DEFAULT_CHECKPOINT_SCAN_TIME_COLUMNS = ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"];
+
+function checkpointOptionName(checkpoint: any): string {
+  return String(checkpoint?.name ?? checkpoint?.checkpoint_name ?? checkpoint?.checkpoint_name_snapshot ?? "Checkpoint");
+}
+
 export function buildCheckpointScanMatrix(scans: any[], checkpoints: any[] = []) {
   const checkpointNames = new Set<string>();
-  checkpoints.forEach((checkpoint) => checkpointNames.add(String(checkpoint.name ?? "Checkpoint")));
+  checkpoints.forEach((checkpoint) => checkpointNames.add(checkpointOptionName(checkpoint)));
   scans.forEach((scan) => checkpointNames.add(checkpointName(scan)));
-  const columns = Array.from(new Set(scans.map((scan) => timeBucket(scan.scanned_at)))).sort();
+  const scannedColumns = Array.from(new Set(scans.map((scan) => timeBucket(scan.scanned_at)))).sort();
+  const columns = scannedColumns.length ? scannedColumns : DEFAULT_CHECKPOINT_SCAN_TIME_COLUMNS;
   const rows = Array.from(checkpointNames).sort().map((checkpoint) => {
     const cells = columns.map((column) => scans
       .filter((scan) => checkpointName(scan) === checkpoint && timeBucket(scan.scanned_at) === column)
@@ -149,9 +156,11 @@ export function buildCheckpointScanMatrix(scans: any[], checkpoints: any[] = [])
   return { columns, rows };
 }
 
-export function buildDeviceScanMatrix(scans: any[]) {
+export function buildDeviceScanMatrix(scans: any[], checkpoints: any[] = []) {
   const devices = Array.from(new Set(scans.map(deviceName))).sort();
-  const columns = Array.from(new Set(scans.map(checkpointName))).sort();
+  const configuredCheckpointNames = checkpoints.map(checkpointOptionName).filter(Boolean);
+  const scannedCheckpointNames = scans.map(checkpointName);
+  const columns = Array.from(new Set([...configuredCheckpointNames, ...scannedCheckpointNames])).sort();
   const rows = devices.map((device) => {
     const cells = columns.map((checkpoint) => scans
       .filter((scan) => deviceName(scan) === device && checkpointName(scan) === checkpoint)
@@ -193,7 +202,7 @@ function contentFor(input: MxPdfReportInput): { title: string; subtitle: string;
     return { title: "Checkpoint Scan Report", subtitle: "Checkpoint scans by time", html: matrixTable("Checkpoint", matrix.columns, matrix.rows), totals: `Total Checkpoints: ${matrix.rows.length}` };
   }
   if (input.type === "device_scan") {
-    const matrix = buildDeviceScanMatrix(scans);
+    const matrix = buildDeviceScanMatrix(scans, input.checkpoints ?? []);
     return { title: "Device Scan Report", subtitle: "Device scans by checkpoint", html: matrixTable("Device", matrix.columns, matrix.rows), totals: `Total Devices: ${matrix.rows.length}` };
   }
   if (input.type === "patrol") {
@@ -349,7 +358,7 @@ function reportTableModel(input: MxPdfReportInput): PdfTableModel {
     return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Checkpoint", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]) };
   }
   if (input.type === "device_scan") {
-    const matrix = buildDeviceScanMatrix(scans);
+    const matrix = buildDeviceScanMatrix(scans, input.checkpoints ?? []);
     return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Device", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]) };
   }
   if (input.type === "patrol") {

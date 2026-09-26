@@ -189,7 +189,7 @@ describe("remaining partial item regressions", () => {
     expect(pdf).toContain("type PdfTableModel");
     expect(pdf).toContain("reportTableModel(input)");
     expect(pdf).toContain("buildCheckpointScanMatrix(scans");
-    expect(pdf).toContain("buildDeviceScanMatrix(scans)");
+    expect(pdf).toContain("buildDeviceScanMatrix(scans, input.checkpoints ?? [])");
     expect(pdf).toContain("tableChunks(model, maxDataColumns)");
     expect(pdf).toContain("pdfRect(x, page.y - rowHeight");
     expect(pdf).toContain("wrapPdfText(cell");

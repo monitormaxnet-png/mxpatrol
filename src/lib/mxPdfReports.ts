@@ -505,8 +505,8 @@ function buildTablePages(input: MxPdfReportInput, logo?: PdfReportLogo | null): 
   const addPage = (chunkTitle: string) => {
     let stream = "0.02 w\n";
     stream += drawLogo(margin, top - 41, 132, 42);
-    stream += pdfTextAt(margin, top - 56, model.title + (chunkTitle ? " - " + chunkTitle : ""), 14, true);
-    stream += pdfTextAt(margin, top - 71, model.subtitle, 9);
+    stream += pdfTextAt(margin, top - 54, model.title + (chunkTitle ? " - " + chunkTitle : ""), model.compactWide ? 16 : 14, true);
+    stream += pdfTextAt(margin, top - 70, model.subtitle, model.compactWide ? 10 : 9);
     stream += pdfTextAt(width - 255, top, "Company: " + input.companyName, 9, true);
     stream += pdfTextAt(width - 255, top - 13, "Site: " + input.siteName, 9);
     stream += pdfTextAt(width - 255, top - 26, "Report Period: " + input.periodLabel, 9);
@@ -521,21 +521,21 @@ function buildTablePages(input: MxPdfReportInput, logo?: PdfReportLogo | null): 
     const firstWidth = model.compactWide ? Math.min(170, Math.max(140, usableWidth * 0.22)) : Math.min(130, usableWidth * 0.25);
     const otherWidth = (usableWidth - firstWidth) / Math.max(1, colCount - 1);
     const widths = chunk.headers.map((_, index) => index === 0 ? firstWidth : otherWidth);
-    const headerHeight = model.compactWide ? 20 : 24;
+    const headerHeight = model.compactWide ? 30 : 24;
     const drawHeader = () => {
       let x = margin;
       page.stream += "0.04 0.22 0.42 rg\n";
       chunk.headers.forEach((header, index) => { page.stream += pdfRect(x, page.y - headerHeight, widths[index], headerHeight, true); x += widths[index]; });
       page.stream += "1 1 1 rg\n";
       x = margin;
-      chunk.headers.forEach((header, index) => { page.stream += pdfTextAt(x + (model.compactWide ? 2 : 4), page.y - (model.compactWide ? 13 : 15), header, model.compactWide ? 6.6 : 7.5, true); x += widths[index]; });
+      chunk.headers.forEach((header, index) => { page.stream += pdfTextAt(x + (model.compactWide ? 3 : 4), page.y - (model.compactWide ? 19 : 15), header, model.compactWide ? 8.2 : 7.5, true); x += widths[index]; });
       page.stream += "0 0 0 rg 0.65 0.72 0.80 RG\n";
       page.y -= headerHeight;
     };
     drawHeader();
     chunk.rows.forEach((row) => {
       const wrapped = row.map((cell, index) => wrapPdfText(cell, index === 0 ? Math.max(16, Math.floor(widths[index] / 4.8)) : Math.max(5, Math.floor(widths[index] / 4.2))));
-      const rowHeight = model.compactWide ? Math.max(19, Math.max(...wrapped.map((lines) => lines.length)) * 7.6 + 7) : Math.max(22, Math.max(...wrapped.map((lines) => lines.length)) * 9 + 10);
+      const rowHeight = model.compactWide ? Math.max(54, Math.max(...wrapped.map((lines) => lines.length)) * 10 + 18) : Math.max(22, Math.max(...wrapped.map((lines) => lines.length)) * 9 + 10);
       if (page.y - rowHeight < bottom) {
         streams.push(page.stream);
         page = addPage(label);
@@ -544,12 +544,12 @@ function buildTablePages(input: MxPdfReportInput, logo?: PdfReportLogo | null): 
       let x = margin;
       wrapped.forEach((lines, colIndex) => {
         page.stream += pdfRect(x, page.y - rowHeight, widths[colIndex], rowHeight);
-        lines.forEach((line, lineIndex) => { page.stream += pdfTextAt(x + (model.compactWide ? 2 : 4), page.y - (model.compactWide ? 10 : 11) - lineIndex * (model.compactWide ? 7.6 : 9), line, model.compactWide ? 6.5 : 7.2, colIndex === 0); });
+        lines.forEach((line, lineIndex) => { page.stream += pdfTextAt(x + (model.compactWide ? 3 : 4), page.y - (model.compactWide ? 29 : 11) - lineIndex * (model.compactWide ? 10 : 9), line, model.compactWide ? (colIndex === 0 ? 8.8 : 8.4) : 7.2, colIndex === 0); });
         x += widths[colIndex];
       });
       page.y -= rowHeight;
     });
-    page.stream += pdfTextAt(margin, Math.max(bottom - 4, page.y - 16), model.totals, 9, true);
+    page.stream += pdfTextAt(margin, Math.max(bottom - 4, page.y - (model.compactWide ? 12 : 16)), model.totals, model.compactWide ? 10 : 9, true);
     streams.push(page.stream);
   });
   if (model.evidence?.length) {

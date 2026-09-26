@@ -1,3 +1,4 @@
+import { MX_PATROL_REPORT_BRANDING, MX_PATROL_REPORT_TAGLINE, TTECH_MX_PATROL_LOGO_SRC } from './reportBranding';
 export type MxPdfReportType = "checkpoint_scan" | "device_scan" | "patrol" | "sos" | "incident" | "datalog";
 
 export type MxPdfEvidencePhoto = {
@@ -53,8 +54,8 @@ export const MX_PDF_REPORT_TYPES: Array<{ type: MxPdfReportType; label: string; 
 ];
 
 const TZ = "Africa/Johannesburg";
-export const MX_PATROL_REPORT_LOGO_SRC = "/branding/ttech-mxpatrol-logo.png";
-const MX_PATROL_REPORT_TAGLINE = "Security Technology for a Safer Tomorrow";
+export const MX_PATROL_REPORT_LOGO_SRC = TTECH_MX_PATROL_LOGO_SRC;
+
 
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char] ?? char));
 
@@ -296,7 +297,7 @@ function buildIncidentEvidenceHtml(input: MxPdfReportInput): string {
 
   const totalPhotos = cards.filter((card) => card.includes("photo-card")).length;
   const totalAudio = audioRows.filter((row) => row[5] !== "No attached audio").length;
-  return `<section class="evidence-section"><div class="section-title"><div><h2>Attached Evidence</h2><p>Photos and audio recordings linked to this incident report</p></div><span>${totalPhotos} Photo(s) · ${totalAudio} Audio Recording(s)</span></div><h3>Photos</h3>${totalPhotos ? `<div class="photo-grid">${cards.join("")}</div>` : `<p class="empty-evidence">No attached photos for this report.</p>`}<h3>Audio Recordings</h3>${table(["#", "Date & Time", "Incident", "Device", "Duration", "Filename"], audioRows)}</section>`;
+  return `<section class="evidence-section"><div class="section-title"><div><h2>Attached Evidence</h2><p>Photos and audio recordings linked to this incident report</p></div><span>${totalPhotos} Photo(s) &middot; ${totalAudio} Audio Recording(s)</span></div><h3>Photos</h3>${totalPhotos ? `<div class="photo-grid">${cards.join("")}</div>` : `<p class="empty-evidence">No attached photos for this report.</p>`}<h3>Audio Recordings</h3>${table(["#", "Date & Time", "Incident", "Device", "Duration", "Filename"], audioRows)}</section>`;
 }
 export function buildMxPdfReportHtml(input: MxPdfReportInput): string {
   const generatedAt = input.generatedAt ?? new Date();
@@ -343,7 +344,7 @@ export function buildMxPdfReportHtml(input: MxPdfReportInput): string {
     .footer-brand img { width: 96px; height: auto; object-fit: contain; }
     .wave { height: 28px; margin-top: 10px; background: linear-gradient(160deg, transparent 0 45%, rgba(80, 169, 229, 0.22) 46% 100%); }
     @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
-  </style></head><body><main class="page"><header><div class="brand"><img class="brand-logo" src="${MX_PATROL_REPORT_LOGO_SRC}" alt="TTECH MX Patrol" /></div><div class="meta"><b>Company:</b><span>${escapeHtml(input.companyName)}</span><b>Site:</b><span>${escapeHtml(input.siteName)}</span><b>Report Type:</b><span>${escapeHtml(content.title)}</span><b>Report Period:</b><span>${escapeHtml(input.periodLabel)}</span><b>Generated On:</b><span>${escapeHtml(formatReportDateTime(generatedAt))}</span></div></header><section class="title"><div><h2>${escapeHtml(content.title)}</h2><p>${escapeHtml(content.subtitle)}</p></div><div>People | Sites | Security | Safer Tomorrow</div></section>${content.html}<div class="totals">${escapeHtml(content.totals)}</div>${evidenceHtml}<div class="wave"></div><footer><span class="footer-brand"><img src="${MX_PATROL_REPORT_LOGO_SRC}" alt="TTECH MX Patrol" /><span>${escapeHtml(MX_PATROL_REPORT_TAGLINE)}</span></span><span>Page 1 of 1</span></footer></main></body></html>`;
+  </style></head><body><main class="page"><header><div class="brand"><img class="brand-logo" src="${MX_PATROL_REPORT_LOGO_SRC}" alt="${MX_PATROL_REPORT_BRANDING.logoAlt}" /></div><div class="meta"><b>Company:</b><span>${escapeHtml(input.companyName)}</span><b>Site:</b><span>${escapeHtml(input.siteName)}</span><b>Report Type:</b><span>${escapeHtml(content.title)}</span><b>Report Period:</b><span>${escapeHtml(input.periodLabel)}</span><b>Generated On:</b><span>${escapeHtml(formatReportDateTime(generatedAt))}</span></div></header><section class="title"><div><h2>${escapeHtml(content.title)}</h2><p>${escapeHtml(content.subtitle)}</p></div><div>People | Sites | Security | Safer Tomorrow</div></section>${content.html}<div class="totals">${escapeHtml(content.totals)}</div>${evidenceHtml}<div class="wave"></div><footer><span class="footer-brand"><img src="${MX_PATROL_REPORT_LOGO_SRC}" alt="${MX_PATROL_REPORT_BRANDING.logoAlt}" /><span>${escapeHtml(MX_PATROL_REPORT_TAGLINE)}</span></span><span>Page 1 of 1</span></footer></main></body></html>`;
 }
 
 function pdfEscape(value: unknown): string {
@@ -496,7 +497,7 @@ function buildTablePages(input: MxPdfReportInput, logo?: PdfReportLogo | null): 
   const chunks = tableChunks(model, maxDataColumns);
   const streams: string[] = [];
   const drawLogo = (x: number, y: number, maxWidth: number, maxHeight: number) => {
-    if (!logo) return pdfTextAt(x, y + maxHeight - 16, "TTECH", 18, true) + pdfTextAt(x + 38, y + maxHeight - 31, "MX PATROL", 8, true);
+    if (!logo) return "";
     const scale = Math.min(maxWidth / logo.width, maxHeight / logo.height);
     const imageWidth = logo.width * scale;
     const imageHeight = logo.height * scale;

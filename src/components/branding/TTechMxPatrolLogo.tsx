@@ -1,3 +1,4 @@
+import { TTECH_MX_PATROL_LOGO_ALT, TTECH_MX_PATROL_LOGO_SRC } from '@/lib/reportBranding';
 import { cn } from '@/lib/utils';
 
 type TTechMxPatrolLogoVariant = 'sidebar' | 'header' | 'scanner' | 'login' | 'report';
@@ -25,8 +26,8 @@ export function TTechMxPatrolLogo({
 }: TTechMxPatrolLogoProps) {
   return (
     <img
-      src='/branding/ttech-mxpatrol-logo.png'
-      alt={decorative ? '' : 'TTECH MX Patrol'}
+      src={TTECH_MX_PATROL_LOGO_SRC}
+      alt={decorative ? '' : TTECH_MX_PATROL_LOGO_ALT}
       aria-hidden={decorative || undefined}
       loading={priority ? 'eager' : 'lazy'}
       decoding='async'

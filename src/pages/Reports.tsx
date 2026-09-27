@@ -88,6 +88,7 @@ type QueryLike<T = unknown> = PromiseLike<QueryResult<T>> & {
   select: (columns: string, options?: { count?: "exact"; head?: boolean }) => QueryLike<T>;
   eq: (column: string, value: unknown) => QueryLike<T>;
   gte: (column: string, value: string) => QueryLike<T>;
+  lte: (column: string, value: string) => QueryLike<T>;
 };
 type SupabaseQueryClient = { from: <T = unknown>(table: string) => QueryLike<T> };
 

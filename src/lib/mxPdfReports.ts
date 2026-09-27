@@ -1,5 +1,5 @@
 import { MX_PATROL_REPORT_BRANDING, MX_PATROL_REPORT_TAGLINE, TTECH_MX_PATROL_LOGO_SRC } from './reportBranding';
-export type MxPdfReportType = "checkpoint_scan" | "device_scan" | "patrol" | "sos" | "incident" | "datalog";
+export type MxPdfReportType = "checkpoint_scan" | "device_scan" | "patrol" | "sos" | "incident" | "datalog" | "scan_investigations";
 
 export type MxPdfEvidencePhoto = {
   id?: string;
@@ -51,6 +51,11 @@ export const MX_PDF_REPORT_TYPES: Array<{ type: MxPdfReportType; label: string; 
   { type: "sos", label: "SOS Report", action: "report:sos" },
   { type: "incident", label: "Incident Report", action: "report:incident" },
   { type: "datalog", label: "Datalog Report", action: "report:datalog" },
+];
+
+export const MX_MANAGEMENT_PDF_REPORT_TYPES: Array<{ type: MxPdfReportType; label: string; action: string }> = [
+  ...MX_PDF_REPORT_TYPES,
+  { type: "scan_investigations", label: "Scan Investigations", action: "report:scan_investigations" },
 ];
 
 const TZ = "Africa/Johannesburg";
@@ -118,6 +123,60 @@ function deviceName(row: any): string {
 function incidentId(row: any): string {
   const raw = String(row?.incident_number ?? row?.incident_id ?? row?.id ?? "").trim();
   return raw ? (raw.startsWith("INC-") ? raw : `INC-${raw.slice(0, 8).toUpperCase()}`) : "INC-UNKNOWN";
+}
+
+
+function scanUid(row: any): string {
+  return String(row?.tag_uid ?? row?.scanned_uid ?? row?.checkpoints?.nfc_tag_id ?? "-");
+}
+
+function scanResult(row: any): string {
+  const parts = [row?.tag_status, row?.patrol_match_status, row?.patrol_validation_status, row?.data_log_status]
+    .filter((value) => value !== undefined && value !== null && String(value).trim() !== "")
+    .map(statusText);
+  return parts.length ? parts.join(" / ") : "Recorded";
+}
+
+function scanGps(row: any): string {
+  if (row?.gps_lat == null || row?.gps_lng == null) return "-";
+  const accuracy = row?.gps_accuracy == null ? "" : " (+/-" + row.gps_accuracy + "m)";
+  return String(row.gps_lat) + ", " + String(row.gps_lng) + accuracy;
+}
+
+function scanSyncLabel(row: any): string {
+  if (row?.is_offline_sync) return row?.created_at ? "Synced " + formatReportDateTime(row.created_at) : "Synced later";
+  return "Online";
+}
+
+function scanPatrolContext(row: any): string {
+  const session = row?.patrol_sessions;
+  const sessionRoute = Array.isArray(session?.patrol_routes) ? session.patrol_routes[0] : session?.patrol_routes;
+  const sessionTemplate = Array.isArray(session?.patrol_templates) ? session.patrol_templates[0] : session?.patrol_templates;
+  const route = Array.isArray(row?.patrol_routes) ? row.patrol_routes[0] : row?.patrol_routes;
+  const schedule = Array.isArray(row?.patrol_schedules) ? row.patrol_schedules[0] : row?.patrol_schedules;
+  const template = Array.isArray(row?.patrol_templates) ? row.patrol_templates[0] : row?.patrol_templates;
+  const labels = [
+    session?.id ? "Session " + String(session.id).slice(0, 8) : null,
+    sessionRoute?.name ?? route?.name ?? null,
+    schedule?.name ? "Schedule " + schedule.name : null,
+    sessionTemplate?.name ?? template?.name ?? null,
+  ].filter(Boolean);
+  return labels.length ? labels.join(" / ") : "No patrol context";
+}
+
+function datalogValue(row: any): string {
+  const submission = Array.isArray(row?.data_log_submissions) ? row.data_log_submissions[0] : row?.data_log_submissions;
+  return String(row?.datalog_value ?? submission?.datalog_value ?? row?.data_log_status ?? "-");
+}
+
+function scanInvestigationSummary(scans: any[]): string {
+  const unregistered = scans.filter((row) => String(row?.tag_status ?? "").toLowerCase().includes("unregistered") || String(row?.tag_status ?? "").toLowerCase().includes("unknown")).length;
+  const patrolExceptions = scans.filter((row) => {
+    const status = String(row?.patrol_match_status ?? row?.patrol_validation_status ?? "").toLowerCase();
+    return status && !["matched", "valid", "accepted", "scheduled", "registered"].includes(status);
+  }).length;
+  const offline = scans.filter((row) => row?.is_offline_sync).length;
+  return "Unregistered/unknown: " + unregistered + " | Patrol exceptions: " + patrolExceptions + " | Offline synced: " + offline;
 }
 
 function filenameFromPath(path?: string | null): string {
@@ -238,6 +297,24 @@ function contentFor(input: MxPdfReportInput): { title: string; subtitle: string;
   const alerts = input.alerts ?? [];
   const incidents = input.incidents ?? [];
   const datalogs = input.datalogs ?? [];
+
+
+  if (input.type === "scan_investigations") {
+    const rows = scans.map((row, index) => [
+      String(index + 1),
+      escapeHtml(formatReportDateTime(row.scanned_at ?? row.created_at)),
+      escapeHtml(siteName(row)),
+      escapeHtml(deviceName(row)),
+      escapeHtml(checkpointName(row)),
+      escapeHtml(scanUid(row)),
+      escapeHtml(scanResult(row)),
+      escapeHtml(row.is_offline_sync ? "Yes" : "No"),
+      escapeHtml(scanSyncLabel(row)),
+    ]);
+    const summary = table(["#", "Date & Time", "Site", "Device", "Checkpoint", "NFC UID", "Result", "Offline", "Sync"], rows);
+    return { title: "Scan Investigations", subtitle: "Forensic scan log audit", html: summary, totals: "Total Scan Rows: " + rows.length + " | " + scanInvestigationSummary(scans) };
+  }
+
 
   if (input.type === "checkpoint_scan") {
     const matrix = buildCheckpointScanMatrix(scans, input.checkpoints ?? [], { oneDay: isOneDayReportPeriod(input.periodLabel) });
@@ -399,6 +476,44 @@ function reportTableModel(input: MxPdfReportInput): PdfTableModel {
   const alerts = input.alerts ?? [];
   const incidents = input.incidents ?? [];
   const datalogs = input.datalogs ?? [];
+
+  if (input.type === "scan_investigations") {
+    const evidence = scans.map((row, index) => [
+      "Scan #" + (index + 1),
+      "Forensic Fields",
+      String(row.id ?? "-"),
+      [
+        "UID: " + scanUid(row),
+        "Tag: " + statusText(row?.tag_status),
+        "Patrol: " + scanPatrolContext(row),
+        "GPS: " + scanGps(row),
+        "Datalog: " + datalogValue(row),
+        "Client scan: " + String(row?.client_scan_id ?? "-"),
+        "Created: " + formatReportDateTime(row?.created_at),
+        row?.manual_scan_reason ? "Manual reason: " + row.manual_scan_reason : null,
+      ].filter(Boolean).join(" | "),
+    ]);
+    return {
+      title: content.title,
+      subtitle: content.subtitle,
+      totals: content.totals,
+      orientation: "landscape",
+      firstHeader: "Scan #",
+      headers: ["Date & Time", "Device", "Site", "Checkpoint", "UID", "Result", "Offline"],
+      rows: scans.map((row, index) => [
+        String(index + 1),
+        formatReportDateTime(row.scanned_at ?? row.created_at),
+        deviceName(row),
+        siteName(row),
+        checkpointName(row),
+        scanUid(row),
+        scanResult(row),
+        row.is_offline_sync ? "Yes" : "No",
+      ]),
+      evidence,
+    };
+  }
+
   if (input.type === "checkpoint_scan") {
     const matrix = buildCheckpointScanMatrix(scans, input.checkpoints ?? [], { oneDay: isOneDayReportPeriod(input.periodLabel) });
     return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Checkpoint", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]), compactWide: matrix.columns.length <= 18 && matrix.rows.length <= 10 };
@@ -654,6 +769,7 @@ export function buildMxPdfReportResult(input: MxPdfReportInput) {
 }
 
 export function reportTypeFromAction(action: string): MxPdfReportType | null {
+  if (action === "report:scan_investigations" || action.includes("scan_investigation")) return "scan_investigations";
   if (action === "report:checkpoint_scan" || action.includes("checkpoint_scan") || action.includes("checkpoint_scans") || action.includes("checkpoint_activity")) return "checkpoint_scan";
   if (action === "report:device_scan" || action.includes("device_scan") || action.includes("devices")) return "device_scan";
   if (action === "report:patrol" || action.includes("patrol")) return "patrol";

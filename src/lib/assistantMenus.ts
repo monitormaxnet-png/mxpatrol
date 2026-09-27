@@ -1,4 +1,4 @@
-import { REPORT_ROOT_ITEMS, REPORT_SUBMENUS, isDeviceSecurityReportAction, reportMenuItems } from './assistantReportDefinitions';
+import { MANAGEMENT_REPORT_ROOT_ITEMS, REPORT_ROOT_ITEMS, REPORT_SUBMENUS, isDeviceSecurityReportAction, reportMenuItems } from './assistantReportDefinitions';
 export type AssistantMode = 'user' | 'management';
 
 export type MenuItem = { label: string; action: string };
@@ -163,7 +163,7 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     key: 'management_reports',
     title: 'REPORTS',
     parent: MANAGEMENT_HOME,
-    items: REPORT_ROOT_ITEMS,
+    items: MANAGEMENT_REPORT_ROOT_ITEMS,
   },
   ...Object.fromEntries(Object.entries(REPORT_SUBMENUS).map(([key, menu]) => [key, {
     key,
@@ -215,6 +215,7 @@ const MANAGEMENT_ONLY_ACTIONS = new Set([
   'create_schedule',
   'pending_nfc',
   'generate_report',
+  'report:scan_investigations',
   'report:device_security:summary',
   'report:device_security:kiosk_inactive',
   'report:device_security:outdated_apps',
@@ -254,7 +255,7 @@ const NL_INTENTS: Array<[RegExp, string]> = [
   [/generate.*report/, 'generate_report'],
   [/checkpoint.*matrix/, 'report:checkpoint_scan'],
   [/(checkpoint.*activity|activity.*checkpoint|checkpoint.*scan.*report|scan.*checkpoint.*report)/, 'report:checkpoint_scan'],
-  [/(scan.*investigation|investigation.*scan)/, 'report:checkpoint_scan'],
+  [/(scan.*investigation|investigation.*scan)/, 'report:scan_investigations'],
   [/patrol.*report/, 'report:patrol'],
   [/sos.*report/, 'report:sos'],
   [/incident.*report/, 'report:incident'],

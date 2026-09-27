@@ -34,6 +34,16 @@ function reportRootOptions(identity: Identity) {
   });
 }
 
+function managementReportRootOptions(identity: Identity) {
+  const options = reportRootOptions(identity);
+  const back = options.find((option) => option.id === "back");
+  const reports = options.filter((option) => option.id !== "back");
+  const managementOnly = hasReportEntitlement(identity.reportPackage, "scan_investigations")
+    ? [{ id: "reports_scan_investigations", label: "Scan Investigations" }]
+    : [];
+  return [...reports, ...managementOnly, ...(back ? [back] : [])];
+}
+
 function reportMenu(title: string, menuKey: string, options: Array<{ id: string; label: string }>): OutMessage {
   return { title, menuKey, lines: ["Choose a report category."], options };
 }
@@ -537,6 +547,15 @@ export function reportPeriodMenu(identity?: Identity): OutMessage {
     menuKey: "report_period",
     lines: ["Please choose a report category:"],
     options: reportRootOptions(identity ?? ({ platformRole: null } as Identity)),
+  };
+}
+
+export function managementReportPeriodMenu(identity: Identity): OutMessage {
+  return {
+    title: "MANAGEMENT REPORTS",
+    menuKey: "management_reports",
+    lines: ["Please choose a report category:"],
+    options: managementReportRootOptions(identity),
   };
 }
 
@@ -1139,27 +1158,39 @@ export async function reportCategorySummary(client: SupabaseClient, identity: Id
   }
 
   if (category === "scan_investigations") {
-    const { data: investigations } = await siteFilter<any>(client.from("scan_investigations").select("id, investigation_type, registered_status, status, reason, scanned_at, device_identifier").gte("scanned_at", windowFrom).lte("scanned_at", windowTo).order("scanned_at", { ascending: false }).limit(100), identity, siteId);
-    const investigationRows = (investigations ?? []) as any[];
-    const pending = investigationRows.filter((row: any) => row.status === "pending").length;
-    const resolved = investigationRows.filter((row: any) => row.status === "resolved").length;
-    const byType = investigationRows.reduce((acc: Record<string, number>, row: any) => {
-      const key = String(row.investigation_type ?? "other").replace(/_/g, " ");
-      acc[key] = (acc[key] ?? 0) + 1;
-      return acc;
-    }, {});
-    const typeSummary = Object.entries(byType).map(([key, value]) => String(key) + " " + String(value)).join(", ") || "none";
-    const latest = investigationRows.slice(0, 5).map((row: any, index: number) => `${index + 1}. ${String(row.investigation_type ?? "other").replace(/_/g, " ")} - ${row.device_identifier ?? "Unknown device"} - ${row.status}`);
+    const { data: investigationScans } = await siteFilter<any>(
+      client
+        .from("scan_logs")
+        .select("id, tag_status, patrol_match_status, patrol_validation_status, data_log_status, device_identifier, scanned_at, tag_uid, is_offline_sync, checkpoints(name)")
+        .gte("scanned_at", windowFrom)
+        .lte("scanned_at", windowTo)
+        .order("scanned_at", { ascending: false })
+        .limit(100),
+      identity,
+      siteId,
+    );
+    const investigationRows = (investigationScans ?? []) as any[];
+    const unregistered = investigationRows.filter((row: any) => String(row.tag_status ?? "").toLowerCase().includes("unregistered") || String(row.tag_status ?? "").toLowerCase().includes("unknown")).length;
+    const patrolExceptions = investigationRows.filter((row: any) => {
+      const status = String(row.patrol_match_status ?? row.patrol_validation_status ?? "").toLowerCase();
+      return status && !["matched", "valid", "accepted", "scheduled", "registered"].includes(status);
+    }).length;
+    const offlineSynced = investigationRows.filter((row: any) => row.is_offline_sync).length;
+    const latest = investigationRows.slice(0, 5).map((row: any, index: number) => {
+      const checkpoint = Array.isArray(row.checkpoints) ? row.checkpoints[0] : row.checkpoints;
+      const result = [row.tag_status, row.patrol_match_status, row.patrol_validation_status, row.data_log_status].filter(Boolean).join(" / ") || "recorded";
+      return `${index + 1}. ${checkpoint?.name ?? "Unknown checkpoint"} - ${row.device_identifier ?? "Unknown device"} - ${result} - ${waTime(row.scanned_at) ?? "unknown"}`;
+    });
     return {
       title: "SCAN INVESTIGATIONS",
       lines: [
         `Site: ${siteId ? "selected site" : "allowed sites"}`,
-        `Total investigations: ${investigationRows.length}`,
-        `Pending review: ${pending}`,
-        `Resolved: ${resolved}`,
-        `By type: ${typeSummary}`,
+        `Total scan rows: ${investigationRows.length}`,
+        `Unregistered/unknown: ${unregistered}`,
+        `Patrol exceptions: ${patrolExceptions}`,
+        `Offline synced: ${offlineSynced}`,
         "",
-        latest.length ? latest.join("\n") : "No scan investigations found.",
+        latest.length ? latest.join("\n") : "No scan rows found.",
       ],
       options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }],
     };
@@ -1303,7 +1334,7 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     title: 'MANAGEMENT REPORTS',
     menuKey: 'management_reports',
     lines: ['Please choose a report category:'],
-    options: reportRootOptions({ platformRole: 'owner' } as Identity),
+    options: managementReportRootOptions({ platformRole: 'owner' } as Identity),
   },
   reports_period: {
     title: "DAILY / WEEKLY SUMMARY",
@@ -1321,8 +1352,8 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     { id: "report:checkpoint_scans:matrix", label: "Generate PDF" },
     { id: "back", label: "Back" },
   ]),
-  reports_scan_investigations: reportMenu("CHECKPOINT SCAN REPORT", "reports_scan_investigations", [
-    { id: "report:checkpoint_scans:matrix", label: "Generate PDF" },
+  reports_scan_investigations: reportMenu("SCAN INVESTIGATIONS", "reports_scan_investigations", [
+    { id: "report:scan_investigations:summary", label: "Generate PDF" },
     { id: "back", label: "Back" },
   ]),
   reports_checkpoint_scans: reportMenu("CHECKPOINT SCAN REPORT", "reports_checkpoint_scans", [

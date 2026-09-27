@@ -25,6 +25,7 @@ import {
   missedCheckpointsView,
   datalogTodayView,
   reportPeriodMenu,
+  managementReportPeriodMenu,
   reportDateRangeMenu,
   reportSummary,
   reportCategorySummary,
@@ -475,8 +476,7 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
       return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to use management actions."], [{ id: "menu", label: "User Assistant" }]);
     }
     ctx.session = await patchSession(ctx.client, ctx.session, { last_menu: "management" });
-    const menu = reportPeriodMenu(ctx.identity);
-    return { ...menu, menuKey: "management_reports" };
+    return managementReportPeriodMenu(ctx.identity);
   }
 
   if (WA_SUBMENUS[id]) {
@@ -763,6 +763,7 @@ serve(async (req) => {
     );
   }
 });
+
 
 
 

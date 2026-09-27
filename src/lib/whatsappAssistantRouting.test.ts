@@ -13,6 +13,7 @@ import {
   userModeMenu,
   patrolStatusOverview,
   reportPeriodMenu,
+  managementReportPeriodMenu,
   reportDateRangeMenu,
   reportCategorySummary,
   resolveMenuChoice,
@@ -323,6 +324,21 @@ describe("WhatsApp reports category menus", () => {
     expect(resolveMenuChoice(reportSession, "7")).toBe("back");
   });
 
+
+  it("keeps Scan Investigations out of User Mode but available in Management Reports", () => {
+    const userOptions = reportPeriodMenu(identity).options ?? [];
+    expect(userOptions.map((option) => option.label)).not.toContain("Scan Investigations");
+
+    const managementOptions = managementReportPeriodMenu(identity).options ?? [];
+    expect(managementOptions.map((option) => option.label)).toContain("Scan Investigations");
+    const reportSession = session({ temporary_data: { last_options: managementOptions, last_menu_key: "management_reports" } });
+    expect(resolveMenuChoice(reportSession, "7")).toBe("reports_scan_investigations");
+
+    const investigationSession = session({ temporary_data: { last_options: WA_SUBMENUS.reports_scan_investigations.options ?? [], last_menu_key: "reports_scan_investigations" } });
+    expect(resolveMenuChoice(investigationSession, "1")).toBe("report:scan_investigations:summary");
+  });
+
+
   it("routes simplified report submenus to PDF report generation", () => {
     const checkpointSession = session({ temporary_data: { last_options: WA_SUBMENUS.reports_checkpoint_scans.options ?? [], last_menu_key: "reports_checkpoint_scans" } });
     expect(resolveMenuChoice(checkpointSession, "1")).toBe("report:checkpoint_scans:matrix");
@@ -376,6 +392,28 @@ describe("WhatsApp report date-range drill-downs", () => {
     expect(calls).toContainEqual({ table: "scan_logs", method: "lte", args: ["scanned_at", expect.any(String)] });
     expect(calls).toContainEqual({ table: "scan_logs", method: "eq", args: ["site_id", "site-1"] });
   });
+
+
+  it("builds Scan Investigation reports from scan_logs, not the legacy investigation table", async () => {
+    const { client, calls } = reportClient({
+      scan_logs: [
+        { id: "scan-1", tag_status: "unregistered", patrol_match_status: "wrong_patrol", patrol_validation_status: "investigation", data_log_status: "captured", device_identifier: "RG360-01", scanned_at: "2026-09-16T08:00:00Z", is_offline_sync: true, checkpoints: { name: "Generator Room" } },
+      ],
+      scan_investigations: [{ id: "legacy-row" }],
+    });
+
+    const view = await reportCategorySummary(client as any, identity, "site-1", "report:scan_investigations:summary", "today");
+
+    expect(view.title).toBe("SCAN INVESTIGATIONS");
+    expect(view.lines.join("\n")).toContain("Total scan rows: 1");
+    expect(view.lines.join("\n")).toContain("Unregistered/unknown: 1");
+    expect(view.lines.join("\n")).toContain("Patrol exceptions: 1");
+    expect(view.lines.join("\n")).toContain("Offline synced: 1");
+    expect(view.lines.join("\n")).toContain("Generator Room");
+    expect(calls.some((call) => call.table === "scan_investigations")).toBe(false);
+    expect(calls).toContainEqual({ table: "scan_logs", method: "eq", args: ["site_id", "site-1"] });
+  });
+
 
   it("builds patrol report drill-downs from patrol_sessions for the selected date range and site", async () => {
     const { client, calls } = reportClient({

@@ -246,6 +246,18 @@ describe("Reports category menu", () => {
     expect(resolveAssistantInput(userState("user_reports"), "7", guard)).toMatchObject({ kind: "menu", menuKey: USER_HOME });
   });
 
+
+  it("keeps Scan Investigations out of User Mode but available in Management Reports", () => {
+    expect(ASSISTANT_MENUS.user_reports.items.map((item) => item.label)).not.toContain("Scan Investigations");
+    expect(ASSISTANT_MENUS.management_reports.items.map((item) => item.label)).toContain("Scan Investigations");
+    expect(resolveAssistantInput(userState("user_reports"), "scan investigations", guard)).toMatchObject({ kind: "denied" });
+    expect(resolveAssistantInput(userState("user_reports"), "7", guard)).toMatchObject({ kind: "menu", menuKey: USER_HOME });
+    expect(resolveAssistantInput(mgmtState("management_reports"), "7", { ...manager, isPlatformOwner: true })).toMatchObject({ kind: "action", action: "report:scan_investigations" });
+    expect(resolveAssistantInput(mgmtState("management_reports"), "8", { ...manager, isPlatformOwner: true })).toMatchObject({ kind: "menu", menuKey: MANAGEMENT_HOME });
+    expect(resolveAssistantInput(mgmtState("management_reports"), "scan investigations", manager)).toMatchObject({ kind: "action", action: "report:scan_investigations" });
+  });
+
+
   it("does not expose retired Device Security Reports through the simplified menu", () => {
     expect(resolveAssistantInput(mgmtState(), "device security reports", manager)).toMatchObject({ kind: "unknown" });
     expect(resolveAssistantInput(mgmtState(), "device security reports", { canManage: true, isPlatformOwner: true })).toMatchObject({ kind: "unknown" });

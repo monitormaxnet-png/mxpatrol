@@ -1,4 +1,4 @@
-import { MX_PDF_REPORT_TYPES } from './mxPdfReports';
+import { MX_MANAGEMENT_PDF_REPORT_TYPES, MX_PDF_REPORT_TYPES } from './mxPdfReports';
 
 export type ReportCategory = {
   label: string;
@@ -18,6 +18,11 @@ export const REPORT_ROOT_ITEMS: ReportCategory[] = [
   { label: 'Back', action: 'back' },
 ];
 
+export const MANAGEMENT_REPORT_ROOT_ITEMS: ReportCategory[] = [
+  ...MX_MANAGEMENT_PDF_REPORT_TYPES.map(({ label, action }) => ({ label, action })),
+  { label: 'Back', action: 'back' },
+];
+
 export const REPORT_SUBMENUS: Record<string, ReportMenu> = {};
 
 export function reportRootItems(_isPlatformOwner: boolean): ReportCategory[] {
@@ -25,7 +30,8 @@ export function reportRootItems(_isPlatformOwner: boolean): ReportCategory[] {
 }
 
 export function reportMenuItems(key: string, isPlatformOwner: boolean): ReportCategory[] {
-  if (key === 'user_reports' || key === 'management_reports') return reportRootItems(isPlatformOwner);
+  if (key === 'management_reports') return isPlatformOwner ? MANAGEMENT_REPORT_ROOT_ITEMS : REPORT_ROOT_ITEMS;
+  if (key === 'user_reports') return REPORT_ROOT_ITEMS;
   return REPORT_SUBMENUS[key]?.items ?? [];
 }
 

@@ -34,7 +34,7 @@ import { SocPageShell } from "@/components/dashboard/SocComponents";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
 import { usePatrolSessionReports, usePatrolSessions, usePatrolTemplates } from "@/hooks/useScheduledPatrols";
 import { buildIncidentEvidencePackage, downloadBlob } from "@/lib/incidentEvidencePackage";
-import { MX_PDF_REPORT_TYPES, buildMxPdfReportResult, downloadMxPdfReport, type MxPdfIncidentEvidence, type MxPdfReportInput, type MxPdfReportType } from "@/lib/mxPdfReports";
+import { MX_MANAGEMENT_PDF_REPORT_TYPES, buildMxPdfReportResult, downloadMxPdfReport, type MxPdfIncidentEvidence, type MxPdfReportInput, type MxPdfReportType } from "@/lib/mxPdfReports";
 
 type DateRange = "today" | "7d" | "30d";
 type ReportTab = "all" | "generated" | "scheduled" | "pending" | "failed";
@@ -43,6 +43,7 @@ type GeneratedReportResult = ReturnType<typeof buildMxPdfReportResult>;
 type DatalogReportRow = { id: string; submitted_at: string | null; datalog_value: string | null; responses_json: any; site_id: string | null; checkpoint_id: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
 type DatalogCheckpointOption = { id: string; name: string; site_id: string | null };
 type IncidentPhotoEvidenceRow = { id: string; site_id: string | null; device_identifier: string | null; storage_path: string; captured_at: string | null; created_at?: string | null; signed_url?: string | null };
+type ScanInvestigationReportRow = Record<string, any>;
 
 type ReportData = {
   title?: string;
@@ -92,7 +93,7 @@ type SupabaseQueryClient = { from: <T = unknown>(table: string) => QueryLike<T> 
 
 const db = supabase as unknown as SupabaseQueryClient;
 
-const reportTypeLabels: Record<string, string> = Object.fromEntries(MX_PDF_REPORT_TYPES.map((report) => [report.type, report.label]));
+const reportTypeLabels: Record<string, string> = Object.fromEntries(MX_MANAGEMENT_PDF_REPORT_TYPES.map((report) => [report.type, report.label]));
 
 const dateRangeBounds = (range: DateRange) => {
   const from = new Date();
@@ -195,6 +196,26 @@ const Reports = () => {
   const { data: reportSessions = [] } = usePatrolSessions(250, siteId);
   const { data: sessionReportRows = [], isLoading: sessionReportsLoading, error: sessionReportsError } = usePatrolSessionReports(250, siteId);
   const { data: patrolTemplates = [] } = usePatrolTemplates(siteId);
+
+
+  const { data: scanInvestigationRows = [], isLoading: scanInvestigationsLoading, error: scanInvestigationsError } = useQuery({
+    queryKey: ["reports_scan_investigations", companyId, siteId, periodStart, periodEnd],
+    enabled: !!companyId,
+    queryFn: async () => {
+      let query = supabase
+        .from("scan_logs")
+        .select("id, company_id, site_id, checkpoint_id, device_id, device_identifier, device_metadata, guard_id, user_id, scanned_by, scanned_at, created_at, gps_lat, gps_lng, gps_accuracy, tag_uid, tag_status, is_offline_sync, client_scan_id, is_manual, manual_scan_reason, patrol_match_status, patrol_validation_status, patrol_session_id, patrol_route_id, patrol_schedule_id, patrol_template_id, data_log_required, data_log_status, sites(name), checkpoints(name, nfc_tag_id, site_id, sites(name)), guards(full_name, badge_number), patrol_routes(name), patrol_schedules(name), patrol_templates(name), patrol_sessions(id, status, scheduled_start, actual_start, actual_end, patrol_routes(name), patrol_templates(name)), data_log_submissions(datalog_value, submitted_at)")
+        .eq("company_id", companyId!)
+        .gte("scanned_at", periodStart)
+        .lte("scanned_at", periodEnd)
+        .order("scanned_at", { ascending: false })
+        .limit(500);
+      if (siteId !== "all") query = query.eq("site_id", siteId);
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []) as unknown as ScanInvestigationReportRow[];
+    },
+  });
 
   const { data: datalogCheckpoints = [] } = useQuery({
     queryKey: ["reports_datalog_checkpoints", companyId, siteId],
@@ -310,6 +331,7 @@ const Reports = () => {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "scan_logs", filter: `company_id=eq.${companyId}` }, () => {
         void queryClient.invalidateQueries({ queryKey: ["live_patrol_scans", companyId] });
+        void queryClient.invalidateQueries({ queryKey: ["reports_scan_investigations", companyId] });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "report_jobs", filter: `company_id=eq.${companyId}` }, () => {
         void queryClient.invalidateQueries({ queryKey: ["report_jobs", companyId] });
@@ -324,7 +346,7 @@ const Reports = () => {
   const templateOptions = useMemo(() => buildTemplateOptions(patrolTemplates, sessionReportRows, reportSessions), [patrolTemplates, reportSessions, sessionReportRows]);
   const selectedTemplateName = useMemo(() => templateOptions.find((template) => template.id === patrolTemplateId)?.name ?? "All Patrol Templates", [patrolTemplateId, templateOptions]);
   const periodScans = useMemo(() => registeredScans.filter((scan) => isWithinRange(scan.scanned_at, periodStart, periodEnd) && matchesTemplate(scan, patrolTemplateId)), [patrolTemplateId, periodEnd, periodStart, registeredScans]);
-  const reportTypes = MX_PDF_REPORT_TYPES;
+  const reportTypes = MX_MANAGEMENT_PDF_REPORT_TYPES;
   const selectedSiteLabel = siteId === "all" ? "All Sites" : sites.find((site) => site.id === siteId)?.name ?? "Selected site";
 
   const filteredReports = useMemo(() => reports.filter((report) => {
@@ -385,18 +407,21 @@ const Reports = () => {
     }, {});
   }, [incidentPhotoRows, incidentRows]);
 
-  const buildPdfInput = (overrideType?: MxPdfReportType): MxPdfReportInput => ({
-    type: overrideType ?? reportType,
-    companyName,
-    siteName: selectedSiteLabel,
-    periodLabel: rangeLabel(dateRange),
-    scans: periodScans,
-    patrols: sessionReports.length ? sessionReports : expectedSessions,
-    alerts: sosRows,
-    incidents: incidentRows,
-    datalogs: datalogRows,
-    incidentEvidence,
-  });
+  const buildPdfInput = (overrideType?: MxPdfReportType): MxPdfReportInput => {
+    const type = overrideType ?? reportType;
+    return {
+      type,
+      companyName,
+      siteName: selectedSiteLabel,
+      periodLabel: rangeLabel(dateRange),
+      scans: type === "scan_investigations" ? scanInvestigationRows : periodScans,
+      patrols: sessionReports.length ? sessionReports : expectedSessions,
+      alerts: sosRows,
+      incidents: incidentRows,
+      datalogs: datalogRows,
+      incidentEvidence,
+    };
+  };
   const reportsByType = useMemo(() => {
     const counts = new Map<string, number>();
     filteredReports.forEach((report) => counts.set(report.report_type, (counts.get(report.report_type) ?? 0) + 1));
@@ -525,7 +550,7 @@ const Reports = () => {
           <MetricCard icon={ShieldCheck} tone="green" label="Patrol Compliance" value={`${compliance}%`} detail={patrolTemplateId === "all" ? (expectedSessions.length ? "Completed expected sessions" : "Registered scan ratio") : selectedTemplateName} />
           <MetricCard icon={Clock} tone="blue" label="Total Patrol Time" value={formatDuration(patrolMinutes)} detail="Derived from scan window" />
           <MetricCard icon={AlertCircle} tone="amber" label="Incidents Reported" value={metricsLoading ? "--" : metrics?.incidents ?? 0} detail={rangeLabel(dateRange)} />
-          <MetricCard icon={FileText} tone="cyan" label="Total Scans" value={scansLoading ? "--" : periodScans.length} detail="Registered scans only" />
+          <MetricCard icon={FileText} tone="cyan" label="Total Scans" value={reportType === "scan_investigations" ? (scanInvestigationsLoading ? "--" : scanInvestigationRows.length) : (scansLoading ? "--" : periodScans.length)} detail={reportType === "scan_investigations" ? "All scan log rows" : "Registered scans only"} />
         </section>
 
 
@@ -538,6 +563,7 @@ const Reports = () => {
         <DatalogReportTable rows={datalogRows} checkpoints={datalogCheckpoints} checkpointId={datalogCheckpointId} onCheckpointChange={setDatalogCheckpointId} loading={datalogLoading} error={datalogError} dateRange={rangeLabel(dateRange)} />
 
         {scansError && <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">Scan report data could not be loaded.</div>}
+        {scanInvestigationsError && <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">Scan investigation data could not be loaded.</div>}
 
         <section className="grid gap-4 xl:grid-cols-3">
           <div className="xl:col-span-2 rounded-xl border border-white/10 bg-slate-950/72">

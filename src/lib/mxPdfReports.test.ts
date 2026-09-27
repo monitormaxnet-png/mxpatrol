@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildStoredZip, evidenceFilename } from "./incidentEvidencePackage";
-import { buildCheckpointScanMatrix, buildDeviceScanMatrix, buildMxPdfReportBlob, buildMxPdfReportHtml, formatReportDateTime, MX_PATROL_REPORT_LOGO_SRC } from "./mxPdfReports";
+import { buildCheckpointScanMatrix, buildDeviceScanMatrix, buildMxPdfReportBlob, buildMxPdfReportHtml, formatReportDateTime, MX_MANAGEMENT_PDF_REPORT_TYPES, MX_PATROL_REPORT_LOGO_SRC, MX_PDF_REPORT_TYPES, reportTypeFromAction } from "./mxPdfReports";
 
 const scans = [
   { id: "1", scanned_at: "2026-09-16T06:02:00.000Z", device_identifier: "Guard-01", checkpoints: { name: "Main Gate" } },
@@ -109,6 +109,59 @@ describe("MX PDF report helpers", () => {
     expect(pdf).toContain("6 / 6");
     expect(pdf).toContain("10 min");
   });
+
+  it("keeps Scan Investigations management-only and renders raw scan-log forensic fields", async () => {
+    expect(MX_PDF_REPORT_TYPES.some((report) => report.type === "scan_investigations")).toBe(false);
+    expect(MX_MANAGEMENT_PDF_REPORT_TYPES.some((report) => report.type === "scan_investigations")).toBe(true);
+    expect(reportTypeFromAction("report:scan_investigations:summary")).toBe("scan_investigations");
+
+    const investigationScans = [{
+      id: "scan-1",
+      scanned_at: "2026-09-26T07:52:00.000Z",
+      created_at: "2026-09-26T07:53:00.000Z",
+      company_id: "company-1",
+      site_id: "site-1",
+      checkpoint_id: "checkpoint-1",
+      device_id: "device-1",
+      device_identifier: "RG360-01",
+      tag_uid: "04AABBCC",
+      tag_status: "unregistered",
+      patrol_match_status: "wrong_patrol",
+      patrol_validation_status: "investigation",
+      data_log_status: "captured",
+      is_offline_sync: true,
+      client_scan_id: "client-scan-1",
+      gps_lat: -24.6479,
+      gps_lng: 25.9147,
+      gps_accuracy: 4,
+      sites: { name: "Tlokweng" },
+      checkpoints: { name: "Generator Room", nfc_tag_id: "04AABBCC" },
+      patrol_sessions: { id: "session-1", patrol_routes: { name: "Night Patrol" } },
+      data_log_submissions: [{ datalog_value: "Meter 245" }],
+    }];
+
+    const input = { type: "scan_investigations" as const, companyName: "Acme", siteName: "Tlokweng", periodLabel: "Today", scans: investigationScans };
+    const html = buildMxPdfReportHtml(input);
+    expect(html).toContain("Scan Investigations");
+    expect(html).toContain("Forensic scan log audit");
+    expect(html).toContain("RG360-01");
+    expect(html).toContain("Generator Room");
+    expect(html).toContain("04AABBCC");
+    expect(html).toContain("Unregistered / Wrong Patrol / Investigation / Captured");
+    expect(html).toContain("<td>Yes</td>");
+    expect(html).toContain("Total Scan Rows: 1");
+
+    const pdf = new TextDecoder().decode(await buildMxPdfReportBlob(input).arrayBuffer());
+    expect(pdf).toContain("Scan Investigations");
+    expect(pdf).toContain("Scan #1");
+    expect(pdf).toContain("04AABBCC");
+    expect(pdf).toContain("GPS: -24.6479,");
+    expect(pdf).toContain("25.9147 \\(+/-4m\\)");
+    expect(pdf).toContain("Datalog:");
+    expect(pdf).toContain("Meter 245");
+  });
+
+
   it("adds incident evidence pages with photo previews and audio metadata", () => {
     const html = buildMxPdfReportHtml({
       type: "incident",

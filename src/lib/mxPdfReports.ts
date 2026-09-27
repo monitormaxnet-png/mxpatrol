@@ -209,7 +209,7 @@ function statusText(value: unknown): string {
   return String(value ?? "-").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-const DEFAULT_CHECKPOINT_SCAN_TIME_COLUMNS = ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"];
+const DEFAULT_CHECKPOINT_SCAN_TIME_COLUMNS = ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00", "06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"];
 
 function checkpointOptionName(checkpoint: any): string {
   return String(checkpoint?.name ?? checkpoint?.checkpoint_name ?? checkpoint?.checkpoint_name_snapshot ?? "Checkpoint");
@@ -516,7 +516,7 @@ function reportTableModel(input: MxPdfReportInput): PdfTableModel {
 
   if (input.type === "checkpoint_scan") {
     const matrix = buildCheckpointScanMatrix(scans, input.checkpoints ?? [], { oneDay: isOneDayReportPeriod(input.periodLabel) });
-    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Checkpoint", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]), compactWide: matrix.columns.length <= 18 && matrix.rows.length <= 10 };
+    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Checkpoint", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]), compactWide: matrix.columns.length <= 24 && matrix.rows.length <= 10 };
   }
   if (input.type === "device_scan") {
     const matrix = buildDeviceScanMatrix(scans, input.checkpoints ?? [], { oneDay: isOneDayReportPeriod(input.periodLabel) });

@@ -98,7 +98,8 @@ const reportTypeLabels: Record<string, string> = Object.fromEntries(MX_MANAGEMEN
 const dateRangeBounds = (range: DateRange) => {
   const from = new Date();
   const to = new Date();
-  if (range === "today") from.setHours(0, 0, 0, 0);
+  from.setHours(0, 0, 0, 0);
+  to.setHours(23, 59, 59, 999);
   if (range === "7d") from.setDate(from.getDate() - 7);
   if (range === "30d") from.setDate(from.getDate() - 30);
   return { from: from.toISOString(), to: to.toISOString() };

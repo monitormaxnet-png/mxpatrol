@@ -58,19 +58,22 @@ describe("MX PDF report helpers", () => {
     const todayScans = [
       { id: "scan-1", scanned_at: "2026-09-26T07:52:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "Gate" } },
       { id: "scan-2", scanned_at: "2026-09-26T14:21:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "sittingRoom" } },
+      { id: "scan-3", scanned_at: "2026-09-26T02:15:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "kitchen" } },
     ];
     const matrix = buildCheckpointScanMatrix(todayScans, checkpoints, { oneDay: true });
-    expect(matrix.columns).toHaveLength(18);
-    expect(matrix.columns[0]).toBe("06:00");
+    expect(matrix.columns).toHaveLength(24);
+    expect(matrix.columns[0]).toBe("00:00");
     expect(matrix.columns[matrix.columns.length - 1]).toBe("23:00");
+    expect(matrix.columns).toContain("04:00");
     expect(matrix.rows.find((row) => row.label === "Gate")?.cells.flat()).toContain("09:52");
+    expect(matrix.rows.find((row) => row.label === "kitchen")?.cells.flat()).toContain("04:15");
     expect(matrix.rows.find((row) => row.label === "Gate")?.cells.flat().join(" ")).not.toContain("2026");
 
     const blob = buildMxPdfReportBlob({ type: "checkpoint_scan", companyName: "Acme", siteName: "Tlokweng", periodLabel: "Today", scans: [], checkpoints });
     const pdf = new TextDecoder().decode(await blob.arrayBuffer());
     expect(pdf).toContain("/Count 1");
     expect(pdf).not.toContain("Columns 1 of");
-    expect(pdf).toContain("06:00");
+    expect(pdf).toContain("00:00");
     expect(pdf).toContain("23:00");
   });
 

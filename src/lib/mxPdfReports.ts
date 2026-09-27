@@ -197,6 +197,33 @@ function matrixTable(firstHeader: string, columns: string[], rows: Array<{ label
   return table([firstHeader, ...columns], rows.map((row) => [escapeHtml(row.label), ...row.cells.map((values) => values.length ? values.map(escapeHtml).join("<br>") : "-")]));
 }
 
+function patrolReportStatus(row: any): string {
+  const status = String(row?.status ?? "").toLowerCase();
+  if (status.includes("missed")) return "Missed";
+  if (status.includes("incomplete")) return "Incomplete";
+  if (status.includes("late") || status.includes("delayed")) return "Late";
+  if (status.includes("complete")) return "Completed";
+  return statusText(row?.status);
+}
+
+function completedCheckpointCount(row: any): number {
+  return Number(row?.checkpoint_completed ?? row?.completed_checkpoints ?? row?.completed_required_count ?? 0);
+}
+
+function expectedCheckpointCount(row: any): number {
+  return Number(row?.checkpoint_total ?? row?.expected_checkpoints ?? row?.total_required_count ?? 0);
+}
+
+function missedCheckpointCount(row: any): number {
+  const explicit = row?.missed_checkpoint_count ?? row?.missed_checkpoints;
+  if (explicit !== undefined && explicit !== null) return Number(explicit) || 0;
+  return Math.max(expectedCheckpointCount(row) - completedCheckpointCount(row), 0);
+}
+
+function checkpointProgressLabel(row: any): string {
+  return completedCheckpointCount(row) + " / " + expectedCheckpointCount(row);
+}
+
 function lateDuration(row: any): string {
   if (!row?.scheduled_start || !row?.actual_start) return "-";
   const diff = new Date(row.actual_start).getTime() - new Date(row.scheduled_start).getTime();
@@ -229,12 +256,12 @@ function contentFor(input: MxPdfReportInput): { title: string; subtitle: string;
       escapeHtml(reportTime(row.scheduled_start)),
       escapeHtml(reportTime(row.actual_start)),
       escapeHtml(reportTime(row.actual_end ?? row.finalized_at ?? row.completed_at)),
-      escapeHtml(statusText(row.status)),
-      escapeHtml(row.checkpoint_completed ?? row.completed_checkpoints ?? 0),
-      escapeHtml(row.missed_checkpoint_count ?? Math.max((row.checkpoint_total ?? row.expected_checkpoints ?? 0) - (row.checkpoint_completed ?? row.completed_checkpoints ?? 0), 0)),
+      escapeHtml(patrolReportStatus(row)),
+      escapeHtml(checkpointProgressLabel(row)),
+      escapeHtml(missedCheckpointCount(row)),
       escapeHtml(lateDuration(row)),
     ]);
-    return { title: "Patrol Report", subtitle: "Patrol performance summary", html: table(["#", "Patrol Name", "Site", "Date", "Scheduled Time", "Actual Start", "Completion", "Status", "Completed", "Missed", "Late"], rows), totals: `Total Patrols: ${rows.length}` };
+    return { title: "Patrol Report", subtitle: "Patrol performance summary", html: table(["#", "Patrol Name", "Site", "Date", "Scheduled Time", "Actual Start", "Completion Time", "Status", "Checkpoints", "Missed Checkpoints", "Late Time"], rows), totals: `Total Patrols: ${rows.length}` };
   }
   if (input.type === "sos") {
     const sos = alerts.filter((alert) => String(alert.type ?? "").includes("panic") || String(alert.title ?? "").toLowerCase().includes("sos"));
@@ -381,7 +408,7 @@ function reportTableModel(input: MxPdfReportInput): PdfTableModel {
     return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Device", headers: matrix.columns, rows: matrix.rows.map((row) => [row.label, ...row.cells.map((cell) => cell.length ? cell.join("\n") : "-")]) };
   }
   if (input.type === "patrol") {
-    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Patrol", headers: ["Site", "Date", "Scheduled", "Actual Start", "Completion", "Status", "Completed", "Missed", "Late"], rows: patrols.map((row) => [row.patrol_name ?? row.patrol_routes?.name ?? row.patrol_templates?.name ?? "Patrol", siteName(row), reportDate(row.scheduled_start), reportTime(row.scheduled_start), reportTime(row.actual_start), reportTime(row.actual_end ?? row.finalized_at ?? row.completed_at), statusText(row.status), String(row.checkpoint_completed ?? row.completed_checkpoints ?? 0), String(row.missed_checkpoint_count ?? Math.max((row.checkpoint_total ?? row.expected_checkpoints ?? 0) - (row.checkpoint_completed ?? row.completed_checkpoints ?? 0), 0)), lateDuration(row)]) };
+    return { title: content.title, subtitle: content.subtitle, totals: content.totals, orientation: "landscape", firstHeader: "Patrol", headers: ["Site", "Date", "Scheduled Time", "Actual Start", "Completion Time", "Status", "Checkpoints", "Missed Checkpoints", "Late Time"], rows: patrols.map((row) => [row.patrol_name ?? row.patrol_routes?.name ?? row.patrol_templates?.name ?? "Patrol", siteName(row), reportDate(row.scheduled_start), reportTime(row.scheduled_start), reportTime(row.actual_start), reportTime(row.actual_end ?? row.finalized_at ?? row.completed_at), patrolReportStatus(row), checkpointProgressLabel(row), String(missedCheckpointCount(row)), lateDuration(row)]) };
   }
   if (input.type === "sos") {
     const sos = alerts.filter((alert) => String(alert.type ?? "").includes("panic") || String(alert.title ?? "").toLowerCase().includes("sos"));

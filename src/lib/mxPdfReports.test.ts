@@ -74,6 +74,41 @@ describe("MX PDF report helpers", () => {
     expect(pdf).toContain("23:00");
   });
 
+
+  it("simplifies patrol report status columns in HTML preview and PDF", async () => {
+    const patrols = [
+      { patrol_name: "House Patrol", status: "completed", scheduled_start: "2026-09-26T06:00:00.000Z", actual_start: "2026-09-26T06:00:00.000Z", actual_end: "2026-09-26T06:45:00.000Z", checkpoint_completed: 6, checkpoint_total: 6, sites: { name: "Tlokweng" } },
+      { patrol_name: "Night Patrol", status: "late_start", scheduled_start: "2026-09-26T12:00:00.000Z", actual_start: "2026-09-26T12:10:00.000Z", actual_end: "2026-09-26T12:58:00.000Z", checkpoint_completed: 6, checkpoint_total: 6, sites: { name: "Tlokweng" } },
+      { patrol_name: "Evening Patrol", status: "incomplete", scheduled_start: "2026-09-26T17:00:00.000Z", actual_start: "2026-09-26T17:00:00.000Z", checkpoint_completed: 2, checkpoint_total: 6, sites: { name: "Tlokweng" } },
+      { patrol_name: "Perimeter Patrol", status: "missed", scheduled_start: "2026-09-26T20:00:00.000Z", checkpoint_completed: 0, checkpoint_total: 6, sites: { name: "Tlokweng" } },
+    ];
+    const input = { type: "patrol" as const, companyName: "Acme", siteName: "Tlokweng", periodLabel: "Today", patrols };
+    const html = buildMxPdfReportHtml(input);
+
+    expect(html).toContain("<th>Status</th>");
+    expect(html).toContain("<th>Checkpoints</th>");
+    expect(html).toContain("<th>Missed Checkpoints</th>");
+    expect(html).toContain("<th>Late Time</th>");
+    expect(html).not.toContain("<th>Completed</th>");
+    expect(html).not.toContain("<th>Incomplete</th>");
+    expect(html).not.toContain("<th>Missed</th>");
+    expect(html).not.toContain("<th>Late</th>");
+    expect(html).toContain("<td>Completed</td>");
+    expect(html).toContain("<td>Late</td>");
+    expect(html).toContain("<td>Incomplete</td>");
+    expect(html).toContain("<td>Missed</td>");
+    expect(html).toContain("<td>6 / 6</td>");
+    expect(html).toContain("<td>2 / 6</td>");
+    expect(html).toContain("<td>4</td>");
+    expect(html).toContain("<td>10 min</td>");
+
+    const pdf = new TextDecoder().decode(await buildMxPdfReportBlob(input).arrayBuffer());
+    expect(pdf).toContain("Completion Time");
+    expect(pdf).toContain("Missed Checkpoints");
+    expect(pdf).toContain("Late Time");
+    expect(pdf).toContain("6 / 6");
+    expect(pdf).toContain("10 min");
+  });
   it("adds incident evidence pages with photo previews and audio metadata", () => {
     const html = buildMxPdfReportHtml({
       type: "incident",

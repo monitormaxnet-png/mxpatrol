@@ -196,9 +196,9 @@ export default function PendingUnregisteredCheckpoints({ siteId = "all" }: Props
                       <span className="block truncate font-mono text-xs font-bold text-foreground">UID {shortUid(tag.tag_uid)}</span>
                       <span className="mt-1 block truncate text-xs text-muted-foreground">{tag.sites?.name ?? "Unassigned site"} - {pendingCheckpointDeviceIdentity(tag)}</span>
                     </span>
-                    <span className="shrink-0 rounded-full bg-warning/15 px-2 py-1 text-[10px] font-bold uppercase text-warning">{tag.scan_count} scans</span>
+<span className="shrink-0 rounded-full bg-warning/15 px-2 py-1 text-[10px] font-bold uppercase text-warning">Pending</span>
                   </div>
-                  <p className="mt-2 text-[11px] text-muted-foreground">Last seen {formatDateTime(tag.last_seen_at)}</p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">Last seen {formatDateTime(tag.scanned_at)}</p>
                 </button>
               ))}
             </div>
@@ -215,15 +215,14 @@ export default function PendingUnregisteredCheckpoints({ siteId = "all" }: Props
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-3">
                 <span className="inline-flex items-center gap-2 text-sm font-bold text-warning"><AlertTriangle className="h-4 w-4" /> Unregistered Checkpoint</span>
-                <span className="rounded-full bg-warning/15 px-2 py-1 text-[10px] font-semibold uppercase text-warning">{active.status}</span>
+<span className="rounded-full bg-warning/15 px-2 py-1 text-[10px] font-semibold uppercase text-warning">{active.tag_status}</span>
               </div>
               <div className="grid gap-3 text-sm md:grid-cols-2">
                 <Detail icon={Tag} label="NFC UID" value={active.tag_uid} highlight mono />
                 <Detail icon={MapPin} label="Site" value={active.sites?.name ?? "Unassigned"} />
                 <Detail icon={Smartphone} label="Device" value={pendingCheckpointDeviceIdentity(active)} />
-                <Detail icon={Calendar} label="First Seen" value={formatDateTime(active.first_seen_at)} />
-                <Detail icon={Clock} label="Last Seen" value={formatDateTime(active.last_seen_at)} />
-                <Detail icon={Radio} label="Scans" value={String(active.scan_count)} />
+                <Detail icon={Calendar} label="Last Seen" value={formatDateTime(active.scanned_at)} />
+                <Detail icon={Clock} label="Recorded" value={formatDateTime(active.scanned_at)} />
                 <Detail icon={MapPin} label="Coordinates" value={coordinates(active)} warning={active.gps_lat == null || active.gps_lng == null} mono />
               </div>
               <div className="rounded-lg border border-border/50 bg-muted/10 p-3 text-sm text-muted-foreground">

@@ -305,6 +305,3 @@ export function patrolScanCheckpointName(scan: PatrolScanRow) {
 export function pendingCheckpointDeviceIdentity(checkpoint: PendingUnregisteredCheckpointRow) {
   return checkpoint.device_identifier || checkpoint.device_id || "Unknown device";
 }
-
-
-

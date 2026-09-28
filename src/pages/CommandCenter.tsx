@@ -683,7 +683,7 @@ export default function CommandCenter() {
     if (action === 'incidents_high') return addAssistant('HIGH PRIORITY INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => ['high', 'critical'].includes(String(row.severity)))} />);
     if (action === 'incidents_resolved') return addAssistant('RESOLVED INCIDENTS - ' + selectedSite, <IncidentList rows={siteIncidents.filter((row: any) => row.resolved)} />);
     if (action === 'checkpoints') return addAssistant('CHECKPOINTS - ' + selectedSite, <CheckpointList rows={siteCheckpoints} />);
-    if (action === 'pending_nfc') return addAssistant('PENDING UNREGISTERED CHECKPOINTS - ' + selectedSite, <PendingUnregisteredCheckpoints />);
+    if (action === 'pending_nfc') return addAssistant('PENDING UNREGISTERED CHECKPOINTS - ' + selectedSite, <PendingUnregisteredCheckpoints siteId={selectedSiteId ?? 'all'} />);
     if (action === 'patrol_status') return showMenu(state.mode === 'management' ? 'management_patrol_status' : 'user_patrol_status');
     if (action === 'completed_patrols') return addAssistant('COMPLETED PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='completed' site={selectedSite} />);
     if (action === 'incomplete_patrols') return addAssistant('INCOMPLETE PATROLS - ' + selectedSite, <PatrolSessionSummary rows={periodRows('today').sessions} group='incomplete' site={selectedSite} />);

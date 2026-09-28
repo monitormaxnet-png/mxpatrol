@@ -19,6 +19,7 @@ import {
   userModeMenu,
   managementMenu,
   checkpointsView,
+  pendingNfcView,
   patrolStatusView,
   patrolSessionDrilldownView,
   patrolStatusOverview,
@@ -357,6 +358,12 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
       return await checkpointsView(ctx.client, ctx.identity, siteId);
+    }
+
+    case "pending_nfc": {
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return await pendingNfcView(ctx.client, ctx.identity, siteId);
     }
 
 
@@ -763,11 +770,3 @@ serve(async (req) => {
     );
   }
 });
-
-
-
-
-
-
-
-

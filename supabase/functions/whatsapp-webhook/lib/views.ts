@@ -898,6 +898,47 @@ export async function patrolSessionDrilldownView(
   lines.push('Type reports for full details.', 'Type back to return.');
   return { title, menuKey: kind === 'late' ? 'late_sessions' : 'missed_sessions', lines, options };
 }
+export async function pendingNfcView(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
+  let query = client
+    .from("pending_nfc_tags")
+    .select("id, tag_uid, status, first_seen_at, last_seen_at, device_identifier, device_id, site_id, sites(name)")
+    .eq("company_id", identity.company_id)
+    .eq("status", "pending")
+    .order("last_seen_at", { ascending: false })
+    .limit(12);
+  if (siteId) query = query.eq("site_id", siteId);
+  else if (identity.allowed_site_ids.length) query = query.in("site_id", identity.allowed_site_ids);
+  const { data, error } = await query;
+  if (error) {
+    console.error("[WA] pending NFC query failed:", error.message);
+    return { title: "PENDING UNREGISTERED CHECKPOINTS", lines: ["Pending unregistered checkpoints could not be loaded."], options: [{ id: "back", label: "Back" }] };
+  }
+  const rows = (data ?? []) as any[];
+  if (!rows.length) return { title: "PENDING UNREGISTERED CHECKPOINTS", lines: ["No unregistered checkpoint tags are pending for this site."], options: [{ id: "back", label: "Back" }] };
+  const tags = rows.map((row) => String(row.tag_uid ?? "").toLowerCase()).filter(Boolean);
+  const scanCounts = new Map<string, number>();
+  if (tags.length) {
+    let scanQuery = client.from("scan_logs").select("tag_uid").eq("company_id", identity.company_id).is("checkpoint_id", null).eq("tag_status", "unregistered").in("tag_uid", tags).limit(500);
+    if (siteId) scanQuery = scanQuery.eq("site_id", siteId);
+    const { data: scans } = await scanQuery;
+    for (const scan of (scans ?? []) as any[]) {
+      const key = String(scan.tag_uid ?? "").toLowerCase();
+      scanCounts.set(key, (scanCounts.get(key) ?? 0) + 1);
+    }
+  }
+  return {
+    title: "PENDING UNREGISTERED CHECKPOINTS",
+    menuKey: "pending_nfc",
+    lines: [rows.map((row, index) => {
+      const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
+      const uid = String(row.tag_uid ?? "unknown");
+      const shortUid = uid.length > 8 ? "..." + uid.slice(-8).toUpperCase() : uid.toUpperCase();
+      const count = scanCounts.get(uid.toLowerCase()) ?? 1;
+      return `${index + 1}. UID ${shortUid} - ${site?.name ?? "Unassigned site"} - ${count} scan${count === 1 ? "" : "s"}\nDevice: ${row.device_identifier ?? row.device_id ?? "Unknown device"}\nFirst Seen: ${waTime(row.first_seen_at) ?? "unknown"}\nLast Seen: ${waTime(row.last_seen_at) ?? "unknown"}`;
+    }).join("\n\n")],
+    options: [{ id: "add_checkpoint", label: "Register Checkpoint" }, { id: "back", label: "Back" }],
+  };
+}
 export async function missedCheckpointsView(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
   const from = periodStart("today").toISOString();
   const to = periodEnd("today").toISOString();
@@ -1311,8 +1352,9 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     menuKey: 'management_checkpoints',
     lines: ['Manage checkpoint configuration.'],
     options: [
-      { id: 'add_checkpoint', label: 'Register Checkpoint' },
       { id: 'checkpoints', label: 'View Checkpoints' },
+      { id: 'add_checkpoint', label: 'Register Checkpoint' },
+      { id: 'pending_nfc', label: 'Pending Unregistered Checkpoints' },
       { id: 'back', label: 'Back' },
     ],
   },
@@ -1488,13 +1530,3 @@ export function backTarget(session: SessionRow): string {
   if (current === "missed_sessions") return "missed_patrols";
   return WA_MENU_PARENTS[current] ?? (session.last_menu === "management" ? MANAGEMENT_HOME_KEY : USER_HOME_KEY);
 }
-
-
-
-
-
-
-
-
-
-

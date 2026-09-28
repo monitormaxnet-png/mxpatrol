@@ -38,16 +38,17 @@ const baseSession: SessionRow = {
 };
 
 describe("WhatsApp assistant role menus", () => {
-  it("lands normal users directly in TODAY'S OPERATIONS with site-scoped operational choices", () => {
+  it("lands normal users directly in the reports-only menu with site context", () => {
     const menu = mainMenu(baseIdentity, baseSession);
-    expect(menu.title).toBe("TODAY'S OPERATIONS");
+    expect(menu.title).toBe("REPORTS");
     expect(menu.lines.join("\n")).toContain("Site: Airport Junction");
     expect(menu.options?.map((option) => option.id)).toEqual([
-      "patrol_status",
-      "missed_checkpoints",
-      "incidents",
-      "datalog_today",
-      "reports",
+      "reports_checkpoint_scans",
+      "reports_devices",
+      "reports_patrols",
+      "reports_sos",
+      "reports_incidents",
+      "reports_data_logs",
       "back",
     ]);
   });
@@ -204,3 +205,4 @@ describe("WhatsApp assistant management identity resolution", () => {
     expect(result.identity.canManage).toBe(false);
   });
 });
+

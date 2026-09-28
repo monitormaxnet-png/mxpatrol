@@ -79,16 +79,18 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
     expect(resolveMenuChoice(withMenu(ASSISTANT_ROOT_KEY), "2")).toBe("management");
   });
 
-  it("lands normal users directly in TODAY'S OPERATIONS with site-scoped choices", () => {
+  it("lands normal users directly in the reports-only menu with site context", () => {
     const userIdentity = { ...identity, canManage: false };
     const menu = mainMenu(userIdentity, session({ last_menu: "user" }));
-    expect(menu.title).toBe("TODAY'S OPERATIONS");
+    expect(menu.title).toBe("REPORTS");
+    expect(menu.lines.join("\n")).toContain("Site:");
     expect((menu.options ?? []).map((option) => option.id)).toEqual([
-      "patrol_status",
-      "missed_checkpoints",
-      "incidents",
-      "datalog_today",
-      "reports",
+      "reports_checkpoint_scans",
+      "reports_devices",
+      "reports_patrols",
+      "reports_sos",
+      "reports_incidents",
+      "reports_data_logs",
       "back",
     ]);
   });
@@ -124,13 +126,13 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
     expect(resolveMenuChoice(withMenu("management_checkpoints"), "3")).toBe("pending_nfc");
   });
 
-  it("user home numbering maps to the operational choices", () => {
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "1")).toBe("patrol_status");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "2")).toBe("missed_checkpoints");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "3")).toBe("incidents");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "4")).toBe("datalog_today");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "5")).toBe("reports");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "6")).toBe("back");
+  it("user home numbering stays report-only", () => {
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "1")).toBe("reports_checkpoint_scans");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "2")).toBe("reports_devices");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "3")).toBe("reports_patrols");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "4")).toBe("reports_sos");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "5")).toBe("reports_incidents");
+    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "6")).toBe("reports_data_logs");
   });
 
   it("back resolves to the parent of the displayed menu", () => {
@@ -172,7 +174,8 @@ describe("WhatsApp Patrol Status consolidates the four outcomes", () => {
     }
     expect(managementHome).toContain("management_patrols");
     expect(managementHome).not.toContain("patrol_status");
-    expect(userHome).toContain("patrol_status");
+    expect(userHome).not.toContain("patrol_status");
+    expect(userHome).toContain("reports_patrols");
   });
 
   it("shows all four active-site counts and drills into each detailed list", async () => {

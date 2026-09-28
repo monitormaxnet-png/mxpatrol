@@ -90,17 +90,10 @@ export function mainMenu(identity: Identity, session: SessionRow): OutMessage {
 export function userModeMenu(identity: Identity, session: SessionRow): OutMessage {
   const context = session.current_site_name ? 'Site: ' + session.current_site_name : 'Choose a site to continue.';
   return {
-    title: "TODAY'S OPERATIONS",
+    title: 'REPORTS',
     menuKey: 'user_home',
-    lines: [context, 'Choose an operation.'],
-    options: [
-      { id: 'patrol_status', label: 'Patrol Status' },
-      { id: 'missed_checkpoints', label: 'Missed Checkpoints' },
-      { id: 'incidents', label: 'Incidents' },
-      { id: 'datalog_today', label: 'Datalog Today' },
-      { id: 'reports', label: 'Reports' },
-      { id: 'back', label: 'Back' },
-    ],
+    lines: [context, 'Choose a report category.'],
+    options: reportRootOptions(identity),
   };
 }
 

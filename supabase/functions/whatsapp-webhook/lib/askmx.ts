@@ -18,6 +18,7 @@ export type Intent =
   | { action: "late_sessions" }
   | { action: "missed_sessions" }
   | { action: "missed_checkpoints" }
+  | { action: "pending_nfc" }
   | { action: "checkpoints" }
   | { action: "management" }
   | { action: "whatsapp_management" }
@@ -54,6 +55,7 @@ const SCHEMA = `Return ONLY JSON matching one of these shapes:
 {"action":"late_patrols"}
 {"action":"missed_patrols"}
 {"action":"missed_checkpoints"}
+{"action":"pending_nfc"}
 {"action":"checkpoints"}
 {"action":"management"}
 {"action":"whatsapp_management"}

@@ -118,7 +118,12 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
     expect(resolveMenuChoice(withMenu("management_patrols"), "2")).toBe("patrols");
   });
 
-<<<<<<< HEAD
+  it("management checkpoint submenu exposes pending unregistered NFC tags", () => {
+    const options = WA_SUBMENUS.management_checkpoints.options?.map((option) => option.id) ?? [];
+    expect(options).toEqual(["checkpoints", "add_checkpoint", "pending_nfc", "back"]);
+    expect(resolveMenuChoice(withMenu("management_checkpoints"), "3")).toBe("pending_nfc");
+  });
+
   it("user home numbering maps to the operational choices", () => {
     expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "1")).toBe("patrol_status");
     expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "2")).toBe("missed_checkpoints");
@@ -126,21 +131,6 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
     expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "4")).toBe("datalog_today");
     expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "5")).toBe("reports");
     expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "6")).toBe("back");
-=======
-  it("management checkpoint submenu exposes pending unregistered NFC tags", () => {
-    const options = WA_SUBMENUS.management_checkpoints.options?.map((option) => option.id) ?? [];
-    expect(options).toEqual(["checkpoints", "add_checkpoint", "pending_nfc", "back"]);
-    expect(resolveMenuChoice(withMenu("management_checkpoints"), "3")).toBe("pending_nfc");
-  });
-
-  it("user home numbering stays report-only", () => {
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "1")).toBe("reports_checkpoint_scans");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "2")).toBe("reports_devices");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "3")).toBe("reports_patrols");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "4")).toBe("reports_sos");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "5")).toBe("reports_incidents");
-    expect(resolveMenuChoice(withMenu(USER_HOME_KEY, "user"), "6")).toBe("reports_data_logs");
->>>>>>> a7fcfc0 (Add pending unregistered checkpoint management)
   });
 
   it("back resolves to the parent of the displayed menu", () => {

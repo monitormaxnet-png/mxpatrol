@@ -118,6 +118,7 @@ describe("WhatsApp nested menu numbering uses the current conversation state", (
   it("management patrol submenu does not duplicate user patrol status actions", () => {
     expect(resolveMenuChoice(withMenu("management_patrols"), "1")).toBe("create_patrol");
     expect(resolveMenuChoice(withMenu("management_patrols"), "2")).toBe("patrols");
+    expect(resolveMenuChoice(withMenu("management_patrols"), "3")).toBe("patrol_status");
   });
 
   it("management checkpoint submenu exposes pending unregistered NFC tags", () => {
@@ -294,6 +295,8 @@ describe("WhatsApp report language routing", () => {
 
   it("routes patrol status language", () => {
     expect(keywordIntent("patrol status")).toEqual({ action: "patrol_status" });
+    expect(keywordIntent("start patrol")).toEqual({ action: "patrols" });
+    expect(keywordIntent("complete patrol")).toEqual({ action: "patrols" });
   });
 
 

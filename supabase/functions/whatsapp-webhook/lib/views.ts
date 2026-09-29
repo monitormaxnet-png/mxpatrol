@@ -643,6 +643,90 @@ function patrolDetailLine(row: Record<string, any>, index: number): string {
 }
 
 /** Patrol Status overview: compact session counts for the selected site and today reporting period. */
+const PATROL_ACTION_SELECT = 'id, status, scheduled_start, actual_start, actual_end, device_identifier, checkpoint_completed, checkpoint_total, site_id, sites(name), patrol_routes(name), patrol_templates(name)';
+
+function patrolActionLabel(row: any): string {
+  const route = Array.isArray(row?.patrol_routes) ? row.patrol_routes[0] : row?.patrol_routes;
+  const template = Array.isArray(row?.patrol_templates) ? row.patrol_templates[0] : row?.patrol_templates;
+  const name = route?.name ?? template?.name ?? 'Patrol';
+  const time = waTime(row?.scheduled_start) ?? 'unscheduled';
+  return `${name} - ${time}`;
+}
+
+function patrolActionSummary(row: any): string {
+  const progress = `${row?.checkpoint_completed ?? 0}/${row?.checkpoint_total ?? 0}`;
+  return `${patrolActionLabel(row)} - ${String(row?.status ?? 'scheduled')} - ${progress}`;
+}
+
+export async function patrolActionsMenu(client: SupabaseClient, identity: Identity, siteId: string | null): Promise<OutMessage> {
+  const now = new Date();
+  const from = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
+  const to = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  let query = client
+    .from('patrol_sessions')
+    .select(PATROL_ACTION_SELECT)
+    .eq('company_id', identity.company_id)
+    .gte('scheduled_start', from)
+    .lte('scheduled_start', to)
+    .order('scheduled_start', { ascending: true })
+    .limit(12);
+  if (siteId) query = query.eq('site_id', siteId);
+  else if (identity.allowed_site_ids.length) query = query.in('site_id', identity.allowed_site_ids);
+  const { data, error } = await query;
+  if (error) return { title: 'PATROL ACTIONS', lines: ['Could not load patrol sessions: ' + error.message], options: [{ id: 'management_patrols', label: 'Back' }] };
+  const rows = (data ?? []) as any[];
+  const options: Array<{ id: string; label: string }> = [];
+  rows.forEach((row) => {
+    const status = String(row.status ?? '').toLowerCase();
+    if (['scheduled', 'awaiting_start', 'late_start', 'late', 'delayed'].includes(status)) options.push({ id: `patrol_start:${row.id}`, label: `Start ${patrolActionLabel(row)}` });
+    if (['active', 'in_progress', 'late_start', 'late', 'delayed'].includes(status)) options.push({ id: `patrol_complete:${row.id}`, label: `Complete ${patrolActionLabel(row)}` });
+  });
+  return {
+    title: 'PATROL ACTIONS',
+    menuKey: 'patrol_actions',
+    lines: rows.length ? ['Choose the patrol action to confirm:', ...rows.slice(0, 5).map((row, index) => `${index + 1}. ${patrolActionSummary(row)}`)] : ['No scheduled or active patrol sessions were found for this site.'],
+    options: options.length ? [...options.slice(0, 9), { id: 'management_patrols', label: 'Back' }] : [{ id: 'management_patrols', label: 'Back' }],
+  };
+}
+
+export async function updatePatrolSessionFromWhatsApp(client: SupabaseClient, identity: Identity, siteId: string | null, action: 'start' | 'complete', sessionId: string): Promise<OutMessage> {
+  let read = client
+    .from('patrol_sessions')
+    .select(PATROL_ACTION_SELECT)
+    .eq('id', sessionId)
+    .eq('company_id', identity.company_id)
+    .maybeSingle();
+  if (siteId) read = read.eq('site_id', siteId);
+  const { data: session, error: readError } = await read;
+  if (readError) return { title: 'PATROL UPDATE FAILED', lines: [readError.message], options: [{ id: 'patrols', label: 'Patrol Actions' }] };
+  if (!session) return { title: 'PATROL NOT FOUND', lines: ['This patrol session is no longer available for this site.'], options: [{ id: 'patrols', label: 'Patrol Actions' }] };
+
+  const now = new Date().toISOString();
+  const status = String(session.status ?? '').toLowerCase();
+  const patch = action === 'start'
+    ? { status: status === 'late' || status === 'delayed' ? 'late_start' : 'in_progress', actual_start: session.actual_start ?? now, updated_at: now }
+    : { status: 'completed', actual_end: now, completed_at: now, finalized_at: now, progress_percent: 100, updated_at: now };
+  const { data: updated, error: updateError } = await client
+    .from('patrol_sessions')
+    .update(patch)
+    .eq('id', session.id)
+    .eq('company_id', identity.company_id)
+    .select(PATROL_ACTION_SELECT)
+    .maybeSingle();
+  if (updateError) return { title: 'PATROL UPDATE FAILED', lines: [updateError.message], options: [{ id: 'patrols', label: 'Patrol Actions' }] };
+  const row = updated ?? session;
+  return {
+    title: action === 'start' ? 'PATROL STARTED' : 'PATROL COMPLETED',
+    lines: [
+      `Patrol: ${patrolActionLabel(row)}`,
+      `Site: ${siteName(row)}`,
+      `Status: ${String(row.status ?? patch.status)}`,
+      `Time: ${waTime(action === 'start' ? (row.actual_start ?? now) : (row.actual_end ?? now)) ?? 'now'}`,
+      action === 'complete' ? `Checkpoints: ${row.checkpoint_completed ?? 0}/${row.checkpoint_total ?? 0}` : 'Patrol is now in progress.',
+    ],
+    options: [{ id: 'patrols', label: 'Patrol Actions' }, { id: 'patrol_status', label: 'Patrol Status' }, { id: 'menu', label: 'Main Menu' }],
+  };
+}
 export async function patrolStatusOverview(
   client: SupabaseClient,
   identity: Identity,
@@ -1318,7 +1402,8 @@ export const WA_SUBMENUS: Record<string, OutMessage> = {
     lines: ['Configure and supervise patrol execution.'],
     options: [
       { id: 'create_patrol', label: 'Create Patrol' },
-      { id: 'patrols', label: 'Manage Patrols' },
+      { id: 'patrols', label: 'Patrol Actions' },
+      { id: 'patrol_status', label: 'Patrol Status' },
       { id: 'back', label: 'Back' },
     ],
   },

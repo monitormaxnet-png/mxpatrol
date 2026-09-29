@@ -23,6 +23,8 @@ import {
   patrolStatusView,
   patrolSessionDrilldownView,
   patrolStatusOverview,
+  patrolActionsMenu,
+  updatePatrolSessionFromWhatsApp,
   missedCheckpointsView,
   datalogTodayView,
   reportPeriodMenu,
@@ -341,6 +343,12 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       return await missedCheckpointsView(ctx.client, ctx.identity, siteId);
     }
 
+    case "patrols": {
+      if (!ctx.identity.canManage) return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to update patrol sessions."], [{ id: "menu", label: "Main Menu" }]);
+      const { siteId, ask } = await ensureSiteContext(ctx);
+      if (ask) return ask;
+      return await patrolActionsMenu(ctx.client, ctx.identity, siteId);
+    }
     case "patrol_status": {
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;
@@ -502,6 +510,21 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
     return await patrolSessionDrilldownView(ctx.client, ctx.identity, siteId, id === "late_sessions" ? "late" : "missed", ctx.session.current_site_name);
   }
 
+  if (id === "patrols") {
+    if (!ctx.identity.canManage) return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to update patrol sessions."], [{ id: "menu", label: "Main Menu" }]);
+    const { siteId, ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    return await patrolActionsMenu(ctx.client, ctx.identity, siteId);
+  }
+
+  if (id.startsWith("patrol_start:") || id.startsWith("patrol_complete:")) {
+    if (!ctx.identity.canManage) return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to update patrol sessions."], [{ id: "menu", label: "Main Menu" }]);
+    const { siteId, ask } = await ensureSiteContext(ctx);
+    if (ask) return ask;
+    const action = id.startsWith("patrol_start:") ? "start" : "complete";
+    const sessionId = id.slice(id.indexOf(":") + 1);
+    return await updatePatrolSessionFromWhatsApp(ctx.client, ctx.identity, siteId, action, sessionId);
+  }
   if (id === "active_patrols" || id === "completed_patrols" || id === "incomplete_patrols" || id === "late_patrols" || id === "missed_patrols") {
     const { siteId, ask } = await ensureSiteContext(ctx);
     if (ask) return ask;

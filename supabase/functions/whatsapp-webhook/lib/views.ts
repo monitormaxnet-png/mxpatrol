@@ -719,7 +719,7 @@ export async function updatePatrolSessionFromWhatsApp(client: SupabaseClient, id
     title: action === 'start' ? 'PATROL STARTED' : 'PATROL COMPLETED',
     lines: [
       `Patrol: ${patrolActionLabel(row)}`,
-      `Site: ${siteName(row)}`,
+      `Site: ${siteSummaryName(row)}`,
       `Status: ${String(row.status ?? patch.status)}`,
       `Time: ${waTime(action === 'start' ? (row.actual_start ?? now) : (row.actual_end ?? now)) ?? 'now'}`,
       action === 'complete' ? `Checkpoints: ${row.checkpoint_completed ?? 0}/${row.checkpoint_total ?? 0}` : 'Patrol is now in progress.',

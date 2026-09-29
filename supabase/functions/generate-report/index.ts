@@ -120,7 +120,13 @@ serve(async (req) => {
       .eq("company_id", companyId)
       .not("checkpoint_id", "is", null)
       .neq("tag_status", "unregistered")
+      .neq("tag_status", "pending_registration")
+      .neq("tag_status", "pending")
+      .neq("tag_status", "ignored")
+      .neq("tag_status", "dismissed")
       .neq("tag_status", "rejected")
+      .neq("tag_status", "failed")
+      .neq("tag_status", "unknown")
       .gte("scanned_at", since)
       .order("scanned_at", { ascending: false })
       .limit(100);

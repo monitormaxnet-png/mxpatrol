@@ -115,6 +115,30 @@ function timeBucket(value?: string | null): string {
 function checkpointName(row: any): string {
   return row?.checkpoints?.name ?? row?.checkpoint_name_snapshot ?? row?.checkpoint_name ?? "Unassigned checkpoint";
 }
+const STANDARD_REPORT_EXCLUDED_SCAN_STATUSES = new Set([
+  "unregistered",
+  "pending_registration",
+  "pending",
+  "ignored",
+  "dismissed",
+  "rejected",
+  "failed",
+  "unknown",
+]);
+
+export function isRegisteredCheckpointScan(row: any): boolean {
+  const status = String(row?.tag_status ?? "").trim().toLowerCase();
+  if (status && STANDARD_REPORT_EXCLUDED_SCAN_STATUSES.has(status)) return false;
+  return Boolean(row?.checkpoint_id);
+}
+
+function registeredCheckpointScans(scans: any[]): any[] {
+  return scans.filter(isRegisteredCheckpointScan);
+}
+
+function registeredDatalogEntries(datalogs: any[]): any[] {
+  return datalogs.filter((row) => Boolean(row?.checkpoint_id));
+}
 
 function deviceName(row: any): string {
   return row?.device_identifier ?? row?.devices?.device_identifier ?? row?.device_name ?? row?.device_id ?? "Unknown device";
@@ -216,6 +240,7 @@ function checkpointOptionName(checkpoint: any): string {
 }
 
 export function buildCheckpointScanMatrix(scans: any[], checkpoints: any[] = [], options: { oneDay?: boolean } = {}) {
+  scans = registeredCheckpointScans(scans);
   const checkpointNames = new Set<string>();
   checkpoints.forEach((checkpoint) => checkpointNames.add(checkpointOptionName(checkpoint)));
   scans.forEach((scan) => checkpointNames.add(checkpointName(scan)));
@@ -231,6 +256,7 @@ export function buildCheckpointScanMatrix(scans: any[], checkpoints: any[] = [],
 }
 
 export function buildDeviceScanMatrix(scans: any[], checkpoints: any[] = [], options: { oneDay?: boolean } = {}) {
+  scans = registeredCheckpointScans(scans);
   const devices = Array.from(new Set(scans.map(deviceName))).sort();
   const configuredCheckpointNames = checkpoints.map(checkpointOptionName).filter(Boolean);
   const scannedCheckpointNames = scans.map(checkpointName);
@@ -292,11 +318,12 @@ function lateDuration(row: any): string {
 }
 
 function contentFor(input: MxPdfReportInput): { title: string; subtitle: string; html: string; totals: string } {
-  const scans = input.scans ?? [];
+  const rawScans = input.scans ?? [];
+  const scans = input.type === "scan_investigations" ? rawScans : registeredCheckpointScans(rawScans);
   const patrols = input.patrols ?? [];
   const alerts = input.alerts ?? [];
   const incidents = input.incidents ?? [];
-  const datalogs = input.datalogs ?? [];
+  const datalogs = registeredDatalogEntries(input.datalogs ?? []);
 
 
   if (input.type === "scan_investigations") {
@@ -471,11 +498,12 @@ function reportFilename(input: MxPdfReportInput): string {
 
 function reportTableModel(input: MxPdfReportInput): PdfTableModel {
   const content = contentFor(input);
-  const scans = input.scans ?? [];
+  const rawScans = input.scans ?? [];
+  const scans = input.type === "scan_investigations" ? rawScans : registeredCheckpointScans(rawScans);
   const patrols = input.patrols ?? [];
   const alerts = input.alerts ?? [];
   const incidents = input.incidents ?? [];
-  const datalogs = input.datalogs ?? [];
+  const datalogs = registeredDatalogEntries(input.datalogs ?? []);
 
   if (input.type === "scan_investigations") {
     const evidence = scans.map((row, index) => [

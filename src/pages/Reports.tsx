@@ -34,7 +34,7 @@ import { SocPageShell } from "@/components/dashboard/SocComponents";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
 import { usePatrolSessionReports, usePatrolSessions, usePatrolTemplates } from "@/hooks/useScheduledPatrols";
 import { buildIncidentEvidencePackage, downloadBlob } from "@/lib/incidentEvidencePackage";
-import { MX_MANAGEMENT_PDF_REPORT_TYPES, buildMxPdfReportResult, downloadMxPdfReport, type MxPdfIncidentEvidence, type MxPdfReportInput, type MxPdfReportType } from "@/lib/mxPdfReports";
+import { MX_MANAGEMENT_PDF_REPORT_TYPES, buildMxPdfReportResult, downloadMxPdfReport, isRegisteredCheckpointScan, type MxPdfIncidentEvidence, type MxPdfReportInput, type MxPdfReportType } from "@/lib/mxPdfReports";
 
 type DateRange = "today" | "7d" | "30d";
 type ReportTab = "all" | "generated" | "scheduled" | "pending" | "failed";
@@ -241,6 +241,7 @@ const Reports = () => {
         .eq("company_id", companyId!)
         .gte("submitted_at", periodStart)
         .lte("submitted_at", periodEnd)
+        .not("checkpoint_id", "is", null)
         .order("submitted_at", { ascending: false })
         .limit(250);
       if (siteId !== "all") query = query.eq("site_id", siteId);
@@ -344,7 +345,7 @@ const Reports = () => {
   }, [companyId, queryClient]);
 
   const companyName = company?.name ?? "Current company";
-  const registeredScans = useMemo(() => scans.filter((scan) => scan.tag_status === "registered" || !!scan.checkpoint_id), [scans]);
+  const registeredScans = useMemo(() => scans.filter(isRegisteredCheckpointScan), [scans]);
   const templateOptions = useMemo(() => buildTemplateOptions(patrolTemplates, sessionReportRows, reportSessions), [patrolTemplates, reportSessions, sessionReportRows]);
   const selectedTemplateName = useMemo(() => templateOptions.find((template) => template.id === patrolTemplateId)?.name ?? "All Patrol Templates", [patrolTemplateId, templateOptions]);
   const periodScans = useMemo(() => registeredScans.filter((scan) => isWithinRange(scan.scanned_at, periodStart, periodEnd) && matchesTemplate(scan, patrolTemplateId)), [patrolTemplateId, periodEnd, periodStart, registeredScans]);

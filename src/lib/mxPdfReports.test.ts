@@ -3,9 +3,9 @@ import { buildStoredZip, evidenceFilename } from "./incidentEvidencePackage";
 import { buildCheckpointScanMatrix, buildDeviceScanMatrix, buildMxPdfReportBlob, buildMxPdfReportHtml, formatReportDateTime, MX_MANAGEMENT_PDF_REPORT_TYPES, MX_PATROL_REPORT_LOGO_SRC, MX_PDF_REPORT_TYPES, reportTypeFromAction } from "./mxPdfReports";
 
 const scans = [
-  { id: "1", scanned_at: "2026-09-16T06:02:00.000Z", device_identifier: "Guard-01", checkpoints: { name: "Main Gate" } },
-  { id: "2", scanned_at: "2026-09-16T07:10:00.000Z", device_identifier: "Guard-01", checkpoints: { name: "Lobby" } },
-  { id: "3", scanned_at: "2026-09-16T08:05:00.000Z", device_identifier: "Guard-02", checkpoints: { name: "Main Gate" } },
+  { id: "1", checkpoint_id: "cp-main", tag_status: "registered", scanned_at: "2026-09-16T06:02:00.000Z", device_identifier: "Guard-01", checkpoints: { name: "Main Gate" } },
+  { id: "2", checkpoint_id: "cp-lobby", tag_status: "registered", scanned_at: "2026-09-16T07:10:00.000Z", device_identifier: "Guard-01", checkpoints: { name: "Lobby" } },
+  { id: "3", checkpoint_id: "cp-main", tag_status: "registered", scanned_at: "2026-09-16T08:05:00.000Z", device_identifier: "Guard-02", checkpoints: { name: "Main Gate" } },
 ];
 
 describe("MX PDF report helpers", () => {
@@ -56,9 +56,9 @@ describe("MX PDF report helpers", () => {
   it("fits a normal checkpoint scan report on one PDF page with all hourly columns", async () => {
     const checkpoints = ["AI Verify Checkpoint", "Gate", "bedRoom", "kitchen", "sittingRoom"].map((name) => ({ name }));
     const todayScans = [
-      { id: "scan-1", scanned_at: "2026-09-26T07:52:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "Gate" } },
-      { id: "scan-2", scanned_at: "2026-09-26T14:21:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "sittingRoom" } },
-      { id: "scan-3", scanned_at: "2026-09-26T02:15:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "kitchen" } },
+      { id: "scan-1", checkpoint_id: "cp-gate", tag_status: "registered", scanned_at: "2026-09-26T07:52:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "Gate" } },
+      { id: "scan-2", checkpoint_id: "cp-sitting", tag_status: "registered", scanned_at: "2026-09-26T14:21:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "sittingRoom" } },
+      { id: "scan-3", checkpoint_id: "cp-kitchen", tag_status: "registered", scanned_at: "2026-09-26T02:15:00.000Z", device_identifier: "RG360-001", checkpoints: { name: "kitchen" } },
     ];
     const matrix = buildCheckpointScanMatrix(todayScans, checkpoints, { oneDay: true });
     expect(matrix.columns).toHaveLength(24);
@@ -113,6 +113,43 @@ describe("MX PDF report helpers", () => {
     expect(pdf).toContain("10 min");
   });
 
+  it("excludes unregistered and pending checkpoint scans from standard reports while preserving investigations", () => {
+    const mixedScans = [
+      { id: "registered", checkpoint_id: "cp-gate", tag_status: "registered", scanned_at: "2026-09-26T07:52:00.000Z", device_identifier: "RG360-001", tag_uid: "REG-1", checkpoints: { name: "Gate" } },
+      { id: "unregistered", checkpoint_id: null, tag_status: "unregistered", scanned_at: "2026-09-26T08:10:00.000Z", device_identifier: "RG360-002", tag_uid: "UNKNOWN-1", checkpoint_name: "Unregistered checkpoint" },
+      { id: "pending", checkpoint_id: null, tag_status: "pending_registration", scanned_at: "2026-09-26T09:10:00.000Z", device_identifier: "RG360-003", tag_uid: "PENDING-1", checkpoint_name: "Pending checkpoint" },
+      { id: "ignored", checkpoint_id: null, tag_status: "ignored", scanned_at: "2026-09-26T10:10:00.000Z", device_identifier: "RG360-004", tag_uid: "IGNORED-1", checkpoint_name: "Ignored checkpoint" },
+    ];
+
+    const checkpointHtml = buildMxPdfReportHtml({ type: "checkpoint_scan", companyName: "Acme", siteName: "Tlokweng", periodLabel: "Today", scans: mixedScans });
+    expect(checkpointHtml).toContain("Gate");
+    expect(checkpointHtml).not.toContain("Unregistered checkpoint");
+    expect(checkpointHtml).not.toContain("Pending checkpoint");
+    expect(checkpointHtml).not.toContain("Ignored checkpoint");
+
+    const deviceHtml = buildMxPdfReportHtml({ type: "device_scan", companyName: "Acme", siteName: "Tlokweng", periodLabel: "Today", scans: mixedScans });
+    expect(deviceHtml).toContain("RG360-001");
+    expect(deviceHtml).not.toContain("RG360-002");
+    expect(deviceHtml).not.toContain("Unregistered checkpoint");
+
+    const datalogHtml = buildMxPdfReportHtml({
+      type: "datalog",
+      companyName: "Acme",
+      siteName: "Tlokweng",
+      periodLabel: "Today",
+      datalogs: [
+        { id: "dl-registered", checkpoint_id: "cp-gate", submitted_at: "2026-09-26T07:53:00.000Z", datalog_value: "Gate locked", checkpoints: { name: "Gate" } },
+        { id: "dl-unregistered", checkpoint_id: null, submitted_at: "2026-09-26T08:53:00.000Z", datalog_value: "Temporary reading", checkpoint_name: "Unregistered checkpoint" },
+      ],
+    });
+    expect(datalogHtml).toContain("Gate locked");
+    expect(datalogHtml).not.toContain("Temporary reading");
+
+    const investigationHtml = buildMxPdfReportHtml({ type: "scan_investigations", companyName: "Acme", siteName: "Tlokweng", periodLabel: "Today", scans: mixedScans });
+    expect(investigationHtml).toContain("UNKNOWN-1");
+    expect(investigationHtml).toContain("PENDING-1");
+    expect(investigationHtml).toContain("IGNORED-1");
+  });
   it("keeps Scan Investigations management-only and renders raw scan-log forensic fields", async () => {
     expect(MX_PDF_REPORT_TYPES.some((report) => report.type === "scan_investigations")).toBe(false);
     expect(MX_MANAGEMENT_PDF_REPORT_TYPES.some((report) => report.type === "scan_investigations")).toBe(true);

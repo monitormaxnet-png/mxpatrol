@@ -96,13 +96,13 @@ const AppSidebar = ({ open, onClose }: AppSidebarProps) => {
     <>
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-background/35 backdrop-blur-sm lg:hidden"
           onClick={onClose}
         />
       )}
 
       <aside
-        className={`fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-emerald-400/10 bg-[#030812] transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-emerald-400/10 bg-[#030812]/70 backdrop-blur-2xl transition-transform duration-300 lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -190,3 +190,4 @@ function StatusLine({ label, value, active = true }: { label: string; value: str
 }
 
 export default AppSidebar;
+

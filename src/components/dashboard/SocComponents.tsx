@@ -1,4 +1,4 @@
-﻿import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Bell, Search, Sun, Wifi } from "lucide-react";
 import { realtimeStatusLabel } from "@/hooks/useRealtimeConnectionStatus";
 
@@ -10,7 +10,7 @@ const toneStyles: Record<Tone, { border: string; bg: string; text: string; glow:
   blue: { border: "border-blue-400/20", bg: "bg-blue-400/10", text: "text-blue-300", glow: "shadow-[0_0_24px_rgba(59,130,246,0.10)]" },
   amber: { border: "border-amber-400/20", bg: "bg-amber-400/10", text: "text-amber-300", glow: "shadow-[0_0_24px_rgba(245,158,11,0.10)]" },
   red: { border: "border-red-400/20", bg: "bg-red-400/10", text: "text-red-300", glow: "shadow-[0_0_24px_rgba(239,68,68,0.12)]" },
-  neutral: { border: "border-white/10", bg: "bg-slate-950/70", text: "text-slate-300", glow: "shadow-[0_0_24px_rgba(0,0,0,0.20)]" },
+  neutral: { border: "border-white/10", bg: "bg-slate-950/46", text: "text-slate-300", glow: "shadow-[0_0_24px_rgba(0,0,0,0.20)]" },
 };
 
 export function SocPageShell({
@@ -27,10 +27,10 @@ export function SocPageShell({
   const status = realtime?.status ?? "live";
   const connected = status === "live";
   return (
-    <div className="min-h-full space-y-4 bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.07),transparent_26%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.08),transparent_30%)] pb-4">
-      <header className="flex flex-col gap-4 rounded-xl border border-white/10 bg-slate-950/70 px-4 py-4 shadow-[0_0_36px_rgba(0,0,0,0.26)] xl:flex-row xl:items-center xl:justify-between">
+    <div className="min-h-full space-y-4 bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.12),transparent_32%)] pb-4">
+      <header className="flex flex-col gap-4 rounded-xl border border-white/10 bg-slate-950/38 px-4 py-4 shadow-[0_0_36px_rgba(0,0,0,0.26)] xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 items-start gap-4">
-          <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/40 text-slate-300 md:flex">
+          <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/24 text-slate-300 md:flex">
             <Search className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -47,7 +47,7 @@ export function SocPageShell({
           <SocStatusPill icon={Wifi} label={realtimeStatusLabel(status)} tone={connected ? "green" : "amber"} />
           <SocIconButton icon={Bell} label="Notifications" badge />
           <SocIconButton icon={Sun} label="Display" />
-          <div className="flex h-10 items-center gap-3 rounded-lg border border-white/10 bg-slate-950/80 px-3 text-sm text-slate-200">
+          <div className="flex h-10 items-center gap-3 rounded-lg border border-white/10 bg-slate-950/42 px-3 text-sm text-slate-200">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">SS</span>
             <div className="hidden leading-tight sm:block">
               <p className="text-xs font-bold text-white">Security Supervisor</p>
@@ -96,7 +96,7 @@ export function SocKpiCard({
 
 export function SocPanel({ title, action, children, className = "" }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`overflow-hidden rounded-xl border border-white/10 bg-slate-950/72 shadow-[0_0_30px_rgba(0,0,0,0.24)] ${className}`}>
+    <section className={`overflow-hidden rounded-xl border border-white/10 bg-slate-950/42 shadow-[0_0_30px_rgba(0,0,0,0.24)] ${className}`}>
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
         <h2 className="text-sm font-black uppercase tracking-[0.08em] text-white">{title}</h2>
         {action}
@@ -117,7 +117,7 @@ export function SocStatusPill({ icon: Icon, label, tone = "neutral" }: { icon: I
 
 function SocIconButton({ icon: Icon, label, badge }: { icon: IconComponent; label: string; badge?: boolean }) {
   return (
-    <button type="button" aria-label={label} className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-slate-950/80 text-slate-300 hover:border-emerald-400/30 hover:text-emerald-300">
+    <button type="button" aria-label={label} className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-slate-950/42 text-slate-300 hover:border-emerald-400/30 hover:text-emerald-300">
       <Icon className="h-4 w-4" />
       {badge && <span className="absolute -right-1 -top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[10px] font-black leading-4 text-white">!</span>}
     </button>
@@ -132,4 +132,5 @@ export function SocProgressBar({ value, tone = "green" }: { value: number; tone?
     </div>
   );
 }
+
 

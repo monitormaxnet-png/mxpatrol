@@ -26,7 +26,7 @@ const AppLayout = () => {
 
   if (aiFirstCommandCenter) {
     return (
-      <div className='min-h-screen bg-background'>
+      <div className='min-h-screen bg-transparent'>
         {needsOnboarding && showOnboarding && (
           <OnboardingWizard onComplete={handleOnboardingComplete} />
         )}
@@ -36,7 +36,7 @@ const AppLayout = () => {
   }
 
   return (
-    <div className='flex min-h-screen bg-background grid-pattern'>
+    <div className='flex min-h-screen bg-transparent grid-pattern'>
       {needsOnboarding && showOnboarding && (
         <OnboardingWizard onComplete={handleOnboardingComplete} />
       )}

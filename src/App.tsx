@@ -91,8 +91,19 @@ const NativeScannerRouteGuard = () => {
   return null;
 };
 
+const AppBackground = () => (
+  <div className="app-background" aria-hidden="true">
+    <video className="app-background-video" autoPlay muted loop playsInline preload="auto">
+      <source src="/web background video.mp4" type="video/mp4" />
+    </video>
+    <div className="app-background-overlay" />
+  </div>
+);
 const App = () => (
-  <QueryClientProvider client={queryClient}>
+  <>
+    <AppBackground />
+    <div className="app-shell">
+      <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TooltipProvider>
         <AppBackgroundVideo />
@@ -165,7 +176,10 @@ const App = () => (
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>
-  </QueryClientProvider>
+      </QueryClientProvider>
+    </div>
+  </>
 );
 
 export default App;
+

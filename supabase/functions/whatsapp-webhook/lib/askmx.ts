@@ -4,6 +4,7 @@ export type Intent =
   | { action: "live" }
   | { action: "attention"; filter?: "all" | "sos" | "missed" | "offline" }
   | { action: "patrols" }
+  | { action: "patrol_actions" }
   | { action: "patrol_status" }
   | { action: "devices"; filter?: "offline" | "online" | "all" }
   | { action: "device_detail"; device: string }
@@ -43,6 +44,7 @@ const SCHEMA = `Return ONLY JSON matching one of these shapes:
 {"action":"menu"}
 {"action":"live"}
 {"action":"patrols"}
+{"action":"patrol_actions"}
 {"action":"attention","filter":"all|sos|missed|offline"}
 {"action":"devices","filter":"all|online|offline"}
 {"action":"device_detail","device":"RG360-08"}
@@ -85,7 +87,7 @@ export function keywordIntent(text: string): Intent | null {
   if (/^(incidents?|incident report|incident reports)$/.test(value)) return { action: "incidents" };
   if (/^(datalog|data log|data logs)$/.test(value)) return { action: "datalog" };
   if (/(report|log|raise|submit).*(incident|issue)/.test(value)) return { action: "report_incident" };
-  if (/^(start patrol|complete patrol|finish patrol|patrol actions?|manage patrols?)$/.test(value)) return { action: "patrols" };
+  if (/^(start patrol|complete patrol|finish patrol|patrol actions?|manage patrols?)$/.test(value)) return { action: "patrol_actions" };
   if (/^(patrol status|patrols? status)$/.test(value)) return { action: "patrol_status" };
   if (/^(active( patrols?)?)$/.test(value)) return { action: "active_patrols" };
   const reportPeriod = value.match(/(today|yesterday|this week|week)[a-z'\s]*report|report[a-z'\s]*(today|yesterday|this week|week)/);

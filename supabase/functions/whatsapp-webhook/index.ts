@@ -343,7 +343,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
       return await missedCheckpointsView(ctx.client, ctx.identity, siteId);
     }
 
-    case "patrols": {
+    case "patrol_actions": {
       if (!ctx.identity.canManage) return optionMenu("MANAGEMENT ACCESS UNAVAILABLE", ["Your account does not have permission to update patrol sessions."], [{ id: "menu", label: "Main Menu" }]);
       const { siteId, ask } = await ensureSiteContext(ctx);
       if (ask) return ask;

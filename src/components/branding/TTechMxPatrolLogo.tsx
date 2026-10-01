@@ -1,5 +1,6 @@
 import { TTECH_MX_PATROL_LOGO_ALT, TTECH_MX_PATROL_LOGO_SRC } from '@/lib/reportBranding';
 import { cn } from '@/lib/utils';
+import logoVideo from '@/assets/mx-patrol-logo.mp4.asset.json';
 
 type TTechMxPatrolLogoVariant = 'sidebar' | 'header' | 'scanner' | 'login' | 'report';
 
@@ -25,14 +26,21 @@ export function TTechMxPatrolLogo({
   decorative = false,
 }: TTechMxPatrolLogoProps) {
   return (
-    <img
-      src={TTECH_MX_PATROL_LOGO_SRC}
-      alt={decorative ? '' : TTECH_MX_PATROL_LOGO_ALT}
+    <video
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="auto"
+      disablePictureInPicture
+      poster={TTECH_MX_PATROL_LOGO_SRC}
+      aria-label={decorative ? undefined : TTECH_MX_PATROL_LOGO_ALT}
       aria-hidden={decorative || undefined}
-      loading={priority ? 'eager' : 'lazy'}
-      decoding='async'
-      className={cn('h-auto object-contain', variantClass[variant], className)}
-    />
+      data-priority={priority || undefined}
+      className={cn('pointer-events-none block h-auto aspect-[832/480] object-contain border-0 outline-none mx-auto', variantClass[variant], className)}
+    >
+      <source src={logoVideo.url} type="video/mp4" />
+    </video>
   );
 }
 

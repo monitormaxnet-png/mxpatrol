@@ -295,8 +295,8 @@ describe("WhatsApp report language routing", () => {
 
   it("routes patrol status language", () => {
     expect(keywordIntent("patrol status")).toEqual({ action: "patrol_status" });
-    expect(keywordIntent("start patrol")).toEqual({ action: "patrols" });
-    expect(keywordIntent("complete patrol")).toEqual({ action: "patrols" });
+    expect(keywordIntent("start patrol")).toEqual({ action: "patrol_actions" });
+    expect(keywordIntent("complete patrol")).toEqual({ action: "patrol_actions" });
   });
 
 

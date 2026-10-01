@@ -694,10 +694,9 @@ export async function updatePatrolSessionFromWhatsApp(client: SupabaseClient, id
     .from('patrol_sessions')
     .select(PATROL_ACTION_SELECT)
     .eq('id', sessionId)
-    .eq('company_id', identity.company_id)
-    .maybeSingle();
+    .eq('company_id', identity.company_id);
   if (siteId) read = read.eq('site_id', siteId);
-  const { data: session, error: readError } = await read;
+  const { data: session, error: readError } = await read.maybeSingle();
   if (readError) return { title: 'PATROL UPDATE FAILED', lines: [readError.message], options: [{ id: 'patrols', label: 'Patrol Actions' }] };
   if (!session) return { title: 'PATROL NOT FOUND', lines: ['This patrol session is no longer available for this site.'], options: [{ id: 'patrols', label: 'Patrol Actions' }] };
 
@@ -705,7 +704,7 @@ export async function updatePatrolSessionFromWhatsApp(client: SupabaseClient, id
   const status = String(session.status ?? '').toLowerCase();
   const patch = action === 'start'
     ? { status: status === 'late' || status === 'delayed' ? 'late_start' : 'in_progress', actual_start: session.actual_start ?? now, updated_at: now }
-    : { status: 'completed', actual_end: now, completed_at: now, finalized_at: now, progress_percent: 100, updated_at: now };
+    : { status: 'completed', actual_end: now, finalized_at: now, progress_percent: 100, updated_at: now };
   const { data: updated, error: updateError } = await client
     .from('patrol_sessions')
     .update(patch)

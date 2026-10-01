@@ -14,6 +14,7 @@ import SystemFeedbackOverlay from "@/components/feedback/SystemFeedbackOverlay";
 import PageTransition from "@/components/feedback/PageTransition";
 import { LoadingState } from "@/components/feedback/FeedbackPrimitives";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
+import AppBackgroundVideo from "@/components/layout/AppBackgroundVideo";
 
 const GuardDetail = lazy(() => import("./pages/GuardDetail"));
 const Patrols = lazy(() => import("./pages/Patrols"));
@@ -94,6 +95,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TooltipProvider>
+        <AppBackgroundVideo />
         <Sonner />
         <BrowserRouter>
           <NativeScannerRouteGuard />

@@ -1762,3 +1762,31 @@
   font-size: 1rem;
   overflow-wrap: anywhere;
 }
+
+/* ===== Full-screen background video + glass UI ===== */
+html, body, #root { background: transparent !important; }
+body { background-color: hsl(var(--background)) !important; }
+.app-background-video {
+  position: fixed; inset: 0; width: 100vw; height: 100vh;
+  object-fit: cover; z-index: -2; pointer-events: none; border: 0; outline: none;
+}
+.app-video-overlay {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: hsl(var(--background) / 0.3);
+}
+#root { position: relative; z-index: 0; isolation: isolate; }
+@layer utilities {
+  .bg-background { background-color: hsl(var(--background) / 0.25) !important; }
+  .bg-card, .bg-popover { background-color: hsl(var(--card) / 0.55) !important; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .bg-sidebar { background-color: hsl(var(--sidebar-background) / 0.5) !important; backdrop-filter: blur(12px); }
+  .glass-card { background-color: hsl(var(--card) / 0.5) !important; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-color: hsl(var(--foreground) / 0.1); }
+  .grid-pattern { background-color: transparent; }
+}
+table { background: hsl(var(--background) / 0.45); }
+thead { background: hsl(var(--background) / 0.5); }
+h1, h2, h3 { text-shadow: 0 1px 3px hsl(var(--background) / 0.8); }
+input, textarea, select { background-color: hsl(var(--background) / 0.7); }
+[role="dialog"] { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+@media (max-width: 640px) {
+  .glass-card, .bg-card { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+}

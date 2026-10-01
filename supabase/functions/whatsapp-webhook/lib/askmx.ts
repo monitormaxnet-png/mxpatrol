@@ -4,6 +4,7 @@ export type Intent =
   | { action: "live" }
   | { action: "attention"; filter?: "all" | "sos" | "missed" | "offline" }
   | { action: "patrols" }
+  | { action: "patrol_actions" }
   | { action: "patrol_status" }
   | { action: "devices"; filter?: "offline" | "online" | "all" }
   | { action: "device_detail"; device: string }
@@ -43,6 +44,7 @@ const SCHEMA = `Return ONLY JSON matching one of these shapes:
 {"action":"menu"}
 {"action":"live"}
 {"action":"patrols"}
+{"action":"patrol_actions"}
 {"action":"attention","filter":"all|sos|missed|offline"}
 {"action":"devices","filter":"all|online|offline"}
 {"action":"device_detail","device":"RG360-08"}

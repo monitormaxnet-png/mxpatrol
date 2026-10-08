@@ -8,6 +8,20 @@
       "when": 1790131448687,
       "tag": "0000_sos_resolution_authorization",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791474886239,
+      "tag": "0001_incident_report_audio_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791474895642,
+      "tag": "0002_voice_message_device_commands",
+      "breakpoints": true
     }
   ]
 }

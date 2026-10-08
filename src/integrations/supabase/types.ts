@@ -1552,7 +1552,8 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }      incidents: {
+      }
+      incidents: {
         Row: {
           ai_classification: string | null
           ai_suggested_action: string | null

@@ -1491,36 +1491,48 @@ export type Database = {
         Row: {
           captured_at: string
           company_id: string
+          content_type: string | null
           created_at: string
           device_identifier: string
+          duration_seconds: number | null
+          filename: string | null
           gps_accuracy: number | null
           gps_lat: number | null
           gps_lng: number | null
           id: string
+          media_type: string
           site_id: string | null
           storage_path: string
         }
         Insert: {
           captured_at: string
           company_id: string
+          content_type?: string | null
           created_at?: string
           device_identifier: string
+          duration_seconds?: number | null
+          filename?: string | null
           gps_accuracy?: number | null
           gps_lat?: number | null
           gps_lng?: number | null
           id?: string
+          media_type?: string
           site_id?: string | null
           storage_path: string
         }
         Update: {
           captured_at?: string
           company_id?: string
+          content_type?: string | null
           created_at?: string
           device_identifier?: string
+          duration_seconds?: number | null
+          filename?: string | null
           gps_accuracy?: number | null
           gps_lat?: number | null
           gps_lng?: number | null
           id?: string
+          media_type?: string
           site_id?: string | null
           storage_path?: string
         }

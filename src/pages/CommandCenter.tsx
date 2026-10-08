@@ -1,7 +1,8 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, AlertTriangle, ArrowRight, Bell, Bot, Camera, CheckCircle2, ChevronDown, Clock3, Cpu, FileText, Lock, MapPin, Mic, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
+import { MxPatrolVideoBackground } from '@/components/branding/MxPatrolVideoBackground';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { usePlatformAdmin } from '@/hooks/usePlatformAdmin';
@@ -68,8 +69,8 @@ type DashboardAlert = { id: string; type?: string | null; is_read?: boolean | nu
 type DashboardIncident = { id: string; resolved?: boolean | null; severity?: string | null; title?: string | null; incident_type?: string | null; created_at?: string | null; site_id?: string | null };
 type DashboardScan = { id: string; scanned_at?: string | null; tag_status?: string | null; device_identifier?: string | null; checkpoints?: { name?: string | null } | null; guards?: { full_name?: string | null } | null };
 type DatalogSubmission = { id: string; submitted_at?: string | null; datalog_value?: string | null; responses_json?: any; site_id?: string | null; checkpoint_id?: string | null; sites?: { name?: string | null } | null; checkpoints?: { name?: string | null; data_log_label?: string | null } | null };
-type IncidentPhotoActivity = { id: string; captured_at?: string | null; created_at?: string | null; company_id?: string | null; site_id?: string | null; device_identifier?: string | null; storage_path?: string | null };
-type RecordingActivity = { id: string; captured_at?: string | null; created_at?: string | null; company_id?: string | null; site_id?: string | null; device_identifier?: string | null; storage_path?: string | null; filename?: string | null };
+type IncidentPhotoActivity = { id: string; captured_at?: string | null; created_at?: string | null; company_id?: string | null; site_id?: string | null; device_identifier?: string | null; storage_path?: string | null; media_type?: string | null };
+type RecordingActivity = { id: string; captured_at?: string | null; created_at?: string | null; company_id?: string | null; site_id?: string | null; device_identifier?: string | null; storage_path?: string | null; filename?: string | null; media_type?: string | null; duration_seconds?: number | null };
 type ActivityType = 'scans' | 'photos' | 'datalog' | 'sos' | 'recordings';
 type ActivityAckRow = { activity_type: ActivityType; acknowledged_at: string | null };
 type LiveCheckpointRow = { id: string; session_id?: string | null; patrol_session_id?: string | null; status?: string | null; scheduled_at?: string | null; scheduled_order?: number | null; checkpoint_name_snapshot?: string | null; scanned_at?: string | null; checkpoints?: { name?: string | null } | null };
@@ -273,7 +274,7 @@ export default function CommandCenter() {
       const client = supabase as any;
       let query = client
         .from('incident_report_photos')
-        .select('id, captured_at, created_at, company_id, site_id, device_identifier, storage_path')
+        .select('id, captured_at, created_at, company_id, site_id, device_identifier, storage_path, media_type, filename, duration_seconds')
         .eq('company_id', activityCompanyId!)
         .gte('captured_at', startOfDay(0).toISOString())
         .order('captured_at', { ascending: false })
@@ -281,7 +282,7 @@ export default function CommandCenter() {
       if (selectedSiteId) query = query.eq('site_id', selectedSiteId);
       const { data, error } = await query;
       if (error) throw error;
-      return (data ?? []) as IncidentPhotoActivity[];
+      return ((data ?? []) as IncidentPhotoActivity[]).filter((row) => (row.media_type ?? 'photo') === 'photo' && !isAudioEvidencePath(row.storage_path));
     },
   });
 
@@ -292,7 +293,7 @@ export default function CommandCenter() {
       const client = supabase as any;
       let query = client
         .from('incident_report_photos')
-        .select('id, captured_at, created_at, company_id, site_id, device_identifier, storage_path')
+        .select('id, captured_at, created_at, company_id, site_id, device_identifier, storage_path, media_type, filename, duration_seconds')
         .eq('company_id', activityCompanyId!)
         .gte('captured_at', startOfDay(0).toISOString())
         .order('captured_at', { ascending: false })
@@ -301,7 +302,7 @@ export default function CommandCenter() {
       const { data, error } = await query;
       if (error) throw error;
       return ((data ?? []) as RecordingActivity[])
-        .filter((row) => isAudioEvidencePath(row.storage_path))
+        .filter((row) => row.media_type === 'audio' || isAudioEvidencePath(row.storage_path))
         .map((row) => ({ ...row, filename: row.filename ?? row.storage_path?.split('/').pop() ?? null }));
     },
   });
@@ -801,6 +802,17 @@ export default function CommandCenter() {
     return runAction(result.action);
   };
 
+  const handleAssistantSubmit = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    submit();
+  };
+
+  const handleAssistantKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    submit();
+  };
+
   const switchMode = () => submit(mode === 'management' ? 'user' : 'management');
   const homeNode = menuNode(homeMenu(mode));
   const todayRows = periodRows('today');
@@ -854,10 +866,11 @@ export default function CommandCenter() {
   const recentIncidents = openIncidents.slice(0, 3);
 
   return (
-    <div className='min-h-screen overflow-x-hidden bg-[#030811] text-white'>
-      <div className='mx-auto flex min-h-screen max-w-[120rem] flex-col gap-3 px-3 py-3 sm:px-4'>
-        <header className='grid gap-3 rounded-lg border border-cyan-400/20 bg-slate-950/85 p-3 shadow-[0_0_35px_rgba(14,165,233,0.08)] lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-center'>
-          <div className='flex min-h-14 items-center justify-center rounded-md bg-black/50 px-3'>
+    <MxPatrolVideoBackground>
+      <div className='dashboard-page min-h-screen overflow-x-hidden bg-transparent text-white'>
+      <div className='mx-auto flex min-h-screen max-w-[120rem] flex-col gap-4 px-3 py-3 sm:px-4'>
+        <header className='mx-command-header grid gap-3 rounded-lg border border-white/10 p-3 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-center'>
+          <div className='mx-logo-block flex min-h-16 items-center justify-center rounded-md px-4 py-2'>
             <TTechMxPatrolLogo variant='header' priority className='w-44' />
           </div>
           <div className='grid gap-3 lg:grid-cols-[minmax(13rem,0.9fr)_minmax(15rem,1fr)_minmax(13rem,0.8fr)_auto_auto] lg:items-center'>
@@ -899,11 +912,11 @@ export default function CommandCenter() {
           </div>
         </header>
 
-        <section className='rounded-lg border border-emerald-400/20 bg-emerald-400/5 px-4 py-3 text-sm text-emerald-100'>
+        <section className='mx-operations-bar rounded-lg border border-emerald-400/20 px-4 py-2 text-sm text-emerald-100'>
           <b>Today&apos;s Operations</b> - {selectedSite}. Current patrols, today&apos;s scans, today&apos;s SOS activity, and currently open incidents. Historical trends live under Reports.
         </section>
 
-        <section className='grid gap-3 md:grid-cols-2 xl:grid-cols-5'>
+        <section className='grid auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-5'>
           <KpiCard title='Active Patrols' value={activePatrolCount} total={totalPatrols || undefined} note='Live sessions' icon={Users} tone='emerald' />
           <KpiCard title='Devices Online' value={onlineDevices} total={siteDevices.length || undefined} note='Reporting devices' icon={Smartphone} tone='cyan' />
           <KpiCard title='SOS Alerts' value={todaySosAlerts.length} note={sosAlertCount ? 'Action required' : 'All clear'} icon={ShieldAlert} tone='rose' unseen={activityUnseen('sos')} onClick={() => openActivityMetric('sos')} />
@@ -911,15 +924,15 @@ export default function CommandCenter() {
           <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${loadedScansToday} loaded today`} icon={ScanLine} tone='blue' unseen={activityUnseen('scans')} onClick={() => openActivityMetric('scans')} />
         </section>
 
-        <section className='grid gap-3 md:grid-cols-3 xl:grid-cols-5'>
+        <section className='grid auto-rows-fr gap-4 md:grid-cols-3'>
           <KpiCard title='Photos' value={photoCountValue} note='Captured today' icon={Camera} tone='cyan' unseen={activityUnseen('photos')} onClick={() => openActivityMetric('photos')} />
           <KpiCard title='Datalog' value={datalogCountValue} note='Entries today' icon={FileText} tone='emerald' unseen={activityUnseen('datalog')} onClick={() => openActivityMetric('datalog')} />
           <KpiCard title='Recordings' value={recordingCountValue} note='Audio today' icon={Mic} tone='blue' unseen={activityUnseen('recordings')} onClick={() => openActivityMetric('recordings')} />
-          <div className='md:col-span-3 xl:col-span-2'><SiteActivityTodayMatrix site={selectedSite} counts={{ scans: scanCountValue, photos: photoCountValue, datalog: datalogCountValue, sos: todaySosAlerts.length, recordings: recordingCountValue }} unseen={{ scans: activityUnseen('scans'), photos: activityUnseen('photos'), datalog: activityUnseen('datalog'), sos: activityUnseen('sos'), recordings: activityUnseen('recordings') }} onOpen={openActivityMetric} /></div>
+          <div className='md:col-span-3'><SiteActivityTodayMatrix site={selectedSite} counts={{ scans: scanCountValue, photos: photoCountValue, datalog: datalogCountValue, sos: todaySosAlerts.length, recordings: recordingCountValue }} unseen={{ scans: activityUnseen('scans'), photos: activityUnseen('photos'), datalog: activityUnseen('datalog'), sos: activityUnseen('sos'), recordings: activityUnseen('recordings') }} onOpen={openActivityMetric} /></div>
         </section>
 
-        <section className='grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]'>
-          <section className='flex h-[24rem] min-h-[24rem] flex-col overflow-hidden rounded-lg border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_35px_rgba(14,165,233,0.08)]'>
+        <section className='grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]'>
+          <section className='mx-ai-assistant flex h-[42rem] min-h-[42rem] flex-col overflow-hidden xl:h-[48rem] xl:min-h-[48rem] rounded-lg border border-cyan-400/20'>
             <div className='shrink-0 border-b border-white/10 px-4 py-3'>
               <div className='flex items-start justify-between gap-3'>
                 <div>
@@ -931,7 +944,14 @@ export default function CommandCenter() {
               </div>
             </div>
             <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
-              <div ref={conversationRef} onScroll={handleConversationScroll} className='min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4'>
+              <form className='mx-ai-composer relative z-20 shrink-0 border-b border-white/10 p-3 pointer-events-auto' onSubmit={handleAssistantSubmit}>
+                <div className='flex items-center gap-3'>
+                  <input type='text' autoComplete='off' value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={handleAssistantKeyDown} className='mx-ai-input relative z-20 h-12 min-w-0 flex-1 rounded-full border px-4 text-sm outline-none placeholder:text-slate-600 focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20' placeholder={mode === 'management' ? 'Type a number or management command...' : 'Type a number or ask MX Patrol...'} />
+                  <button type='submit' className='relative z-20 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]' aria-label='Send'><Send className='h-5 w-5' /></button>
+                </div>
+                <p className='mt-2 text-center text-[11px] text-slate-500'>Reply with the number shown in the current menu. Type back, menu or cancel any time.</p>
+              </form>
+              <div ref={conversationRef} onScroll={handleConversationScroll} className='mx-ai-body min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4'>
                 <AssistantBubble title={homeNode.title}><MenuView site={selectedSite} node={homeNode} isPlatformOwner={isPlatformOwner} /></AssistantBubble>
                 <div className='grid gap-2 sm:grid-cols-2'>
                   {mode === 'management' || canManage ? <Shortcut onClick={switchMode} icon={mode === 'management' ? Bot : Lock} label={mode === 'management' ? 'User Assistant' : 'Management'} /> : null}
@@ -944,13 +964,7 @@ export default function CommandCenter() {
                 {inlinePanel ? <div className='rounded-2xl border border-emerald-400/25'>{inlinePanel}</div> : null}
                 <div ref={messagesEndRef} aria-hidden='true' />
               </div>
-              <form className='relative z-20 shrink-0 border-t border-white/10 bg-slate-950/95 p-3 pointer-events-auto' onSubmit={(event) => { event.preventDefault(); submit(); }}>
-                <div className='flex items-center gap-3'>
-                  <input type='text' autoComplete='off' value={input} onChange={(event) => setInput(event.target.value)} className='relative z-20 h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-4 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20' placeholder={mode === 'management' ? 'Type a number or management command...' : 'Type a number or ask MX Patrol...'} />
-                  <button type='submit' className='relative z-20 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]' aria-label='Send'><Send className='h-5 w-5' /></button>
-                </div>
-                <p className='mt-2 text-center text-[11px] text-slate-500'>Reply with the number shown in the current menu. Type back, menu or cancel any time.</p>
-              </form>
+
             </div>
           </section>
           <DashboardPanel title='Current SOS Rules' icon={ShieldCheck} action='Acknowledge != Resolve'>
@@ -962,8 +976,8 @@ export default function CommandCenter() {
           </DashboardPanel>
         </section>
 
-        <main className='grid min-h-0 flex-1 gap-3 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
-          <div className='flex min-h-0 flex-col gap-3'>
+        <main className='grid min-h-0 flex-1 gap-4 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
+          <div className='flex min-h-0 flex-col gap-4'>
             <DashboardPanel title="Today's Patrol Status" icon={ShieldCheck} action='Today'>
               <PatrolStatusDonut counts={patrolCounts} total={totalPatrols} />
             </DashboardPanel>
@@ -986,7 +1000,7 @@ export default function CommandCenter() {
           </DashboardPanel>
         </main>
 
-        {canManage ? <section className='rounded-lg border border-emerald-400/20 bg-slate-950/75 p-4 shadow-[0_0_30px_rgba(14,165,233,0.07)]'>
+        {canManage ? <section className='mx-dashboard-panel rounded-lg border border-emerald-400/20 p-4 shadow-[0_0_30px_rgba(14,165,233,0.07)]'>
           <div className='mb-3 flex items-center justify-between gap-3'>
             <div>
               <h2 className='flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-100'><Smartphone className='h-4 w-4 text-emerald-300' /> WhatsApp Access Management</h2>
@@ -1016,6 +1030,7 @@ export default function CommandCenter() {
         </section>
       </div>
     </div>
+    </MxPatrolVideoBackground>
   );
 }
 type Tone = 'emerald' | 'cyan' | 'rose' | 'amber' | 'blue';
@@ -1030,7 +1045,7 @@ const toneClasses: Record<Tone, { border: string; text: string; bg: string; glow
 
 function DashboardPanel({ title, icon: Icon, action, children, className = '', bodyClassName = '' }: { title: string; icon: typeof Bot; action?: string; children: ReactNode; className?: string; bodyClassName?: string }) {
   return (
-    <section className={`flex flex-col rounded-lg border border-cyan-400/15 bg-slate-950/75 shadow-[0_0_30px_rgba(14,165,233,0.07)] ${className}`}>
+    <section className={`mx-dashboard-panel flex flex-col rounded-lg border border-cyan-400/15 ${className}`}>
       <div className='flex min-h-12 items-center justify-between border-b border-white/10 px-4 py-3'>
         <h2 className='flex min-w-0 items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-100'><Icon className='h-4 w-4 shrink-0 text-cyan-300' /><span className='truncate'>{title}</span></h2>
         {action ? <span className='shrink-0 rounded-md border border-white/10 px-2 py-1 text-xs text-slate-400'>{action}</span> : null}
@@ -1046,7 +1061,7 @@ function KpiCard({ title, value, total, note, icon: Icon, tone, unseen = false, 
   const valueClass = (unseen ? 'text-rose-300 drop-shadow-[0_0_12px_rgba(244,63,94,0.55)]' : 'text-white') + ' text-4xl font-black leading-none';
   const iconWrapClass = 'flex h-14 w-14 shrink-0 items-center justify-center rounded-full border ' + (unseen ? 'border-rose-400/45 bg-rose-500/15' : classes.border + ' ' + classes.bg);
   const iconClass = 'h-7 w-7 ' + (unseen ? 'text-rose-300' : classes.text);
-  const cardClass = 'rounded-lg border ' + (unseen ? 'border-rose-400/45 bg-rose-950/25 shadow-[0_0_30px_rgba(244,63,94,0.18)]' : classes.border + ' bg-slate-950/75 ' + classes.glow) + ' p-5 text-left';
+  const cardClass = 'mx-kpi-card h-full rounded-lg border ' + (unseen ? 'border-rose-400/45 bg-rose-950/25 shadow-[0_0_30px_rgba(244,63,94,0.18)]' : classes.border + ' bg-slate-950/75 ' + classes.glow) + ' p-5 text-left';
   const content = (
     <div className='flex items-start justify-between gap-4'>
       <div className='min-w-0'>
@@ -1172,7 +1187,7 @@ function FeedbackRow({ row }: { row: { title: string; detail: string; time: stri
 
 function SiteActivityTodayMatrix({ site, counts, unseen, onOpen }: { site: string; counts: Record<ActivityType, number>; unseen: Record<ActivityType, boolean>; onOpen: (type: ActivityType) => void }) {
   const columns: Array<[ActivityType, string]> = [['scans', 'Scans'], ['photos', 'Photos'], ['datalog', 'Datalog'], ['sos', 'SOS Alerts'], ['recordings', 'Recordings']];
-  return <div className='h-full rounded-lg border border-cyan-400/15 bg-slate-950/75 p-4 shadow-[0_0_30px_rgba(14,165,233,0.07)]'>
+  return <div className='mx-site-activity h-full rounded-lg border border-cyan-400/15 p-4'>
     <h2 className='text-sm font-black uppercase tracking-[0.08em] text-slate-100'>Site Activity - Today</h2>
     <div className='mt-3 overflow-x-auto'>
       <table className='w-full min-w-[28rem] text-left text-xs'>
@@ -1705,3 +1720,5 @@ function ConfigList({ kind, siteId }: { kind: 'routes' | 'schedules'; siteId: st
   if (!data?.length) return <p>Nothing configured for the active site yet.</p>;
   return <div className='space-y-2'>{data.map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><b>{row.name}</b><p className='text-slate-400'>{row.status ?? 'active'}{row.start_time ? ` - ${row.start_time}${row.end_time ? ` - ${row.end_time}` : ''}` : ''}{row.frequency_type ? ` - ${row.frequency_type}` : ''}</p></div>)}</div>;
 }
+
+

@@ -27,9 +27,6 @@ const AppLayout = () => {
   if (aiFirstCommandCenter) {
     return (
       <div className='min-h-screen bg-transparent'>
-        {needsOnboarding && showOnboarding && (
-          <OnboardingWizard onComplete={handleOnboardingComplete} />
-        )}
         <Outlet />
       </div>
     );

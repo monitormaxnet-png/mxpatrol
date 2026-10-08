@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Lock, RefreshCw, ShieldCheck, Smartphone, Wifi, X
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { usePlatformAdmin } from '@/hooks/usePlatformAdmin';
+import ControlRoomVoiceMessagePanel from '@/components/command-center/ControlRoomVoiceMessagePanel';
 
 type Tone = 'green' | 'blue' | 'amber' | 'red' | 'neutral';
 type IconComponent = ComponentType<{ className?: string }>;
@@ -369,6 +370,8 @@ export function LiveSecureDeviceManagementPanel({ selectedSite, siteId }: { sele
           </div> : null}
 
           {lastCommand ? <div className='mb-4 rounded-xl border border-blue-400/20 bg-blue-400/10 p-3 text-xs text-blue-100'>Command status: <b>{lastCommand.command_status}</b>{lastCommand.command_id ? ' - ' + lastCommand.command_id.slice(0, 8) : ''}</div> : null}
+
+          <ControlRoomVoiceMessagePanel siteId={siteId} selectedSite={selectedSite} devices={rows} activeIdentifier={activeIdentifier} />
 
           <div className='rounded-xl border border-white/10 bg-slate-950/70 p-3'>
             <p className='text-xs font-black uppercase tracking-[0.1em] text-emerald-300'>Security controls</p>

@@ -5,7 +5,12 @@ import { toast } from "sonner";
 export type QueuedIncidentPhoto = {
   id: string;
   device_identifier: string;
-  photo_base64: string;
+  media_type?: "photo" | "audio";
+  photo_base64?: string;
+  audio_base64?: string;
+  content_type?: string | null;
+  filename?: string | null;
+  duration_ms?: number | null;
   gps_lat: number | null;
   gps_lng: number | null;
   gps_accuracy: number | null;
@@ -102,7 +107,12 @@ export function useOfflineIncidentPhotoQueue() {
         const { data, error } = await supabase.functions.invoke("device-incident-photo", {
           body: {
             device_identifier: photo.device_identifier,
+            media_type: photo.media_type ?? "photo",
             photo_base64: photo.photo_base64,
+            audio_base64: photo.audio_base64,
+            content_type: photo.content_type ?? undefined,
+            filename: photo.filename ?? undefined,
+            duration_ms: photo.duration_ms ?? undefined,
             gps: photo.gps_lat != null && photo.gps_lng != null
               ? { lat: photo.gps_lat, lng: photo.gps_lng, accuracy: photo.gps_accuracy }
               : null,
@@ -110,11 +120,11 @@ export function useOfflineIncidentPhotoQueue() {
           },
         });
         if (error) throw error;
-        if (!data?.ok) throw new Error(data?.error || "Incident photo sync failed");
+        if (!data?.ok) throw new Error(data?.error || "Field media sync failed");
 
         await idbDelete(photo.id);
         syncedCount += 1;
-        console.info("[IncidentPhotoQueue] Synced", { photoId: data.photo?.id ?? null });
+        console.info("[IncidentPhotoQueue] Synced", { mediaId: data.photo?.id ?? null, mediaType: photo.media_type ?? "photo" });
       } catch (error) {
         console.warn(`[IncidentPhotoQueue] Sync failed ${describeError(error)}`);
         failedCount += 1;
@@ -123,8 +133,8 @@ export function useOfflineIncidentPhotoQueue() {
 
     await refreshCount();
     setSyncing(false);
-    if (syncedCount > 0) toast.success(`Synced ${syncedCount} incident photo${syncedCount > 1 ? "s" : ""}`);
-    if (failedCount > 0) toast.error(`${failedCount} incident photo${failedCount > 1 ? "s" : ""} failed to sync`);
+    if (syncedCount > 0) toast.success(`Synced ${syncedCount} field media item${syncedCount > 1 ? "s" : ""}`);
+    if (failedCount > 0) toast.error(`${failedCount} field media item${failedCount > 1 ? "s" : ""} failed to sync`);
   }, [refreshCount]);
 
   useEffect(() => {

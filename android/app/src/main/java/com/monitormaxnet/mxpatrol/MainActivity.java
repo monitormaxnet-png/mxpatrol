@@ -12,11 +12,14 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.AudioManager;
 import android.media.Image;
+import android.media.MediaRecorder;
 import android.media.ImageReader;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Base64;
 import android.util.Log;
@@ -32,6 +35,9 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import java.io.File;
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
@@ -46,15 +52,29 @@ public class MainActivity extends BridgeActivity {
     private static final String HARDWARE_KEY_SCHEMA = "mxpatrol.hardwareKey.v1";
     private static final String INCIDENT_PHOTO_EVENT = "mxpatrolIncidentPhoto";
     private static final String INCIDENT_PHOTO_SCHEMA = "mxpatrol.incidentPhoto.v1";
+    private static final String VOICE_RECORDING_EVENT = "mxpatrolVoiceRecording";
+    private static final String VOICE_RECORDING_SCHEMA = "mxpatrol.voiceRecording.v1";
     private static final String WEBVIEW_CACHE_CLEAR_KEY = "webview_cache_cleared_20260619_single_bundle";
     private static final String TAG = "MXHardwareKey";
     private static final int INCIDENT_PHOTO_PERMISSION_REQUEST = 5042;
+    private static final int VOICE_RECORDING_PERMISSION_REQUEST = 5043;
     private static final int INCIDENT_PHOTO_HOLD_MS = 500;
     private static final int INCIDENT_PHOTO_KEY_CODE = KeyEvent.KEYCODE_VOLUME_UP;
     private static final int INCIDENT_PHOTO_SCAN_CODE = 115;
+    private static final int VOICE_RECORDING_KEY_CODE = KeyEvent.KEYCODE_VOLUME_DOWN;
+    private static final int VOICE_RECORDING_MAX_MS = 60_000;
+    private static final int VOICE_RECORDING_DELETE_GRACE_MS = 2 * 60_000;
     private final SparseLongArray keyDownTimes = new SparseLongArray();
+    private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private boolean incidentPhotoCaptureInProgress = false;
     private boolean pendingIncidentPhotoAfterPermission = false;
+    private boolean voiceRecordingInProgress = false;
+    private boolean pendingVoiceRecordingAfterPermission = false;
+    private boolean voiceKeyHeld = false;
+    private long voiceRecordingStartedAtMs = 0L;
+    private MediaRecorder voiceRecorder = null;
+    private File voiceRecordingFile = null;
+    private Runnable voiceRecordingTimeout = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,6 +83,7 @@ public class MainActivity extends BridgeActivity {
 
         if (bridge != null && bridge.getWebView() != null) {
             bridge.getWebView().clearCache(true);
+            voiceHandler.postDelayed(this::emitPendingVoiceRecordings, 5_000);
         }
     }
 
@@ -73,11 +94,23 @@ public class MainActivity extends BridgeActivity {
         if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
             keyDownTimes.put(keyCode, SystemClock.elapsedRealtime());
             emitHardwareKey(event, 0, "down");
+            if (isVoiceRecordingKey(event)) {
+                voiceKeyHeld = true;
+                startVoiceRecording();
+                return true;
+            }
+        } else if (event.getAction() == KeyEvent.ACTION_DOWN && isVoiceRecordingKey(event)) {
+            return true;
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
             final long startedAt = keyDownTimes.get(keyCode, SystemClock.elapsedRealtime());
             final long durationMs = SystemClock.elapsedRealtime() - startedAt;
             keyDownTimes.delete(keyCode);
             emitHardwareKey(event, durationMs, "up");
+            if (isVoiceRecordingKey(event)) {
+                voiceKeyHeld = false;
+                stopVoiceRecording("released");
+                return true;
+            }
             if (isIncidentPhotoKey(event, durationMs)) {
                 triggerIncidentPhotoCapture();
             }
@@ -85,19 +118,38 @@ public class MainActivity extends BridgeActivity {
 
         return super.dispatchKeyEvent(event);
     }
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode != INCIDENT_PHOTO_PERMISSION_REQUEST) return;
-
-        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && pendingIncidentPhotoAfterPermission) {
-            pendingIncidentPhotoAfterPermission = false;
-            triggerIncidentPhotoCapture();
-        } else {
-            pendingIncidentPhotoAfterPermission = false;
-            emitIncidentPhotoError("camera_permission_denied");
+        if (requestCode == INCIDENT_PHOTO_PERMISSION_REQUEST) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && pendingIncidentPhotoAfterPermission) {
+                pendingIncidentPhotoAfterPermission = false;
+                triggerIncidentPhotoCapture();
+            } else {
+                pendingIncidentPhotoAfterPermission = false;
+                emitIncidentPhotoError("camera_permission_denied");
+            }
+            return;
         }
+
+        if (requestCode == VOICE_RECORDING_PERMISSION_REQUEST) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && pendingVoiceRecordingAfterPermission && voiceKeyHeld) {
+                pendingVoiceRecordingAfterPermission = false;
+                startVoiceRecording();
+            } else {
+                pendingVoiceRecordingAfterPermission = false;
+                emitVoiceRecordingError("microphone_permission_denied");
+            }
+        }
+    }
+
+    @Override
+    public void onPause() {
+        stopVoiceRecording("interrupted");
+        super.onPause();
+    }
+    private boolean isVoiceRecordingKey(KeyEvent event) {
+        return event.getKeyCode() == VOICE_RECORDING_KEY_CODE;
     }
 
     private boolean isIncidentPhotoKey(KeyEvent event, long durationMs) {
@@ -268,6 +320,172 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+
+    private void startVoiceRecording() {
+        if (voiceRecordingInProgress) return;
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            pendingVoiceRecordingAfterPermission = true;
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.RECORD_AUDIO}, VOICE_RECORDING_PERMISSION_REQUEST);
+            emitVoiceRecordingError("microphone_permission_requested");
+            return;
+        }
+
+        try {
+            AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (audioManager != null) {
+                audioManager.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE);
+            }
+
+            File directory = new File(getCacheDir(), "voice-recordings");
+            if (!directory.exists() && !directory.mkdirs()) throw new IOException("voice_cache_unavailable");
+            voiceRecordingFile = File.createTempFile("mxpatrol-voice-", ".m4a", directory);
+
+            MediaRecorder recorder = new MediaRecorder();
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            recorder.setAudioEncodingBitRate(32_000);
+            recorder.setAudioSamplingRate(16_000);
+            recorder.setOutputFile(voiceRecordingFile.getAbsolutePath());
+            recorder.prepare();
+            recorder.start();
+
+            voiceRecorder = recorder;
+            voiceRecordingStartedAtMs = System.currentTimeMillis();
+            voiceRecordingInProgress = true;
+            emitVoiceRecordingStatus("started", null, 0, null);
+
+            voiceRecordingTimeout = () -> stopVoiceRecording("max_duration");
+            voiceHandler.postDelayed(voiceRecordingTimeout, VOICE_RECORDING_MAX_MS);
+        } catch (Exception error) {
+            Log.w(TAG, "Voice recording start failed", error);
+            cleanupVoiceRecording();
+            emitVoiceRecordingError("recording_start_failed");
+        }
+    }
+
+    private void stopVoiceRecording(String reason) {
+        if (!voiceRecordingInProgress && voiceRecorder == null) return;
+
+        long durationMs = Math.max(0, System.currentTimeMillis() - voiceRecordingStartedAtMs);
+        File completedFile = voiceRecordingFile;
+        MediaRecorder recorder = voiceRecorder;
+        voiceRecorder = null;
+        voiceRecordingFile = null;
+        voiceRecordingInProgress = false;
+
+        if (voiceRecordingTimeout != null) {
+            voiceHandler.removeCallbacks(voiceRecordingTimeout);
+            voiceRecordingTimeout = null;
+        }
+
+        try {
+            if (recorder != null) {
+                recorder.stop();
+                recorder.release();
+            }
+
+            AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+            if (audioManager != null) audioManager.abandonAudioFocus(null);
+
+            if (completedFile == null || !completedFile.exists() || completedFile.length() == 0) {
+                emitVoiceRecordingError("empty_recording");
+                return;
+            }
+
+            byte[] bytes = readVoiceRecordingBytes(completedFile);
+            String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
+            emitVoiceRecordingStatus("stopped", base64, durationMs, reason);
+        } catch (Exception error) {
+            Log.w(TAG, "Voice recording stop failed", error);
+            emitVoiceRecordingError("recording_stop_failed");
+        } finally {
+            scheduleVoiceRecordingDelete(completedFile);
+        }
+
+    }
+
+    private void cleanupVoiceRecording() {
+        voiceRecordingInProgress = false;
+        if (voiceRecordingTimeout != null) {
+            voiceHandler.removeCallbacks(voiceRecordingTimeout);
+            voiceRecordingTimeout = null;
+        }
+        try { if (voiceRecorder != null) voiceRecorder.release(); } catch (Exception ignored) {}
+        voiceRecorder = null;
+        if (voiceRecordingFile != null && voiceRecordingFile.exists() && !voiceRecordingFile.delete()) {
+            Log.w(TAG, "Failed to delete voice temp file: " + voiceRecordingFile.getAbsolutePath());
+        }
+        voiceRecordingFile = null;
+        AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (audioManager != null) audioManager.abandonAudioFocus(null);
+    }
+
+    private byte[] readVoiceRecordingBytes(File file) throws IOException {
+        try (FileInputStream input = new FileInputStream(file); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            return output.toByteArray();
+        }
+    }
+
+    private void scheduleVoiceRecordingDelete(File file) {
+        if (file == null) return;
+        voiceHandler.postDelayed(() -> {
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "Failed to delete voice temp file: " + file.getAbsolutePath());
+            }
+        }, VOICE_RECORDING_DELETE_GRACE_MS);
+    }
+
+    private void emitPendingVoiceRecordings() {
+        File directory = new File(getCacheDir(), "voice-recordings");
+        File[] files = directory.listFiles((dir, name) -> name != null && name.endsWith(".m4a"));
+        if (files == null || files.length == 0) return;
+        Arrays.sort(files, (left, right) -> Long.compare(left.lastModified(), right.lastModified()));
+        for (File file : files) {
+            if (!file.exists() || file.length() <= 0) continue;
+            try {
+                byte[] bytes = readVoiceRecordingBytes(file);
+                String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
+                long ageMs = Math.max(0, System.currentTimeMillis() - file.lastModified());
+                emitVoiceRecordingStatus("stopped", base64, Math.min(ageMs, VOICE_RECORDING_MAX_MS), "recovered");
+                scheduleVoiceRecordingDelete(file);
+            } catch (Exception error) {
+                Log.w(TAG, "Failed to recover pending voice recording", error);
+            }
+        }
+    }
+    private void emitVoiceRecordingError(String reason) {
+        emitVoiceRecordingStatus("error", null, 0, reason);
+    }
+
+    private void emitVoiceRecordingStatus(String status, String audioBase64, long durationMs, String reason) {
+        if (bridge == null || bridge.getWebView() == null) return;
+        try {
+            JSONObject detail = new JSONObject();
+            detail.put("schema", VOICE_RECORDING_SCHEMA);
+            detail.put("status", status);
+            detail.put("capturedAtMs", System.currentTimeMillis());
+            detail.put("durationMs", Math.min(durationMs, VOICE_RECORDING_MAX_MS));
+            detail.put("contentType", "audio/mp4");
+            detail.put("filename", "rg360-voice-" + System.currentTimeMillis() + ".m4a");
+            if (audioBase64 != null) detail.put("audioBase64", audioBase64);
+            if (reason != null) detail.put("reason", reason);
+            final String payload = detail.toString();
+            Log.i(TAG, "VoiceRecording " + status + (reason != null ? " " + reason : ""));
+            bridge.getWebView().post(() -> bridge.getWebView().evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('" + VOICE_RECORDING_EVENT + "', { detail: " + payload + " }))",
+                null
+            ));
+        } catch (JSONException ignored) {
+            // All values are primitives, so serialization should not fail.
+        }
+    }
     private void applyIncidentPhotoCaptureSettings(CaptureRequest.Builder builder) {
         builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
         builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);

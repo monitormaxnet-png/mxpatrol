@@ -10,6 +10,8 @@ import AppLayout from "@/components/layout/AppLayout";
 import DevicePresenceHeartbeat from "@/components/devices/DevicePresenceHeartbeat";
 import HardwareSosListener from "@/components/devices/HardwareSosListener";
 import IncidentPhotoListener from "@/components/devices/IncidentPhotoListener";
+import VoiceRecordingListener from "@/components/devices/VoiceRecordingListener";
+import DeviceVoiceCommandListener from "@/components/devices/DeviceVoiceCommandListener";
 import SystemFeedbackOverlay from "@/components/feedback/SystemFeedbackOverlay";
 import PageTransition from "@/components/feedback/PageTransition";
 import { LoadingState } from "@/components/feedback/FeedbackPrimitives";
@@ -91,18 +93,10 @@ const NativeScannerRouteGuard = () => {
   return null;
 };
 
-const AppBackground = () => (
-  <div className="app-background" aria-hidden="true">
-    <video className="app-background-video" autoPlay muted loop playsInline preload="auto">
-      <source src="/web background video.mp4" type="video/mp4" />
-    </video>
-    <div className="app-background-overlay" />
-  </div>
-);
+
 const App = () => (
-  <>
-    <AppBackground />
-    <div className="app-shell">
+  <div className="mx-app">
+    <div className="mx-interface">
       <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TooltipProvider>
@@ -111,6 +105,8 @@ const App = () => (
         <BrowserRouter>
           <NativeScannerRouteGuard />
           <IncidentPhotoListener />
+          <VoiceRecordingListener />
+          <DeviceVoiceCommandListener />
           <SystemFeedbackOverlay />
           <Routes>
             {/* Public routes */}
@@ -178,7 +174,7 @@ const App = () => (
     </AuthProvider>
       </QueryClientProvider>
     </div>
-  </>
+  </div>
 );
 
 export default App;

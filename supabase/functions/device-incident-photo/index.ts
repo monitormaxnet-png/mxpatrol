@@ -1,4 +1,4 @@
-﻿import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { z } from "npm:zod@3";
 
 const corsHeaders = {
@@ -18,7 +18,12 @@ const fail = (error: string, status = 500, details?: unknown) =>
 
 const BodySchema = z.object({
   device_identifier: z.string().trim().min(1).max(128),
-  photo_base64: z.string().min(1),
+  media_type: z.enum(["photo", "audio"]).optional().default("photo"),
+  photo_base64: z.string().min(1).optional(),
+  audio_base64: z.string().min(1).optional(),
+  content_type: z.string().trim().min(1).max(80).optional(),
+  filename: z.string().trim().min(1).max(160).optional(),
+  duration_ms: z.number().min(0).max(60_000).optional().nullable(),
   gps: z
     .object({
       lat: z.number().min(-90).max(90).optional().nullable(),
@@ -39,7 +44,7 @@ Deno.serve(async (req) => {
     const parsed = BodySchema.safeParse(raw);
     if (!parsed.success) return fail("Invalid request body", 400, parsed.error.flatten());
 
-    const { device_identifier, photo_base64, gps, captured_at } = parsed.data;
+    const { device_identifier, media_type, photo_base64, audio_base64, content_type, filename, duration_ms, gps, captured_at } = parsed.data;
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -65,28 +70,40 @@ Deno.serve(async (req) => {
     if (device.pairing_status !== "paired") return fail("Device not paired", 403);
     if (["blocked", "wiped", "retired"].includes(device.status)) return fail("Device is not active", 403);
 
+    const encodedMedia = media_type === "audio" ? audio_base64 : photo_base64;
+    if (!encodedMedia) return fail(media_type === "audio" ? "Missing audio data" : "Missing photo data", 400);
+
     let bytes: Uint8Array;
     try {
-      const normalizedPhoto = photo_base64.includes(",") ? photo_base64.split(",").pop() || "" : photo_base64;
-      const binary = atob(normalizedPhoto.replace(/\s/g, ""));
+      const normalizedMedia = encodedMedia.includes(",") ? encodedMedia.split(",").pop() || "" : encodedMedia;
+      const binary = atob(normalizedMedia.replace(/\s/g, ""));
       bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     } catch {
-      return fail("Invalid photo encoding", 400);
+      return fail(`Invalid ${media_type} encoding`, 400);
     }
 
-    if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) {
+    if (media_type === "photo" && (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9)) {
       return fail("Invalid JPEG photo", 400, { size: bytes.length });
     }
 
-    const storagePath = `${device.company_id}/${device_identifier}/${Date.now()}.jpg`;
+    if (media_type === "audio" && bytes.length < 128) {
+      return fail("Invalid audio recording", 400, { size: bytes.length });
+    }
+
+    const safeFilename = (filename ?? "").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 120);
+    const extension = media_type === "audio" ? (safeFilename.split(".").pop() || "m4a") : "jpg";
+    const storagePath = media_type === "audio"
+      ? `${device.company_id}/${device_identifier}/audio/${Date.now()}-${safeFilename || `voice.${extension}`}`
+      : `${device.company_id}/${device_identifier}/${Date.now()}.jpg`;
+    const uploadContentType = media_type === "audio" ? (content_type || "audio/mp4") : "image/jpeg";
     const { error: uploadError } = await serviceClient.storage
       .from("incident-reports")
-      .upload(storagePath, bytes, { contentType: "image/jpeg", upsert: false });
+      .upload(storagePath, bytes, { contentType: uploadContentType, upsert: false });
 
     if (uploadError) {
       console.error("device-incident-photo upload error:", uploadError);
-      return fail("Failed to upload photo", 500, { message: uploadError.message });
+      return fail(`Failed to upload ${media_type}`, 500, { message: uploadError.message });
     }
 
     const { data: photo, error: insertError } = await serviceClient
@@ -100,6 +117,10 @@ Deno.serve(async (req) => {
         gps_accuracy: gps?.accuracy ?? null,
         captured_at,
         storage_path: storagePath,
+        media_type,
+        content_type: uploadContentType,
+        filename: media_type === "audio" ? (safeFilename || storagePath.split("/").pop()) : null,
+        duration_seconds: media_type === "audio" && duration_ms != null ? Math.min(60, Math.round(duration_ms / 1000)) : null,
       })
       .select("*")
       .single();
@@ -114,7 +135,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.info("[IncidentPhoto] recorded", { photoId: photo?.id ?? null, companyId: device.company_id, siteId: device.site_id, bytes: bytes.length });
+    console.info("[IncidentMedia] recorded", { mediaId: photo?.id ?? null, mediaType: media_type, companyId: device.company_id, siteId: device.site_id, bytes: bytes.length });
     return json({ ok: true, photo }, 200);
   } catch (err) {
     console.error("device-incident-photo unexpected error:", err);

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, CheckCircle2, Loader2, MapPin, ShieldAlert, Volume2, VolumeX, X } from "lucide-react";
+import { Camera, CheckCircle2, Loader2, MapPin, Mic, ShieldAlert, Volume2, VolumeX, X } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,6 +33,15 @@ type PhotoNotice = {
   status?: "capturing" | "uploading" | "received" | "queued" | "error";
   message?: string;
 };
+type VoiceNotice = {
+  id: string;
+  device?: string | null;
+  timestamp: string;
+  status: "recording" | "uploading" | "received" | "queued" | "error";
+  durationMs?: number | null;
+  message?: string;
+  audioUrl?: string | null;
+};
 
 const extractMessageField = (message: string | null | undefined, label: string) => {
   if (!message) return null;
@@ -47,6 +56,12 @@ const extractMessageField = (message: string | null | undefined, label: string) 
   return match.slice(separatorIndex + 1).trim();
 };
 
+const isAudioEvidencePath = (path?: string | null) => /\.(m4a|mp3|aac|webm|ogg|wav)$/i.test(path || "");
+
+const formatVoiceDuration = (ms: number) => {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+};
 const buildSosNotice = (alert: any): SosNotice => {
   const message = alert?.message || "SOS panic alert received";
   const timestamp = alert?.created_at || new Date().toISOString();
@@ -70,6 +85,7 @@ export default function SystemFeedbackOverlay() {
   const [sirenVolume, setSirenVolumeState] = useState(() => getSosSirenVolume());
   const [now, setNow] = useState(() => Date.now());
   const [photoNotices, setPhotoNotices] = useState<PhotoNotice[]>([]);
+  const [voiceNotice, setVoiceNotice] = useState<VoiceNotice | null>(null);
   const seenEvents = useRef<Set<string>>(new Set());
 
   const remember = useCallback((id: string) => {
@@ -99,12 +115,12 @@ export default function SystemFeedbackOverlay() {
     }
     setPhotoNotices((current) => {
       const withoutExisting = current.filter((item) => item.id !== notice.id);
-      return [{ ...notice }, ...withoutExisting].slice(0, sosNotice ? 2 : 3);
+      return [{ ...notice }, ...withoutExisting].slice(0, sosNotice || voiceNotice ? 2 : 3);
     });
     window.setTimeout(() => {
       setPhotoNotices((current) => current.filter((item) => item.id !== notice.id));
     }, notice.status === "error" ? 7000 : 5500);
-  }, [remember, sosNotice]);
+  }, [remember, sosNotice, voiceNotice]);
 
   const resolveSos = useCallback(async () => {
     if (!sosNotice) return;
@@ -166,11 +182,33 @@ export default function SystemFeedbackOverlay() {
       }, true);
     };
 
+    const onLocalVoice = (event: Event) => {
+      const detail = (event as CustomEvent<any>).detail || {};
+      const next: VoiceNotice = {
+        id: detail.id || `voice-${Date.now()}`,
+        device: detail.deviceIdentifier || null,
+        timestamp: detail.capturedAt || new Date().toISOString(),
+        status: detail.status || "uploading",
+        durationMs: detail.durationMs ?? null,
+        message: detail.message,
+        audioUrl: detail.audioUrl ?? null,
+      };
+      setVoiceNotice(next);
+      if (next.status === "error") playError();
+      else if (next.status === "received") playPhotoReceived();
+      else playPhotoCapture();
+      if (next.status !== "recording") {
+        window.setTimeout(() => setVoiceNotice((current) => current?.id === next.id ? null : current), next.status === "error" ? 7000 : 5500);
+      }
+    };
+
     window.addEventListener("mxpatrol:sos-feedback", onLocalSos);
     window.addEventListener("mxpatrol:photo-feedback", onLocalPhoto);
+    window.addEventListener("mxpatrol:voice-feedback", onLocalVoice);
     return () => {
       window.removeEventListener("mxpatrol:sos-feedback", onLocalSos);
       window.removeEventListener("mxpatrol:photo-feedback", onLocalPhoto);
+      window.removeEventListener("mxpatrol:voice-feedback", onLocalVoice);
     };
   }, [showPhoto, showSos]);
 
@@ -204,16 +242,32 @@ export default function SystemFeedbackOverlay() {
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "incident_report_photos" }, async (payload) => {
         const photo = payload.new as any;
-        let thumbnailUrl: string | null = null;
+        const isAudio = photo?.media_type === "audio" || isAudioEvidencePath(photo?.storage_path);
+        let signedUrl: string | null = null;
         if (photo?.storage_path) {
           const { data } = await supabase.storage.from("incident-reports").createSignedUrl(photo.storage_path, 60 * 10);
-          thumbnailUrl = data?.signedUrl ?? null;
+          signedUrl = data?.signedUrl ?? null;
+        }
+        if (isAudio) {
+          const notice: VoiceNotice = {
+            id: photo?.id || `voice-${Date.now()}`,
+            device: photo?.device_identifier,
+            timestamp: photo?.captured_at || photo?.created_at || new Date().toISOString(),
+            status: "received",
+            durationMs: typeof photo?.duration_seconds === "number" ? photo.duration_seconds * 1000 : null,
+            message: "VOICE RECEIVED",
+            audioUrl: signedUrl,
+          };
+          setVoiceNotice(notice);
+          if (signedUrl) void new Audio(signedUrl).play().catch(() => undefined);
+          window.setTimeout(() => setVoiceNotice((current) => current?.id === notice.id ? null : current), 9000);
+          return;
         }
         showPhoto({
           id: photo?.id || `photo-${Date.now()}`,
           device: photo?.device_identifier,
           timestamp: photo?.captured_at || photo?.created_at || new Date().toISOString(),
-          thumbnailUrl,
+          thumbnailUrl: signedUrl,
           status: "received",
         });
       })
@@ -225,6 +279,7 @@ export default function SystemFeedbackOverlay() {
   }, [showPhoto, showSos, sosNotice?.id, user]);
 
   const activeSos = sosNotice && !sosNotice.resolved;
+  const voiceElapsedMs = voiceNotice ? (voiceNotice.status === "recording" ? Math.min(60_000, Math.max(0, now - new Date(voiceNotice.timestamp).getTime())) : Math.max(0, voiceNotice.durationMs ?? 0)) : 0;
   const elapsedSeconds = sosNotice ? Math.max(0, Math.floor((now - new Date(sosNotice.timestamp).getTime()) / 1000)) : 0;
   const elapsedLabel = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")}:${String(elapsedSeconds % 60).padStart(2, "0")}`;
 
@@ -323,6 +378,23 @@ export default function SystemFeedbackOverlay() {
           </div>
         )}
 
+        {voiceNotice && (
+          <div className="pointer-events-auto overflow-hidden rounded-lg border border-cyan-400/40 bg-background/92 shadow-xl backdrop-blur-xl photo-notice-glow">
+            <div className="flex gap-3 p-3">
+              <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-cyan-400/10 text-cyan-300">
+                {voiceNotice.status === "uploading" ? <Loader2 className="h-6 w-6 animate-spin" /> : <Mic className={voiceNotice.status === "recording" ? "h-6 w-6 animate-pulse" : "h-6 w-6"} />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-300">{voiceNotice.status === "recording" ? "VOICE RECORDING" : voiceNotice.status === "queued" ? "VOICE PENDING SYNC" : voiceNotice.status === "error" ? "VOICE ERROR" : voiceNotice.status === "received" ? "VOICE RECEIVED" : "VOICE UPLOADING"}</p>
+                <p className="mt-1 truncate text-sm font-medium text-foreground">{voiceNotice.device || "RG360 patrol device"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{formatVoiceDuration(voiceElapsedMs)} {voiceNotice.status === "recording" ? "/ 01:00" : ""}</p>
+                {voiceNotice.message && <p className="mt-1 text-xs text-muted-foreground">{voiceNotice.message}</p>}
+                {voiceNotice.audioUrl && <audio className="mt-2 h-7 w-full" controls src={voiceNotice.audioUrl} />}
+              </div>
+              {voiceNotice.status === "received" && <CheckCircle2 className="mt-1 h-4 w-4 text-success" />}
+            </div>
+          </div>
+        )}
         {photoNotices.map((photo) => (
           <div key={photo.id} className="pointer-events-auto overflow-hidden rounded-lg border border-primary/40 bg-background/92 shadow-xl backdrop-blur-xl photo-notice-glow">
             <div className="flex gap-3 p-3">

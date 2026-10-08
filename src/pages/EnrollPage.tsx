@@ -1,27 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { Html5Qrcode } from "html5-qrcode";
 import { supabase } from "@/integrations/supabase/client";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Progress } from "@/components/ui/progress";
-import {
-  Camera, CheckCircle2, XCircle, Loader2,
-  Smartphone, Wifi, WifiOff, QrCode, ArrowLeft, RefreshCw, CloudUpload,
-  ChevronRight, Edit3, ArrowRight,
-} from "lucide-react";
+import { Camera, Copy, Loader2, LogIn, QrCode, Radio, RefreshCw, Smartphone } from "lucide-react";
 import { useOfflineEnrollQueue } from "@/hooks/useOfflineEnrollQueue";
 import { getPatrolDeviceInfo } from "@/lib/deviceInfo";
 import { ensureSecureDeviceKey, getSecureDeviceState } from "@/lib/secureDevice";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
+import { MxPatrolVideoBackground } from "@/components/branding/MxPatrolVideoBackground";
 
-type WizardStep = 0 | 1 | 2; // scan → confirm → success
-type ProcessState = "idle" | "processing" | "error" | "offline-queued";
+type ProcessState = "idle" | "processing" | "error" | "offline-queued" | "success";
 
 interface DeviceMetadata {
   device_identifier: string;
@@ -30,28 +23,14 @@ interface DeviceMetadata {
   serial_number: string;
 }
 
-type EnrollResult = {
-  ok?: boolean;
-  success?: boolean;
-  error?: string;
-  device_id?: string;
-  app_type?: string;
-};
-
-const STEP_LABELS = ["Pair Code", "Confirm Device", "Complete"];
-
 const normalizePairingCode = (value: string) =>
   value.trim().toUpperCase().replace(/^MXP[-\s]?/, "").replace(/[\s-]/g, "");
 
 export default function EnrollPage() {
-  const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [processState, setProcessState] = useState<ProcessState>("idle");
   const [error, setError] = useState("");
-  const [result, setResult] = useState<EnrollResult | null>(null);
-  const [scannedToken, setScannedToken] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [manualMode, setManualMode] = useState(true);
   const [manualToken, setManualToken] = useState("");
   const [metadata, setMetadata] = useState<DeviceMetadata>({
     device_identifier: "",
@@ -60,13 +39,12 @@ export default function EnrollPage() {
     serial_number: "",
   });
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
-
   const [deviceCodeLoading, setDeviceCodeLoading] = useState(false);
   const [deviceCodeError, setDeviceCodeError] = useState("");
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef(false);
-  const { enqueue, syncQueue, syncing, pendingCount } = useOfflineEnrollQueue();
+  const { enqueue } = useOfflineEnrollQueue();
 
   useEffect(() => {
     const ua = navigator.userAgent;
@@ -75,8 +53,8 @@ export default function EnrollPage() {
     setMetadata((prev) => ({
       ...prev,
       device_identifier: device.deviceIdentifier,
-      device_name: isMobile ? "Guard Mobile Device" : "Guard Workstation",
-      device_type: isMobile ? "mobile" : "tablet",
+      device_name: isMobile ? "MX Patrol Mobile Device" : "MX Patrol Web Scanner",
+      device_type: isMobile ? "mobile" : "scanner",
     }));
   }, []);
 
@@ -102,7 +80,7 @@ export default function EnrollPage() {
       });
       if (fnError) throw fnError;
       if (!data?.success) throw new Error(data?.error || "Could not get a pairing code");
-      setDeviceCode(data.display_code ?? `MX-${data.pairing_code}`);
+      setDeviceCode(data.display_code ?? "MX-" + data.pairing_code);
     } catch (err: unknown) {
       setDeviceCodeError(err instanceof Error ? err.message : "Could not get a pairing code");
     } finally {
@@ -111,8 +89,6 @@ export default function EnrollPage() {
   }, []);
 
   useEffect(() => { requestDeviceCode(); }, [requestDeviceCode]);
-
-
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
@@ -135,28 +111,23 @@ export default function EnrollPage() {
 
   useEffect(() => { return () => { stopCamera(); }; }, [stopCamera]);
 
-  const handleTokenScanned = useCallback(async (token: string) => {
-    if (processingRef.current) return;
-    processingRef.current = true;
-    await stopCamera();
-    setScannedToken(token.trim());
-    setWizardStep(1);
-    processingRef.current = false;
-  }, [stopCamera]);
+  const processEnrollmentToken = useCallback(async (token: string) => {
+    const trimmedToken = token.trim();
+    if (!trimmedToken) return;
 
-  const processEnrollment = async () => {
     setProcessState("processing");
+    setError("");
     const secureKey = await ensureSecureDeviceKey();
     const secureState = await getSecureDeviceState();
     const enrollPayload = {
-      qr_token: scannedToken,
+      qr_token: trimmedToken,
       device_metadata: {
         device_identifier: metadata.device_identifier,
         device_name: metadata.device_name,
         device_type: metadata.device_type,
         serial_number: metadata.serial_number || undefined,
         user_agent: navigator.userAgent,
-        screen: `${screen.width}x${screen.height}`,
+        screen: screen.width + "x" + screen.height,
         language: navigator.language,
         public_key: secureKey?.publicKey,
         public_key_algorithm: secureKey?.publicKeyAlgorithm,
@@ -167,6 +138,7 @@ export default function EnrollPage() {
     if (!isOnline) {
       enqueue(enrollPayload);
       setProcessState("offline-queued");
+      toast.success("Enrollment saved offline");
       return;
     }
 
@@ -176,22 +148,29 @@ export default function EnrollPage() {
       });
       if (fnError) throw fnError;
       if (data?.error) throw new Error(data.error);
-      setResult(data);
-      setProcessState("idle");
-      setWizardStep(2);
+      setProcessState("success");
       toast.success("Device enrolled successfully!");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Enrollment failed");
       setProcessState("error");
     }
-  };
+  }, [enqueue, isOnline, metadata]);
+
+  const handleTokenScanned = useCallback(async (token: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    await stopCamera();
+    const trimmedToken = token.trim();
+    setManualToken(trimmedToken);
+    await processEnrollmentToken(trimmedToken);
+    processingRef.current = false;
+  }, [processEnrollmentToken, stopCamera]);
 
   const startCamera = useCallback(async () => {
-    setManualMode(false);
     setError("");
     processingRef.current = false;
     try {
-      const scanner = new Html5Qrcode("qr-reader");
+      const scanner = new Html5Qrcode("web-scanner-qr-reader");
       scannerRef.current = scanner;
       await scanner.start(
         { facingMode: "environment" },
@@ -201,11 +180,12 @@ export default function EnrollPage() {
       );
       setCameraActive(true);
     } catch {
-      setManualMode(true);
+      setCameraActive(false);
+      setError("Camera scanner unavailable. Enter the enrollment code manually.");
     }
   }, [handleTokenScanned]);
 
-  const processPairingCode = async (code: string) => {
+  const processPairingCode = useCallback(async (code: string) => {
     const normalizedCode = normalizePairingCode(code);
     if (!isOnline) {
       toast.error("Pairing requires an internet connection");
@@ -239,309 +219,142 @@ export default function EnrollPage() {
       if (fnError) throw fnError;
       if (!data?.success) throw new Error(data?.error || "Pairing failed");
 
-      setScannedToken(normalizedCode);
-      setResult(data);
-      setProcessState("idle");
-      setWizardStep(2);
+      setProcessState("success");
       toast.success("Device paired successfully!");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Pairing failed");
       setProcessState("error");
     }
-  };
-  const handleManualSubmit = () => {
+  }, [isOnline, metadata]);
+
+  const handleEnrollmentSubmit = () => {
     const value = manualToken.trim();
-    if (!value) { toast.error("Please enter a token or pairing code"); return; }
+    if (!value) { toast.error("Please enter an enrollment code"); return; }
 
     if (value.includes(".")) {
-      handleTokenScanned(value);
+      processEnrollmentToken(value);
       return;
     }
 
     processPairingCode(value);
   };
 
-  const resetAll = () => {
-    setWizardStep(0);
-    setProcessState("idle");
-    setError("");
-    setResult(null);
-    setScannedToken("");
-    setManualToken("");
-    setManualMode(true);
-    processingRef.current = false;
+  const copyDeviceCode = async () => {
+    if (!deviceCode) return;
+    await navigator.clipboard.writeText(deviceCode);
+    toast.success("Device identifier copied");
   };
 
-  const progress = ((wizardStep + 1) / STEP_LABELS.length) * 100;
+  const scannerStatus = processState === "processing"
+    ? "Pairing Device"
+    : processState === "success"
+      ? "Device Ready"
+      : processState === "offline-queued"
+        ? "Saved Offline"
+        : "Tap NFC Tag";
+
+  const scannerDetail = processState === "error"
+    ? error
+    : processState === "success"
+      ? "This scanner is ready for MX Patrol."
+      : processState === "offline-queued"
+        ? "Enrollment will sync when the connection returns."
+        : cameraActive
+          ? "Camera scanner active. Hold the enrollment QR in view."
+          : "Hold your device close to the checkpoint tag.";
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="border-b border-border px-4 py-3">
-        <div className="mx-auto flex max-w-lg items-center gap-3">
-          <div className="flex flex-col"><TTechMxPatrolLogo variant="header" priority className="w-32" /><p className="mt-1 text-xs uppercase tracking-widest text-muted-foreground">Device Enrollment</p></div>
-          <div className="ml-auto flex items-center gap-2">
-            {pendingCount > 0 && (
-              <Badge variant="secondary" className="text-xs">
-                <CloudUpload className="mr-1 h-3 w-3" /> {pendingCount} pending
-              </Badge>
-            )}
-            <Badge variant={isOnline ? "default" : "destructive"} className={isOnline ? "bg-success text-success-foreground" : ""}>
-              {isOnline ? <Wifi className="mr-1 h-3 w-3" /> : <WifiOff className="mr-1 h-3 w-3" />}
-              {isOnline ? "Online" : "Offline"}
-            </Badge>
+    <MxPatrolVideoBackground shellClassName="mx-web-scanner" shadeClassName="mx-web-scanner-shade">
+      <main className="mx-web-scanner-interface">
+        <motion.section
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mx-web-scanner-panel"
+          aria-label="MX Patrol web scanner"
+        >
+          <div className="login-side-dots mx-web-scanner-logo">
+            <TTechMxPatrolLogo variant="login" priority className="login-logo-video" />
           </div>
-        </div>
-      </header>
 
-      <main className="flex-1 px-4 py-6">
-        <div className="mx-auto max-w-lg space-y-6">
-          {/* Step indicator */}
-          <div className="space-y-3">
-            <Progress value={progress} className="h-1.5" />
-            <div className="flex justify-between">
-              {STEP_LABELS.map((label, i) => (
-                <div key={label} className="flex flex-col items-center gap-1">
-                  <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition-colors ${
-                    i <= wizardStep ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                  }`}>
-                    {i < wizardStep ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">{label}</span>
+          <div className="mx-web-scanner-fields">
+            <div className="login-side-dots mx-web-scanner-field">
+              <Label htmlFor="device-enrollment">Device Enrollment</Label>
+              <div className="mx-web-scanner-input-row">
+                <QrCode className="h-5 w-5 text-cyan-300" />
+                <Input
+                  id="device-enrollment"
+                  value={manualToken}
+                  onChange={(event) => setManualToken(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") handleEnrollmentSubmit(); }}
+                  placeholder="Enter enrollment code"
+                  className="mx-web-scanner-input"
+                  disabled={processState === "processing"}
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleEnrollmentSubmit}
+                  disabled={processState === "processing"}
+                  aria-label="Submit enrollment code"
+                  className="mx-web-scanner-icon-button"
+                >
+                  {processState === "processing" ? <Loader2 className="h-5 w-5 animate-spin" /> : <Radio className="h-5 w-5" />}
+                </Button>
+              </div>
+            </div>
+
+            <div className="login-side-dots mx-web-scanner-field">
+              <Label>Device Identifier Code</Label>
+              <div className="mx-web-scanner-input-row">
+                <Smartphone className="h-5 w-5 text-cyan-300" />
+                <span className="mx-web-scanner-code">{deviceCodeLoading ? "Requesting code" : deviceCode ?? metadata.device_identifier}</span>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={deviceCode ? copyDeviceCode : requestDeviceCode}
+                  disabled={deviceCodeLoading}
+                  aria-label={deviceCode ? "Copy device identifier" : "Refresh device identifier"}
+                  className="mx-web-scanner-icon-button"
+                >
+                  {deviceCodeLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : deviceCode ? <Copy className="h-5 w-5" /> : <RefreshCw className="h-5 w-5" />}
+                </Button>
+              </div>
+              {deviceCodeError ? <p className="mx-web-scanner-message is-error">{deviceCodeError}</p> : null}
+            </div>
+          </div>
+
+          <Link to="/login" className="login-side-dots mx-web-scanner-login-link">
+            <LogIn className="h-5 w-5" /> Login
+          </Link>
+
+          <section className="mx-web-scanner-stage" aria-label="Scanner">
+            <p className="mx-web-scanner-kicker">NFC SCANNER</p>
+            <div className="mx-web-scanner-ring">
+              <div className="mx-web-scanner-camera" id="web-scanner-qr-reader" />
+              {!cameraActive ? (
+                <div className="mx-web-scanner-core">
+                  {processState === "processing" ? <Loader2 className="h-14 w-14 animate-spin" /> : <Smartphone className="h-16 w-16" />}
+                  <strong>NFC</strong>
                 </div>
-              ))}
+              ) : null}
             </div>
-          </div>
-
-          <AnimatePresence mode="wait">
-            {/* STEP 0: Scan or Enter Token */}
-            {wizardStep === 0 && (
-              <motion.div key="scan" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
-                <Card className="border-primary/40">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Smartphone className="h-5 w-5 text-primary" /> This Device's Pairing Code
-                    </CardTitle>
-                    <CardDescription>
-                      Give this code to management. They register this device from the MX Patrol Management AI (Web or WhatsApp).
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="rounded-lg border border-dashed border-primary/40 bg-muted/40 px-4 py-6 text-center">
-                      <p className="font-mono text-3xl tracking-[0.3em] text-foreground">
-                        {deviceCodeLoading ? "…" : deviceCode ?? "—"}
-                      </p>
-                      {deviceCodeError && <p className="mt-2 text-xs text-destructive">{deviceCodeError}</p>}
-                    </div>
-                    <Button variant="outline" className="w-full" onClick={requestDeviceCode} disabled={deviceCodeLoading}>
-                      {deviceCodeLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                      Refresh code
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                {!manualMode ? (
-
-                  <Card>
-                    <CardHeader className="text-center">
-                      <CardTitle className="flex items-center justify-center gap-2">
-                        <QrCode className="h-5 w-5 text-primary" /> Scan Enrollment QR Code
-                      </CardTitle>
-                      <CardDescription>Point your camera at the QR code from your administrator</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="relative overflow-hidden rounded-xl border-2 border-dashed border-primary/30 bg-muted/50">
-                        <div id="qr-reader" className="w-full min-h-[300px]" />
-                        {!cameraActive && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                            <Camera className="h-12 w-12 text-muted-foreground" />
-                            <Button onClick={startCamera}><Camera className="mr-2 h-4 w-4" /> Start Camera</Button>
-                          </div>
-                        )}
-                      </div>
-                      <Separator />
-                      <Button variant="outline" className="w-full" onClick={() => { stopCamera(); setManualMode(true); }}>
-                        Enter pairing code manually
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Manual Pairing Code</CardTitle>
-                      <CardDescription>Enter the pairing code shown on the Devices page</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Pairing Code or Enrollment Token</Label>
-                        <Input value={manualToken} onChange={(e) => setManualToken(e.target.value)} placeholder="e.g. ABCD2345" className="font-mono text-xs" />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" className="flex-1" onClick={() => setManualMode(false)}>
-                          <ArrowLeft className="mr-2 h-4 w-4" /> Camera
-                        </Button>
-                        <Button className="flex-1" onClick={handleManualSubmit}>
-                          Continue <ChevronRight className="ml-2 h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </motion.div>
-            )}
-
-            {/* STEP 1: Confirm Device Info */}
-            {wizardStep === 1 && processState !== "processing" && processState !== "error" && processState !== "offline-queued" && (
-              <motion.div key="confirm" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Edit3 className="h-5 w-5 text-primary" /> Confirm Device Info
-                    </CardTitle>
-                    <CardDescription>Review and edit your device details before enrolling</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Device Name</Label>
-                      <Input value={metadata.device_name} onChange={(e) => setMetadata((m) => ({ ...m, device_name: e.target.value }))} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Device Type</Label>
-                      <select
-                        value={metadata.device_type}
-                        onChange={(e) => setMetadata((m) => ({ ...m, device_type: e.target.value }))}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-                      >
-                        <option value="mobile">Mobile Phone</option>
-                        <option value="tablet">Tablet</option>
-                        <option value="scanner">NFC Scanner</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Serial Number (optional)</Label>
-                      <Input value={metadata.serial_number} onChange={(e) => setMetadata((m) => ({ ...m, serial_number: e.target.value }))} placeholder="e.g. SN-12345" />
-                    </div>
-                    <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-                      <div className="flex justify-between"><span>Device ID</span><span className="font-mono">{metadata.device_identifier}</span></div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" className="flex-1" onClick={resetAll}>
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                      </Button>
-                      <Button className="flex-1" onClick={processEnrollment}>
-                        Enroll Device <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
-
-            {/* Processing overlay */}
-            {processState === "processing" && (
-              <motion.div key="processing" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                <Card>
-                  <CardContent className="flex flex-col items-center gap-4 py-12">
-                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                    <p className="text-lg font-medium text-foreground">Enrolling device...</p>
-                    <p className="text-sm text-muted-foreground">Validating code and registering your device</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
-
-            {/* Error */}
-            {processState === "error" && (
-              <motion.div key="error" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                <Card className="border-destructive/50">
-                  <CardContent className="flex flex-col items-center gap-4 py-12">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
-                      <XCircle className="h-10 w-10 text-destructive" />
-                    </div>
-                    <p className="text-xl font-bold text-foreground">Enrollment Failed</p>
-                    <p className="text-sm text-destructive text-center">{error}</p>
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={resetAll}><RefreshCw className="mr-2 h-4 w-4" /> Start Over</Button>
-                      <Button variant="outline" onClick={() => setProcessState("idle")}>Edit Details</Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
-
-            {/* Offline queued */}
-            {processState === "offline-queued" && (
-              <motion.div key="offline" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                <Card className="border-warning/50">
-                  <CardContent className="flex flex-col items-center gap-4 py-12">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-warning/10">
-                      <WifiOff className="h-10 w-10 text-warning" />
-                    </div>
-                    <p className="text-xl font-bold text-foreground">Saved Offline</p>
-                    <p className="text-sm text-muted-foreground text-center">
-                      Your enrollment will be submitted automatically when you reconnect.
-                    </p>
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={resetAll}>Scan Another</Button>
-                      <Button variant="outline" onClick={syncQueue} disabled={syncing || !isOnline}>
-                        {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                        Sync Now
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
-
-            {/* STEP 2: Success */}
-            {wizardStep === 2 && (
-              <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                <Card className="border-success/50">
-                  <CardContent className="flex flex-col items-center gap-4 py-12">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
-                      <CheckCircle2 className="h-10 w-10 text-success" />
-                    </div>
-                    <p className="text-xl font-bold text-foreground">Enrollment Complete!</p>
-                    <p className="text-sm text-muted-foreground text-center">
-                      This device has been registered and is ready for patrol duty.
-                    </p>
-                    {result && (
-                      <div className="w-full space-y-2 rounded-lg border border-border bg-muted/30 p-4 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Device ID</span>
-                          <span className="font-mono text-xs text-foreground">{result.device_id?.slice(0, 8)}...</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Device Name</span>
-                          <span className="text-foreground">{metadata.device_name}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">App Type</span>
-                          <Badge variant="outline">{result.app_type === "admin_app" ? "Admin" : "Guard"}</Badge>
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={resetAll}>Enroll Another Device</Button>
-                      <Button onClick={() => window.location.href = "/login"}>Go to Login</Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Device info footer */}
-          <div className="rounded-lg border border-border bg-muted/20 p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Smartphone className="h-3 w-3" />
-              <span>Device: {metadata.device_name}</span>
-              <span className="mx-1">•</span>
-              <span>ID: {metadata.device_identifier}</span>
-            </div>
-          </div>
-        </div>
+            <h1>{scannerStatus}</h1>
+            <p>{scannerDetail}</p>
+            {processState === "error" ? <p className="mx-web-scanner-message is-error">{error}</p> : null}
+            <Button
+              type="button"
+              onClick={cameraActive ? stopCamera : startCamera}
+              variant="outline"
+              className="mx-web-scanner-camera-button"
+              disabled={processState === "processing"}
+            >
+              <Camera className="h-4 w-4" /> {cameraActive ? "Stop Scanner" : "Start Scanner"}
+            </Button>
+          </section>
+        </motion.section>
       </main>
-    </div>
+    </MxPatrolVideoBackground>
   );
 }

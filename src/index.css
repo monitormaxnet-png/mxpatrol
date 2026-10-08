@@ -1768,22 +1768,27 @@
   body,
   #root {
     min-height: 100%;
+    background: transparent !important;
   }
 
   body {
-    background: #020611;
+    background: transparent !important;
   }
 
   #root {
     min-height: 100vh;
     position: relative;
+    z-index: 1;
     overflow-x: hidden;
+    background: transparent !important;
   }
 }
 
 .app-background {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
@@ -1794,30 +1799,34 @@
 }
 
 .app-background-video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0.74;
-  filter: saturate(1.08) contrast(1.06) brightness(0.72);
+  opacity: 0.94;
+  filter: saturate(1.12) contrast(1.04) brightness(0.92);
 }
 
 .app-background-overlay {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(2, 6, 17, 0.30), rgba(2, 6, 17, 0.50)),
-    radial-gradient(circle at 50% 0%, rgba(34, 197, 94, 0.12), transparent 35%);
+    linear-gradient(180deg, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.08)),
+    radial-gradient(circle at 50% 0%, rgba(34, 197, 94, 0.04), transparent 35%);
 }
 
 .app-shell {
   position: relative;
   z-index: 1;
   min-height: 100vh;
+  background: transparent !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .app-background-video {
-    display: none;
+    display: block;
+    visibility: visible;
   }
 
   .app-background {
@@ -1838,9 +1847,9 @@
   .app-shell [class*="bg-gray-950"],
   .app-shell [class*="bg-[#030812]"],
   .app-shell [class*="bg-black/"] {
-    background-color: rgba(3, 8, 18, 0.52) !important;
-    backdrop-filter: blur(18px) saturate(1.16);
-    -webkit-backdrop-filter: blur(18px) saturate(1.16);
+    background-color: rgba(8, 12, 16, 0.22) !important;
+    backdrop-filter: blur(6px) saturate(1.08);
+    -webkit-backdrop-filter: blur(6px) saturate(1.08);
   }
 
   .app-shell header,
@@ -1850,23 +1859,23 @@
   .app-shell div[class*="rounded-lg"][class*="border"],
   .app-shell [role="dialog"],
   .app-shell [data-radix-popper-content-wrapper] > * {
-    backdrop-filter: blur(18px) saturate(1.12);
-    -webkit-backdrop-filter: blur(18px) saturate(1.12);
+    backdrop-filter: blur(6px) saturate(1.06);
+    -webkit-backdrop-filter: blur(6px) saturate(1.06);
   }
 
   .app-shell table,
   .app-shell thead,
   .app-shell tbody tr {
-    background-color: rgba(3, 8, 18, 0.38) !important;
+    background-color: rgba(5, 10, 15, 0.16) !important;
   }
 
   .app-shell input,
   .app-shell textarea,
   .app-shell select,
   .app-shell button[role="combobox"] {
-    background-color: rgba(3, 8, 18, 0.48) !important;
-    backdrop-filter: blur(14px) saturate(1.12);
-    -webkit-backdrop-filter: blur(14px) saturate(1.12);
+    background-color: rgba(0, 0, 0, 0.35) !important;
+    backdrop-filter: blur(6px) saturate(1.06);
+    -webkit-backdrop-filter: blur(6px) saturate(1.06);
   }
 
   .app-shell .grid-pattern {
@@ -1893,12 +1902,902 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animated-logo-video {
+  .animated-logo:not(.login-logo-video) .animated-logo-video {
     display: none;
   }
 
-  .animated-logo-fallback {
+  .animated-logo:not(.login-logo-video) .animated-logo-fallback {
     position: static;
     opacity: 1 !important;
+  }
+}
+
+@layer components {
+  html,
+  body,
+  #root,
+  .app-shell,
+  .app-shell > div,
+  .app-shell main,
+  .app-shell .main-layout,
+  .app-shell .page-container,
+  .app-shell .dashboard-page,
+  .app-shell [class*='min-h-screen'][class*='bg-background'],
+  .app-shell [class*='min-h-screen'][class*='bg-slate'],
+  .app-shell [class*='min-h-full'][class*='bg-'] {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
+
+  .app-shell header,
+  .app-shell nav,
+  .app-shell aside {
+    background-color: rgba(5, 10, 15, 0.16) !important;
+    backdrop-filter: blur(5px) saturate(1.05);
+    -webkit-backdrop-filter: blur(5px) saturate(1.05);
+  }
+
+  .app-shell section[class*='rounded'],
+  .app-shell div[class*='rounded-xl'][class*='border'],
+  .app-shell div[class*='rounded-lg'][class*='border'],
+  .app-shell [class*='command-card'],
+  .app-shell [class*='ai-assistant'] {
+    background-color: rgba(8, 12, 16, 0.20) !important;
+    border-color: rgba(255, 255, 255, 0.10) !important;
+    backdrop-filter: blur(5px) saturate(1.06);
+    -webkit-backdrop-filter: blur(5px) saturate(1.06);
+  }
+
+  .app-shell table {
+    background-color: rgba(5, 10, 15, 0.16) !important;
+  }
+
+  .app-shell thead {
+    background-color: rgba(0, 0, 0, 0.22) !important;
+  }
+
+  .app-shell tbody tr {
+    background-color: rgba(0, 0, 0, 0.06) !important;
+  }
+
+  .app-shell tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .app-shell input,
+  .app-shell textarea,
+  .app-shell select,
+  .app-shell button[role='combobox'] {
+    background-color: rgba(0, 0, 0, 0.35) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+  }
+
+  .app-shell [role='dialog'] {
+    background-color: rgba(5, 10, 15, 0.62) !important;
+    backdrop-filter: blur(12px) saturate(1.08);
+    -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  }
+}
+.mx-app {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  isolation: isolate;
+  background: transparent !important;
+}
+
+.mx-background-video {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 1;
+  filter: brightness(0.72) saturate(0.82) contrast(1.04);
+}
+
+.mx-background-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.20);
+}
+
+.mx-interface {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  background: transparent !important;
+}
+
+.mx-interface,
+.mx-interface > div,
+.mx-interface main,
+.mx-interface .dashboard-page {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.mx-interface header,
+.mx-interface nav,
+.mx-interface aside {
+  background-color: rgba(5, 10, 15, 0.16) !important;
+  backdrop-filter: blur(5px) saturate(1.05);
+  -webkit-backdrop-filter: blur(5px) saturate(1.05);
+}
+
+.mx-interface section[class*="rounded"],
+.mx-interface div[class*="rounded-xl"][class*="border"],
+.mx-interface div[class*="rounded-lg"][class*="border"],
+.mx-interface [class*="bg-slate-950"],
+.mx-interface [class*="bg-slate-900"],
+.mx-interface [class*="bg-card"],
+.mx-interface [class*="bg-popover"],
+.mx-interface [class*="bg-black/"] {
+  background-color: rgba(5, 12, 16, 0.46) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+  backdrop-filter: blur(7px) saturate(1.05);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+}
+
+.mx-interface table {
+  background-color: rgba(5, 10, 15, 0.14) !important;
+}
+
+.mx-interface thead {
+  background-color: rgba(0, 0, 0, 0.20) !important;
+}
+
+.mx-interface tbody tr {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+.mx-interface input,
+.mx-interface textarea,
+.mx-interface select,
+.mx-interface button[role="combobox"] {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+
+/* Command Center visual balance over video background */
+.mx-command-header {
+  background-color: rgba(5, 10, 15, 0.32) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(7px) saturate(1.05);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+}
+
+.mx-kpi-card {
+  background-color: rgba(5, 12, 16, 0.46) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(7px) saturate(1.05);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.mx-dashboard-panel {
+  background-color: rgba(5, 12, 16, 0.40) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(7px) saturate(1.05);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+}
+
+.mx-site-activity {
+  background-color: rgba(4, 10, 14, 0.55) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(8px) saturate(1.04);
+  -webkit-backdrop-filter: blur(8px) saturate(1.04);
+}
+
+.mx-site-activity thead { background-color: rgba(0, 0, 0, 0.45) !important; }
+.mx-site-activity tbody tr { background-color: rgba(0, 0, 0, 0.12) !important; }
+
+.mx-ai-assistant {
+  background-color: rgba(4, 10, 14, 0.48) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(8px) saturate(1.05);
+  -webkit-backdrop-filter: blur(8px) saturate(1.05);
+}
+
+.mx-ai-composer,
+.mx-interface input,
+.mx-interface textarea,
+.mx-interface select,
+.mx-interface button[role="combobox"] {
+  background-color: rgba(0, 0, 0, 0.65) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.mx-interface,
+.mx-interface p,
+.mx-interface span,
+.mx-interface td,
+.mx-interface th {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+/* Command Center final hierarchy refinements */
+.mx-command-header {
+  align-items: center;
+  gap: 0.875rem;
+  background-color: rgba(5, 10, 15, 0.32) !important;
+  border-color: rgba(255, 255, 255, 0.11) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(7px) saturate(1.05);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+}
+
+.mx-logo-block {
+  background-color: rgba(0, 0, 0, 0.28) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.mx-operations-bar {
+  background-color: rgba(3, 10, 14, 0.34) !important;
+  padding: 10px 18px !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(5px) saturate(1.04);
+  -webkit-backdrop-filter: blur(5px) saturate(1.04);
+}
+
+.mx-kpi-card {
+  background-color: rgba(4, 12, 16, 0.42) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(6px) saturate(1.05);
+  -webkit-backdrop-filter: blur(6px) saturate(1.05);
+}
+
+.mx-dashboard-panel {
+  background-color: rgba(5, 12, 16, 0.42) !important;
+  border-color: rgba(255, 255, 255, 0.11) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18) !important;
+}
+
+.mx-site-activity {
+  background-color: rgba(4, 10, 14, 0.58) !important;
+  border-color: rgba(255, 255, 255, 0.11) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(8px) saturate(1.04);
+  -webkit-backdrop-filter: blur(8px) saturate(1.04);
+}
+
+.mx-site-activity thead {
+  background-color: rgba(0, 0, 0, 0.48) !important;
+}
+
+.mx-site-activity tbody tr {
+  background-color: rgba(0, 0, 0, 0.14) !important;
+}
+
+.mx-site-activity tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.mx-ai-assistant {
+  background-color: rgba(4, 10, 14, 0.52) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(8px) saturate(1.04);
+  -webkit-backdrop-filter: blur(8px) saturate(1.04);
+}
+
+.mx-ai-composer {
+  position: relative;
+  z-index: 50;
+  pointer-events: auto;
+  background-color: rgba(4, 10, 14, 0.54) !important;
+}
+
+.mx-ai-composer .mx-ai-input,
+.mx-ai-composer button {
+  pointer-events: auto;
+}
+.mx-ai-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.mx-ai-input {
+  background-color: rgba(2, 8, 12, 0.72) !important;
+  color: #fff !important;
+  caret-color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.mx-ai-input::placeholder {
+  color: rgba(226, 232, 240, 0.62) !important;
+}
+
+.dashboard-page .mx-ai-assistant {
+  position: relative;
+  z-index: 20;
+  isolation: isolate;
+  pointer-events: auto;
+}
+
+.dashboard-page .mx-ai-assistant .mx-ai-composer {
+  position: relative;
+  z-index: 80;
+  pointer-events: auto;
+}
+
+.dashboard-page .mx-ai-assistant .mx-ai-input {
+  position: relative;
+  z-index: 81;
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
+  color: #fff !important;
+  caret-color: #fff !important;
+}
+
+.dashboard-page .mx-ai-assistant .mx-ai-input::placeholder {
+  color: rgba(226, 232, 240, 0.62) !important;
+}
+
+.dashboard-page .mx-ai-assistant .mx-ai-composer button {
+  position: relative;
+  z-index: 81;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* Shared MX Patrol page video background */
+.mx-video-shell {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  isolation: isolate;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+.mx-video-shell.mx-login,
+.mx-video-shell.mx-web-scanner {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  isolation: isolate;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+.mx-video-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("/mxpatrol-background-fallback.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: block;
+  visibility: visible;
+  opacity: 1;
+}
+
+.mx-video-background {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: 1;
+  pointer-events: none;
+  display: block;
+  visibility: visible;
+  opacity: 1;
+}
+
+.mx-video-shell--fallback-only .mx-video-background {
+  display: none;
+}
+
+.mx-video-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.mx-video-interface {
+  position: relative;
+  z-index: 3;
+  min-height: 100vh;
+  background: transparent !important;
+}
+
+.mx-video-interface > .dashboard-page,
+.mx-video-interface > .mx-login-interface,
+.mx-video-interface > .mx-web-scanner-interface {
+  background: transparent !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mx-video-fallback {
+    display: block;
+    visibility: visible;
+  }
+
+  .mx-video-background {
+    display: block;
+    visibility: visible;
+  }
+}/* Login page cinematic background */
+.mx-login {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  background: transparent !important;
+}
+
+.mx-login-background-video {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+  display: block;
+  visibility: visible;
+  opacity: 1;
+  filter: brightness(0.42) saturate(0.68) contrast(0.95);
+}
+
+.mx-login-background-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.mx-login-interface {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: transparent !important;
+  transform: translateY(-20px);
+}
+
+.login-form-content {
+  position: relative;
+  z-index: 2;
+  width: min(90vw, 460px);
+  background: transparent !important;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login-side-dots {
+  position: relative;
+}
+
+.login-side-dots::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  pointer-events: none;
+  background: radial-gradient(circle, #22d3ee 1px, transparent 1.4px);
+  background-size: 4px 7px;
+  background-repeat: repeat-y;
+  animation: mx-dot-blink 1.2s ease-in-out infinite;
+}
+
+.login-side-dots::before {
+  left: 0;
+}
+
+.login-side-dots::after {
+  display: none;
+}
+
+.login-logo-dots {
+  width: fit-content;
+  height: 112px;
+  margin: 0 auto 8px;
+  overflow: visible;
+}
+
+.login-logo-dots::before {
+  top: 0;
+  bottom: 0;
+}
+
+.login-logo-video {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 280px;
+  max-width: 80vw;
+  height: auto;
+  margin: -18px 0 0;
+  border: none;
+  outline: none;
+}
+
+.login-form-content label {
+  color: rgba(255, 255, 255, 0.88) !important;
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+.login-form-content .login-input {
+  background: rgba(2, 8, 12, 0.72) !important;
+  border: none !important;
+  color: #fff !important;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.login-form-content input:focus,
+.login-form-content input:focus-visible {
+  border: none !important;
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.18), 0 0 0 2px rgba(34, 211, 238, 0.08) !important;
+  outline: none;
+}
+
+.login-form-content .login-input::placeholder {
+  color: rgba(226, 232, 240, 0.48) !important;
+}
+
+.login-form-content .sign-in-button {
+  width: 100%;
+}
+
+.login-request-access {
+  margin-top: 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+@keyframes mx-dot-blink {
+  0%,
+  100% {
+    opacity: 0.35;
+    filter: drop-shadow(0 0 1px rgba(34, 211, 238, 0.25));
+  }
+
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.8));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-side-dots::before,
+  .login-side-dots::after {
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
+/* Minimal web scanner page */
+.mx-web-scanner {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  background: transparent !important;
+}
+
+.mx-web-scanner-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.46);
+}
+
+.mx-web-scanner-interface {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 1rem 1rem;
+  background: transparent !important;
+}
+
+.mx-web-scanner-panel {
+  position: relative;
+  z-index: 2;
+  width: min(48vw, 360px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  overflow: visible;
+  border: none;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transform: translateY(-28px);
+}
+
+.mx-web-scanner-logo {
+  width: fit-content;
+  height: 50px;
+  margin: 0 auto 4px;
+  overflow: visible;
+}
+
+.mx-web-scanner-logo::before {
+  top: 0;
+  bottom: 0;
+}
+
+.mx-web-scanner-logo .login-logo-video {
+  width: 140px;
+  max-width: 40vw;
+  margin: -46px 0 0;
+}
+
+.mx-web-scanner-fields {
+  width: min(100%, 340px);
+  display: grid;
+  gap: 6px;
+  margin: 0 auto;
+}
+
+.mx-web-scanner-field {
+  width: 100%;
+  min-height: 38px;
+  display: grid;
+  gap: 3px;
+  padding: 5px 10px;
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  border-radius: 9px;
+  background: rgba(2, 8, 12, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.mx-web-scanner-field label {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+.mx-web-scanner-input-row {
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(34, 211, 238, 0.24);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.42);
+  padding: 0 8px;
+}
+
+.mx-web-scanner-input {
+  height: 26px;
+  border: 0 !important;
+  background: transparent !important;
+  color: white !important;
+  box-shadow: none !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.mx-web-scanner-input::placeholder {
+  color: rgba(226, 232, 240, 0.58) !important;
+}
+
+.mx-web-scanner-code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.94);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.mx-web-scanner-icon-button {
+  color: #22d3ee;
+}
+
+.mx-web-scanner-login-link {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  margin: 4px 0 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.20);
+  color: #22d3ee;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.mx-web-scanner-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  margin-top: 0;
+  transform: translateY(-12px);
+  text-align: center;
+  background: transparent;
+}
+
+.mx-web-scanner-kicker {
+  margin: 0 0 2px;
+  color: rgba(34, 211, 238, 0.88);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.45);
+}
+
+.mx-web-scanner-ring {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin-left: auto;
+  margin-right: auto;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 2px solid rgba(34, 211, 238, 0.38);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(34, 211, 238, 0.20), transparent 28%),
+    radial-gradient(circle at 50% 50%, rgba(34, 197, 94, 0.18), rgba(0, 0, 0, 0.46) 62%, transparent 78%);
+  box-shadow:
+    0 0 24px rgba(34, 211, 238, 0.22),
+    inset 0 0 42px rgba(34, 197, 94, 0.18);
+}
+
+.mx-web-scanner-ring::before,
+.mx-web-scanner-ring::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: inherit;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  animation: mx-scanner-pulse 2.2s ease-in-out infinite;
+}
+
+.mx-web-scanner-ring::after {
+  inset: 20px;
+  border-color: rgba(34, 211, 238, 0.24);
+  animation-delay: 0.45s;
+}
+
+.mx-web-scanner-camera {
+  position: absolute;
+  inset: 12px;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.mx-web-scanner-camera video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+}
+
+.mx-web-scanner-core {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: #22d3ee;
+  text-shadow: 0 0 14px rgba(34, 211, 238, 0.75);
+}
+
+.mx-web-scanner-core strong {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 0.86rem;
+  letter-spacing: 0.08em;
+}
+
+.mx-web-scanner-stage h1 {
+  margin-top: 4px;
+  color: white;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.05;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+.mx-web-scanner-stage p,
+.mx-web-scanner-message {
+  margin-top: 2px;
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 11px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+.mx-web-scanner-message.is-error {
+  color: #fca5a5;
+}
+
+.mx-web-scanner-camera-button {
+  margin-top: 8px;
+  padding: 6px 14px !important;
+  font-size: 12px !important;
+  border-color: rgba(34, 211, 238, 0.34) !important;
+  background: rgba(0, 0, 0, 0.22) !important;
+  color: #22d3ee !important;
+}
+
+@keyframes mx-scanner-pulse {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: scale(0.96);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+@media (max-height: 850px) {
+  .mx-web-scanner-panel {
+    transform: translateY(-24px);
+    transform-origin: center center;
+  }
+}
+
+@media (max-height: 720px) {
+  .mx-web-scanner-panel {
+    transform: translateY(-20px);
   }
 }

@@ -941,18 +941,13 @@ export default function CommandCenter() {
               </div>
             </section>
 
-            <section className='mx-command-center-stage hidden min-h-[calc(100vh-7.5rem)] xl:block' aria-label='MX Patrol background video focus'>
-              <div className='mx-center-caption'>
-                <p className='text-[10px] font-black uppercase tracking-[0.32em] text-emerald-200/80'>Original MX Patrol Video Feed</p>
-                <p className='mt-1 text-xs text-slate-300/75'>{selectedSite} command view</p>
-              </div>
-            </section>
+            <section className='mx-command-center-stage hidden min-h-[calc(100vh-7.5rem)] xl:block' aria-label='MX Patrol background video focus' />
 
             <aside className='mx-command-right min-h-[calc(100vh-7.5rem)] overflow-y-auto px-1 py-1'>
               <section className='mx-ops-rail space-y-5'>
                 <div>
                   <p className='mx-rail-heading'>Operations</p>
-                  <div className='mt-3 space-y-3'>
+                  <div className='mx-ops-grid mt-3 grid grid-cols-2 gap-2'>
                     <CommandMetric icon={Users} label='Live Patrols' value={activePatrolCount} detail={`${totalPatrols || todayPatrolRows.length} today`} tone='emerald' />
                     <CommandMetric icon={Smartphone} label='Devices Online' value={onlineDevices} detail={`${siteDevices.length} reporting`} tone='cyan' />
                     <CommandMetric icon={ShieldAlert} label='SOS Alerts' value={todaySosAlerts.length} detail={sosAlertCount ? 'Action required' : 'All clear'} tone='rose' active={activityUnseen('sos')} onClick={() => openActivityMetric('sos')} />
@@ -962,11 +957,20 @@ export default function CommandCenter() {
 
                 <div>
                   <p className='mx-rail-heading'>Today&apos;s Activity</p>
-                  <div className='mt-3 space-y-2'>
+                  <div className='mx-activity-grid mt-3 grid grid-cols-4 gap-2'>
                     <ActivityRailRow label='Scans' value={scanCountValue} active={activityUnseen('scans')} onClick={() => openActivityMetric('scans')} />
                     <ActivityRailRow label='Photos' value={photoCountValue} active={activityUnseen('photos')} onClick={() => openActivityMetric('photos')} />
                     <ActivityRailRow label='Datalog' value={datalogCountValue} active={activityUnseen('datalog')} onClick={() => openActivityMetric('datalog')} />
-                    <ActivityRailRow label='Voice Recordings' value={recordingCountValue} active={activityUnseen('recordings')} onClick={() => openActivityMetric('recordings')} />
+                    <ActivityRailRow label='Recordings' value={recordingCountValue} active={activityUnseen('recordings')} onClick={() => openActivityMetric('recordings')} />
+                  </div>
+                </div>
+
+                <div>
+                  <p className='mx-rail-heading'>Live Map</p>
+                  <div className='mx-compact-live-map mt-3'>
+                    <Suspense fallback={<div className='flex h-full items-center justify-center text-xs text-slate-500'>Loading live map...</div>}>
+                      <LiveMap operationsMode showCheckpoints showDevices showRoutes showScans showSos />
+                    </Suspense>
                   </div>
                 </div>
 

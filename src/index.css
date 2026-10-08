@@ -3086,3 +3086,206 @@
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Approved compact dashboard pass: keep center NFC video unobstructed */
+.mx-command-layout {
+  max-width: none !important;
+  min-height: 100vh;
+  padding: 1.6rem 2.1rem 1.3rem !important;
+  gap: 1.15rem !important;
+}
+
+.mx-command-topbar {
+  min-height: 4.9rem !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.mx-command-topbar::before,
+.mx-command-topbar::after {
+  display: none !important;
+}
+
+.mx-command-logo {
+  justify-content: flex-start !important;
+  min-height: 4.2rem !important;
+  border: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.mx-command-logo video,
+.mx-command-logo img {
+  max-height: 4.25rem;
+}
+
+.mx-command-control,
+.mx-command-status {
+  min-height: 3.45rem !important;
+  border-color: rgba(34, 211, 238, 0.28) !important;
+  border-radius: 0.8rem !important;
+  background: rgba(2, 10, 14, 0.28) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(3px) saturate(1.05) !important;
+  -webkit-backdrop-filter: blur(3px) saturate(1.05) !important;
+}
+
+.mx-command-zones {
+  grid-template-columns: minmax(250px, 25vw) minmax(0, 1fr) minmax(280px, 26vw) !important;
+  gap: 1rem !important;
+}
+
+.mx-command-center-stage {
+  min-height: calc(100vh - 7.25rem) !important;
+  background: transparent !important;
+}
+
+.mx-command-right {
+  min-height: calc(100vh - 7.25rem) !important;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.mx-command-right::before,
+.mx-command-right::after {
+  display: none !important;
+}
+
+.mx-ops-rail {
+  gap: 0.72rem !important;
+}
+
+.mx-ops-rail > div {
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: 0.9rem;
+  background: rgba(2, 10, 14, 0.22);
+  padding: 0.8rem;
+  box-shadow: none;
+  backdrop-filter: blur(3px) saturate(1.05);
+  -webkit-backdrop-filter: blur(3px) saturate(1.05);
+}
+
+.mx-rail-heading {
+  color: rgba(34, 211, 238, 0.98) !important;
+  font-size: 0.78rem !important;
+  line-height: 1;
+  letter-spacing: 0.14em !important;
+}
+
+.mx-ops-grid,
+.mx-activity-grid {
+  gap: 0.65rem !important;
+}
+
+.mx-command-metric,
+.mx-activity-rail-row,
+.mx-voice-row {
+  border-color: rgba(34, 211, 238, 0.16) !important;
+  border-radius: 0.65rem !important;
+  background: rgba(0, 8, 12, 0.2) !important;
+  box-shadow: none !important;
+}
+
+.mx-command-metric {
+  min-height: 4.15rem !important;
+  flex-direction: column;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 0.35rem !important;
+  padding: 0.65rem !important;
+  text-align: left;
+}
+
+.mx-command-metric > div {
+  width: 100%;
+  gap: 0.55rem !important;
+}
+
+.mx-command-metric svg {
+  width: 1.35rem !important;
+  height: 1.35rem !important;
+}
+
+.mx-command-metric p:first-child {
+  font-size: 0.64rem !important;
+  letter-spacing: 0.08em !important;
+}
+
+.mx-command-metric p:nth-child(2) {
+  font-size: 0.68rem !important;
+}
+
+.mx-command-metric .font-mono,
+.mx-command-metric > p {
+  font-size: 1.38rem !important;
+  line-height: 1 !important;
+}
+
+.mx-activity-rail-row {
+  min-height: 4.9rem !important;
+  flex-direction: column;
+  justify-content: center !important;
+  gap: 0.35rem !important;
+  padding: 0.55rem 0.35rem !important;
+  text-align: center;
+  font-size: 0.68rem !important;
+}
+
+.mx-activity-rail-row span:last-child {
+  order: -1;
+  font-size: 1.15rem !important;
+}
+
+.mx-compact-live-map {
+  height: 9.2rem;
+  overflow: hidden;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  background: rgba(0, 8, 12, 0.22);
+}
+
+.mx-compact-live-map > div,
+.mx-compact-live-map [class*="min-h-[520px]"],
+.mx-compact-live-map [class*="min-h-[300px]"] {
+  min-height: 9.2rem !important;
+  height: 9.2rem !important;
+}
+
+.mx-compact-live-map .leaflet-container {
+  min-height: 9.2rem !important;
+  height: 9.2rem !important;
+  filter: saturate(1.15) brightness(0.72) hue-rotate(8deg);
+}
+
+.mx-compact-live-map .leaflet-control-container {
+  transform: scale(0.82);
+  transform-origin: right top;
+}
+
+.mx-voice-row {
+  min-height: 2.7rem !important;
+  padding: 0.55rem 0.65rem !important;
+}
+
+@media (max-width: 1279px) {
+  .mx-command-layout {
+    padding: 1rem !important;
+  }
+
+  .mx-command-zones {
+    grid-template-columns: 1fr !important;
+  }
+
+  .mx-command-center-stage {
+    display: none !important;
+  }
+}

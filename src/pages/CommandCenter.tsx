@@ -869,9 +869,9 @@ export default function CommandCenter() {
     <MxPatrolVideoBackground shellClassName='mx-dashboard-video-shell' shadeClassName='mx-dashboard-shade'>
       <div className='dashboard-page mx-command-center min-h-screen overflow-x-hidden bg-transparent text-white'>
         <div className='mx-command-layout mx-auto flex min-h-screen w-full max-w-[118rem] flex-col gap-3 px-3 py-3 sm:px-4'>
-          <header className='mx-command-topbar grid gap-3 lg:grid-cols-[12rem_minmax(0,1fr)_auto] lg:items-center'>
+          <header className='mx-command-topbar grid gap-3 lg:grid-cols-[18rem_minmax(0,1fr)_auto] lg:items-center'>
             <div className='mx-command-logo flex items-center justify-center'>
-              <TTechMxPatrolLogo variant='header' priority className='w-36' />
+              <TTechMxPatrolLogo variant='header' priority className='w-52 max-w-full' />
             </div>
             <div className='grid gap-2 md:grid-cols-2'>
               {isPlatformOwner ? <label className='mx-command-control flex min-w-0 items-center gap-3 px-3 py-2 text-sm text-slate-300'>

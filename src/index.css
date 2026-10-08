@@ -2961,3 +2961,128 @@
     min-height: auto;
   }
 }
+
+/* Dashboard HUD refinement: preserve assistant, emphasize original video center */
+.mx-command-layout {
+  max-width: 122rem !important;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem !important;
+}
+
+.mx-command-topbar {
+  position: relative;
+  min-height: 6.5rem;
+  border-color: rgba(34, 211, 238, 0.22) !important;
+  background: linear-gradient(90deg, rgba(0, 10, 14, 0.46), rgba(3, 24, 22, 0.2), rgba(0, 10, 14, 0.5)) !important;
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.12) !important;
+}
+
+.mx-command-topbar::before,
+.mx-command-topbar::after,
+.mx-command-right::before,
+.mx-command-right::after {
+  content: "";
+  position: absolute;
+  width: 2.2rem;
+  height: 2.2rem;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.mx-command-topbar::before,
+.mx-command-right::before {
+  left: -1px;
+  top: -1px;
+  border-left: 2px solid rgba(34, 211, 238, 0.76);
+  border-top: 2px solid rgba(34, 211, 238, 0.76);
+}
+
+.mx-command-topbar::after,
+.mx-command-right::after {
+  right: -1px;
+  bottom: -1px;
+  border-right: 2px solid rgba(34, 211, 238, 0.76);
+  border-bottom: 2px solid rgba(34, 211, 238, 0.76);
+}
+
+.mx-command-logo,
+.mx-command-control,
+.mx-command-status {
+  min-height: 4.4rem;
+  border-color: rgba(34, 211, 238, 0.16) !important;
+  background: rgba(0, 8, 12, 0.38) !important;
+}
+
+.mx-command-status {
+  padding: 0.85rem 1rem;
+}
+
+.mx-command-zones {
+  grid-template-columns: minmax(22rem, 29rem) minmax(34rem, 1fr) minmax(23rem, 28rem) !important;
+  gap: 1.25rem;
+}
+
+.mx-command-center-stage {
+  min-height: calc(100vh - 8.4rem) !important;
+}
+
+.mx-center-caption {
+  display: none !important;
+}
+
+.mx-command-right {
+  position: relative;
+  border-color: rgba(34, 211, 238, 0.2) !important;
+  background: linear-gradient(180deg, rgba(0, 12, 16, 0.28), rgba(0, 8, 12, 0.18)) !important;
+  padding: 1.05rem !important;
+}
+
+.mx-ops-rail {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+.mx-rail-heading {
+  color: rgba(103, 232, 249, 0.95);
+  font-size: 0.78rem;
+  letter-spacing: 0.11em;
+}
+
+.mx-command-metric,
+.mx-activity-rail-row,
+.mx-voice-row {
+  border-color: rgba(34, 211, 238, 0.13);
+  background: rgba(0, 8, 12, 0.26);
+}
+
+.mx-command-metric {
+  min-height: 4.8rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.mx-command-metric svg {
+  width: 1.95rem;
+  height: 1.95rem;
+  filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.45));
+}
+
+.mx-command-metric p:nth-child(2) {
+  font-size: 1.45rem;
+  line-height: 1.1;
+}
+
+.mx-activity-rail-row {
+  min-height: 3rem;
+}
+
+.mx-voice-row {
+  min-height: 3rem;
+}
+
+@media (max-width: 1279px) {
+  .mx-command-zones {
+    grid-template-columns: 1fr !important;
+  }
+}

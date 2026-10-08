@@ -3690,6 +3690,7 @@ export type Database = {
         | "force_security_check"
         | "require_app_update"
         | "revoke_device"
+        | "voice_message"
       device_action:
         | "enrolled"
         | "activated"
@@ -3853,6 +3854,7 @@ export const Constants = {
         "force_security_check",
         "require_app_update",
         "revoke_device",
+        "voice_message",
       ],
       device_action: [
         "enrolled",

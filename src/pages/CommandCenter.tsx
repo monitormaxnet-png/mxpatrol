@@ -866,170 +866,136 @@ export default function CommandCenter() {
   const recentIncidents = openIncidents.slice(0, 3);
 
   return (
-    <MxPatrolVideoBackground>
-      <div className='dashboard-page min-h-screen overflow-x-hidden bg-transparent text-white'>
-      <div className='mx-auto flex min-h-screen max-w-[120rem] flex-col gap-4 px-3 py-3 sm:px-4'>
-        <header className='mx-command-header grid gap-3 rounded-lg border border-white/10 p-3 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-center'>
-          <div className='mx-logo-block flex min-h-16 items-center justify-center rounded-md px-4 py-2'>
-            <TTechMxPatrolLogo variant='header' priority className='w-44' />
-          </div>
-          <div className='grid gap-3 lg:grid-cols-[minmax(13rem,0.9fr)_minmax(15rem,1fr)_minmax(13rem,0.8fr)_auto_auto] lg:items-center'>
-            {isPlatformOwner ? <label className='flex min-w-0 items-center gap-3 rounded-md border border-emerald-400/20 bg-slate-950/70 px-3 py-2 text-sm text-slate-300'>
-              <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-400/25 text-emerald-300'><Users className='h-4 w-4' /></span>
-              <span className='min-w-0 flex-1'>
-                <span className='block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500'>Company</span>
-                <select value={selectedCompanyId ?? ''} onChange={(event) => { setSelectedCompanyId(event.target.value || null); setState((prev) => ({ ...prev, activeSiteId: null })); }} className='w-full bg-transparent text-base font-bold text-white outline-none'>
-                  <option value='' className='bg-slate-950'>Choose company</option>
-                  {(platformCompanies.data ?? []).map((company) => <option key={company.id} value={company.id} className='bg-slate-950'>{company.name}</option>)}
-                </select>
-              </span>
-              <ChevronDown className='h-4 w-4 text-slate-500' />
-            </label> : null}
-            <label className='flex min-w-0 items-center gap-3 rounded-md border border-cyan-400/20 bg-slate-950/70 px-3 py-2 text-sm text-slate-300'>
-              <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-400/25 text-cyan-300'><MapPin className='h-4 w-4' /></span>
-              <span className='min-w-0 flex-1'>
-                <span className='block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500'>Active Site</span>
-                <select value={allSitesSelected ? 'all' : selectedSiteId ?? ''} disabled={isPlatformOwner && !selectedCompanyId} onChange={(event) => setState((prev) => ({ ...prev, activeSiteId: event.target.value || null }))} className='w-full bg-transparent text-base font-bold text-white outline-none disabled:text-slate-500'>
-                  <option value='' className='bg-slate-950'>{isPlatformOwner && !selectedCompanyId ? 'Choose company first' : availableSites.length ? 'Choose site' : 'No sites'}</option>
-                  {availableSites.length ? <option value='all' className='bg-slate-950'>All Sites</option> : null}
-                  {availableSites.map((site) => <option key={site.id} value={site.id} className='bg-slate-950'>{site.name}</option>)}
-                </select>
-              </span>
-              <ChevronDown className='h-4 w-4 text-slate-500' />
-            </label>
-            <div className='flex items-center gap-3 rounded-md border border-emerald-400/20 bg-slate-950/70 px-4 py-3'>
-              <span className='h-3 w-3 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.8)]' />
-              <span><span className='block text-sm font-black uppercase text-emerald-300'>Online</span><span className='text-xs text-slate-400'>All systems operational</span></span>
+    <MxPatrolVideoBackground shellClassName='mx-dashboard-video-shell' shadeClassName='mx-dashboard-shade'>
+      <div className='dashboard-page mx-command-center min-h-screen overflow-x-hidden bg-transparent text-white'>
+        <div className='mx-command-layout mx-auto flex min-h-screen w-full max-w-[118rem] flex-col gap-3 px-3 py-3 sm:px-4'>
+          <header className='mx-command-topbar grid gap-3 lg:grid-cols-[12rem_minmax(0,1fr)_auto] lg:items-center'>
+            <div className='mx-command-logo flex items-center justify-center'>
+              <TTechMxPatrolLogo variant='header' priority className='w-36' />
             </div>
-            <div className='flex items-center gap-3 rounded-md border border-white/10 bg-slate-950/70 px-4 py-3'>
-              <Clock3 className='h-5 w-5 text-cyan-300' />
-              <span><span className='block font-mono text-sm font-bold'>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span className='text-xs text-slate-400'>{new Date().toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span></span>
+            <div className='grid gap-2 md:grid-cols-2'>
+              {isPlatformOwner ? <label className='mx-command-control flex min-w-0 items-center gap-3 px-3 py-2 text-sm text-slate-300'>
+                <Users className='h-4 w-4 shrink-0 text-emerald-300' />
+                <span className='min-w-0 flex-1'>
+                  <span className='block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500'>Company</span>
+                  <select value={selectedCompanyId ?? ''} onChange={(event) => { setSelectedCompanyId(event.target.value || null); setState((prev) => ({ ...prev, activeSiteId: null })); }} className='w-full bg-transparent text-sm font-bold text-white outline-none'>
+                    <option value='' className='bg-slate-950'>Choose company</option>
+                    {(platformCompanies.data ?? []).map((company) => <option key={company.id} value={company.id} className='bg-slate-950'>{company.name}</option>)}
+                  </select>
+                </span>
+                <ChevronDown className='h-4 w-4 text-slate-500' />
+              </label> : null}
+              <label className='mx-command-control flex min-w-0 items-center gap-3 px-3 py-2 text-sm text-slate-300'>
+                <MapPin className='h-4 w-4 shrink-0 text-cyan-300' />
+                <span className='min-w-0 flex-1'>
+                  <span className='block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500'>Active Site</span>
+                  <select value={allSitesSelected ? 'all' : selectedSiteId ?? ''} disabled={isPlatformOwner && !selectedCompanyId} onChange={(event) => setState((prev) => ({ ...prev, activeSiteId: event.target.value || null }))} className='w-full bg-transparent text-sm font-bold text-white outline-none disabled:text-slate-500'>
+                    <option value='' className='bg-slate-950'>{isPlatformOwner && !selectedCompanyId ? 'Choose company first' : availableSites.length ? 'Choose site' : 'No sites'}</option>
+                    {availableSites.length ? <option value='all' className='bg-slate-950'>All Sites</option> : null}
+                    {availableSites.map((site) => <option key={site.id} value={site.id} className='bg-slate-950'>{site.name}</option>)}
+                  </select>
+                </span>
+                <ChevronDown className='h-4 w-4 text-slate-500' />
+              </label>
             </div>
-            <div className='flex items-center justify-between gap-3 rounded-md border border-white/10 bg-slate-950/70 px-4 py-3'>
-              <Bell className='h-5 w-5 text-slate-300' />
-              <span className='h-9 w-9 rounded-full border border-emerald-400/50 text-center text-sm font-black leading-9 text-emerald-300'>{(user?.email ?? role ?? 'AI').slice(0, 2).toUpperCase()}</span>
+            <div className='mx-command-status flex items-center justify-end gap-3 text-xs text-slate-300'>
+              <span className='h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.85)]' />
+              <span className='font-bold uppercase tracking-[0.14em] text-emerald-300'>Online</span>
+              <span className='font-mono text-slate-400'>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
-          </div>
-        </header>
+          </header>
 
-        <section className='mx-operations-bar rounded-lg border border-emerald-400/20 px-4 py-2 text-sm text-emerald-100'>
-          <b>Today&apos;s Operations</b> - {selectedSite}. Current patrols, today&apos;s scans, today&apos;s SOS activity, and currently open incidents. Historical trends live under Reports.
-        </section>
+          <main className='mx-command-zones grid flex-1 gap-4 xl:grid-cols-[minmax(22rem,27rem)_minmax(22rem,1fr)_minmax(20rem,25rem)]'>
+            <section className='mx-ai-assistant mx-command-left flex min-h-[calc(100vh-7.5rem)] flex-col overflow-hidden'>
+              <div className='shrink-0 border-b border-white/10 px-4 py-3'>
+                <div className='flex items-start justify-between gap-3'>
+                  <div>
+                    <h2 className='flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-100'><Bot className='h-4 w-4 text-cyan-300' /> Web AI Assistant</h2>
+                    <p className='mt-1 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-300'>MX Patrol</p>
+                    <p className='text-xs text-slate-400'>Viewing: {selectedSite}</p>
+                  </div>
+                  <span className='rounded-full border border-cyan-400/20 px-2 py-1 text-[11px] font-bold text-cyan-200'>{mode === 'management' ? 'Management' : 'User'}</span>
+                </div>
+              </div>
+              <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
+                <form className='mx-ai-composer relative z-20 shrink-0 border-b border-white/10 p-3 pointer-events-auto' onSubmit={handleAssistantSubmit}>
+                  <div className='flex items-center gap-3'>
+                    <input type='text' autoComplete='off' value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={handleAssistantKeyDown} className='mx-ai-input relative z-20 h-11 min-w-0 flex-1 rounded-full border px-4 text-sm outline-none placeholder:text-slate-600 focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20' placeholder={mode === 'management' ? 'Type a number or management command...' : 'Type a number or ask MX Patrol...'} />
+                    <button type='submit' className='relative z-20 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]' aria-label='Send'><Send className='h-5 w-5' /></button>
+                  </div>
+                  <p className='mt-2 text-center text-[10px] text-slate-500'>Reply with the number shown. Type back, menu or cancel.</p>
+                </form>
+                <div ref={conversationRef} onScroll={handleConversationScroll} className='mx-ai-body min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3'>
+                  <AssistantBubble title={homeNode.title}><MenuView site={selectedSite} node={homeNode} isPlatformOwner={isPlatformOwner} /></AssistantBubble>
+                  <div className='grid gap-2 sm:grid-cols-2'>
+                    {mode === 'management' || canManage ? <Shortcut onClick={switchMode} icon={mode === 'management' ? Bot : Lock} label={mode === 'management' ? 'User Assistant' : 'Management'} /> : null}
+                    <Shortcut onClick={() => submit('checkpoint scan report')} icon={ScanLine} label='Checkpoint Report' />
+                    <Shortcut onClick={() => submit('patrol report')} icon={FileText} label='Patrol Report' />
+                    <Shortcut onClick={() => { setInlinePanel(null); submit('menu'); }} icon={X} label='Close Panel' />
+                  </div>
+                  {messages.map((message) => message.from === 'user' ? <UserBubble key={message.id}>{message.body}</UserBubble> : <AssistantBubble key={message.id} title={message.title ?? 'MX PATROL'}>{message.body}</AssistantBubble>)}
+                  {pendingConfirm ? <div className='rounded-xl border border-amber-400/25 bg-amber-400/5 p-3 text-sm text-amber-100'><p className='font-bold'>{pendingConfirm.label}</p><div className='mt-2 flex gap-2'><button type='button' onClick={() => submit('confirm')} className='rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 font-semibold text-emerald-200'>Confirm</button><button type='button' onClick={() => submit('cancel')} className='rounded-lg border border-white/10 px-3 py-2 font-semibold text-slate-300'>Cancel</button></div></div> : null}
+                  {inlinePanel ? <div className='rounded-xl border border-emerald-400/20'>{inlinePanel}</div> : null}
+                  <div ref={messagesEndRef} aria-hidden='true' />
+                </div>
+              </div>
+            </section>
 
-        <section className='grid auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-5'>
-          <KpiCard title='Active Patrols' value={activePatrolCount} total={totalPatrols || undefined} note='Live sessions' icon={Users} tone='emerald' />
-          <KpiCard title='Devices Online' value={onlineDevices} total={siteDevices.length || undefined} note='Reporting devices' icon={Smartphone} tone='cyan' />
-          <KpiCard title='SOS Alerts' value={todaySosAlerts.length} note={sosAlertCount ? 'Action required' : 'All clear'} icon={ShieldAlert} tone='rose' unseen={activityUnseen('sos')} onClick={() => openActivityMetric('sos')} />
-          <KpiCard title='Open Incidents' value={openIncidentCount} note={`${todayIncidentCount} today, ${highPriorityIncidentCount} high priority`} icon={Shield} tone='amber' />
-          <KpiCard title='Scans Today' value={scanCountValue} note={scanCountToday.isLoading ? 'Counting scans...' : `${loadedScansToday} loaded today`} icon={ScanLine} tone='blue' unseen={activityUnseen('scans')} onClick={() => openActivityMetric('scans')} />
-        </section>
+            <section className='mx-command-center-stage hidden min-h-[calc(100vh-7.5rem)] xl:block' aria-label='MX Patrol background video focus'>
+              <div className='mx-center-caption'>
+                <p className='text-[10px] font-black uppercase tracking-[0.32em] text-emerald-200/80'>Original MX Patrol Video Feed</p>
+                <p className='mt-1 text-xs text-slate-300/75'>{selectedSite} command view</p>
+              </div>
+            </section>
 
-        <section className='grid auto-rows-fr gap-4 md:grid-cols-3'>
-          <KpiCard title='Photos' value={photoCountValue} note='Captured today' icon={Camera} tone='cyan' unseen={activityUnseen('photos')} onClick={() => openActivityMetric('photos')} />
-          <KpiCard title='Datalog' value={datalogCountValue} note='Entries today' icon={FileText} tone='emerald' unseen={activityUnseen('datalog')} onClick={() => openActivityMetric('datalog')} />
-          <KpiCard title='Recordings' value={recordingCountValue} note='Audio today' icon={Mic} tone='blue' unseen={activityUnseen('recordings')} onClick={() => openActivityMetric('recordings')} />
-          <div className='md:col-span-3'><SiteActivityTodayMatrix site={selectedSite} counts={{ scans: scanCountValue, photos: photoCountValue, datalog: datalogCountValue, sos: todaySosAlerts.length, recordings: recordingCountValue }} unseen={{ scans: activityUnseen('scans'), photos: activityUnseen('photos'), datalog: activityUnseen('datalog'), sos: activityUnseen('sos'), recordings: activityUnseen('recordings') }} onOpen={openActivityMetric} /></div>
-        </section>
-
-        <section className='grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]'>
-          <section className='mx-ai-assistant flex h-[42rem] min-h-[42rem] flex-col overflow-hidden xl:h-[48rem] xl:min-h-[48rem] rounded-lg border border-cyan-400/20'>
-            <div className='shrink-0 border-b border-white/10 px-4 py-3'>
-              <div className='flex items-start justify-between gap-3'>
+            <aside className='mx-command-right min-h-[calc(100vh-7.5rem)] overflow-y-auto px-1 py-1'>
+              <section className='mx-ops-rail space-y-5'>
                 <div>
-                  <h2 className='flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-100'><Bot className='h-4 w-4 text-cyan-300' /> Web AI Assistant</h2>
-                  <p className='mt-1 text-xs font-black uppercase tracking-[0.12em] text-emerald-300'>MX Patrol</p>
-                  <p className='text-xs text-slate-400'>Viewing: {selectedSite}</p>
+                  <p className='mx-rail-heading'>Operations</p>
+                  <div className='mt-3 space-y-3'>
+                    <CommandMetric icon={Users} label='Live Patrols' value={activePatrolCount} detail={`${totalPatrols || todayPatrolRows.length} today`} tone='emerald' />
+                    <CommandMetric icon={Smartphone} label='Devices Online' value={onlineDevices} detail={`${siteDevices.length} reporting`} tone='cyan' />
+                    <CommandMetric icon={ShieldAlert} label='SOS Alerts' value={todaySosAlerts.length} detail={sosAlertCount ? 'Action required' : 'All clear'} tone='rose' active={activityUnseen('sos')} onClick={() => openActivityMetric('sos')} />
+                    <CommandMetric icon={Shield} label='Open Incidents' value={openIncidentCount} detail={`${highPriorityIncidentCount} high priority`} tone='amber' />
+                  </div>
                 </div>
-                <span className='rounded-md border border-cyan-400/25 px-2 py-1 text-xs font-bold text-cyan-200'>{mode === 'management' ? 'Management AI' : 'User AI'}</span>
-              </div>
-            </div>
-            <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
-              <form className='mx-ai-composer relative z-20 shrink-0 border-b border-white/10 p-3 pointer-events-auto' onSubmit={handleAssistantSubmit}>
-                <div className='flex items-center gap-3'>
-                  <input type='text' autoComplete='off' value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={handleAssistantKeyDown} className='mx-ai-input relative z-20 h-12 min-w-0 flex-1 rounded-full border px-4 text-sm outline-none placeholder:text-slate-600 focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20' placeholder={mode === 'management' ? 'Type a number or management command...' : 'Type a number or ask MX Patrol...'} />
-                  <button type='submit' className='relative z-20 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_0_24px_rgba(16,185,129,0.35)]' aria-label='Send'><Send className='h-5 w-5' /></button>
+
+                <div>
+                  <p className='mx-rail-heading'>Today&apos;s Activity</p>
+                  <div className='mt-3 space-y-2'>
+                    <ActivityRailRow label='Scans' value={scanCountValue} active={activityUnseen('scans')} onClick={() => openActivityMetric('scans')} />
+                    <ActivityRailRow label='Photos' value={photoCountValue} active={activityUnseen('photos')} onClick={() => openActivityMetric('photos')} />
+                    <ActivityRailRow label='Datalog' value={datalogCountValue} active={activityUnseen('datalog')} onClick={() => openActivityMetric('datalog')} />
+                    <ActivityRailRow label='Voice Recordings' value={recordingCountValue} active={activityUnseen('recordings')} onClick={() => openActivityMetric('recordings')} />
+                  </div>
                 </div>
-                <p className='mt-2 text-center text-[11px] text-slate-500'>Reply with the number shown in the current menu. Type back, menu or cancel any time.</p>
-              </form>
-              <div ref={conversationRef} onScroll={handleConversationScroll} className='mx-ai-body min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4'>
-                <AssistantBubble title={homeNode.title}><MenuView site={selectedSite} node={homeNode} isPlatformOwner={isPlatformOwner} /></AssistantBubble>
-                <div className='grid gap-2 sm:grid-cols-2'>
-                  {mode === 'management' || canManage ? <Shortcut onClick={switchMode} icon={mode === 'management' ? Bot : Lock} label={mode === 'management' ? 'User Assistant' : 'Management'} /> : null}
-                  <Shortcut onClick={() => submit('checkpoint scan report')} icon={ScanLine} label='Checkpoint Report' />
-                  <Shortcut onClick={() => submit('patrol report')} icon={FileText} label='Patrol Report' />
-                  <Shortcut onClick={() => { setInlinePanel(null); submit('menu'); }} icon={X} label='Close Inline Panel' />
+
+                <div>
+                  <p className='mx-rail-heading'>Voice Messages</p>
+                  <div className='mt-3 space-y-2 text-xs text-slate-300'>
+                    {todayRecordings.slice(0, 4).map((row) => <button key={row.id} type='button' onClick={() => openActivityMetric('recordings')} className='mx-voice-row w-full text-left'><span className='truncate'>{row.filename ?? row.storage_path?.split('/').pop() ?? 'Voice recording'}</span><span className='text-slate-500'>{assistantTime(row.captured_at ?? row.created_at) ?? '--:--'}</span></button>)}
+                    {!todayRecordings.length ? <p className='rounded-lg border border-white/5 bg-black/20 px-3 py-2 text-slate-500'>No voice recordings today.</p> : null}
+                  </div>
                 </div>
-                {messages.map((message) => message.from === 'user' ? <UserBubble key={message.id}>{message.body}</UserBubble> : <AssistantBubble key={message.id} title={message.title ?? 'MX PATROL'}>{message.body}</AssistantBubble>)}
-                {pendingConfirm ? <div className='rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-100'><p className='font-bold'>{pendingConfirm.label}</p><div className='mt-2 flex gap-2'><button type='button' onClick={() => submit('confirm')} className='rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 font-semibold text-emerald-200'>Confirm</button><button type='button' onClick={() => submit('cancel')} className='rounded-xl border border-white/10 px-3 py-2 font-semibold text-slate-300'>Cancel</button></div></div> : null}
-                {inlinePanel ? <div className='rounded-2xl border border-emerald-400/25'>{inlinePanel}</div> : null}
-                <div ref={messagesEndRef} aria-hidden='true' />
-              </div>
 
-            </div>
-          </section>
-          <DashboardPanel title='Current SOS Rules' icon={ShieldCheck} action='Acknowledge != Resolve'>
-            <div className='grid gap-3 text-sm text-slate-300'>
-              <p><b className='text-amber-200'>Acknowledge</b> stops the siren and marks the alert seen on this dashboard.</p>
-              <p><b className='text-emerald-200'>Resolve SOS</b> closes the real SOS record and removes it from the active count.</p>
-              <p className='text-xs text-slate-500'>Resolved SOS records remain available in reports and history.</p>
-            </div>
-          </DashboardPanel>
-        </section>
+                <div>
+                  <p className='mx-rail-heading'>Current Patrols</p>
+                  <div className='mt-3 space-y-2'>
+                    <ActivePatrolRows rows={topPatrols} />
+                  </div>
+                </div>
 
-        <main className='grid min-h-0 flex-1 gap-4 xl:grid-cols-[25rem_minmax(34rem,1fr)_30rem]'>
-          <div className='flex min-h-0 flex-col gap-4'>
-            <DashboardPanel title="Today's Patrol Status" icon={ShieldCheck} action='Today'>
-              <PatrolStatusDonut counts={patrolCounts} total={totalPatrols} />
-            </DashboardPanel>
-            <DashboardPanel title="Live Patrol Tracker" icon={Route} action={livePatrolRows.length ? "In progress" : "Idle"}>
-              <LivePatrolTracker rows={livePatrolRows} checkpoints={livePatrolCheckpoints.data ?? []} loading={patrols.isLoading || livePatrolCheckpoints.isLoading} />
-            </DashboardPanel>
-            <DashboardPanel title='Device Feedback' icon={Cpu} action='View all' className='flex-1'>
-              <DeviceFeedbackRows devices={siteDevices} scans={todayRows.scans} alerts={todayRows.alerts} />
-            </DashboardPanel>
-          </div>
-
-          <DashboardPanel title={`Live Map - ${selectedSite}`} icon={MapPin} action='Map Controls' className='min-h-[34rem] overflow-hidden' bodyClassName='min-h-[32rem] p-0'>
-            <Suspense fallback={<div className='flex h-full min-h-[32rem] items-center justify-center text-sm text-slate-400'>Loading live map...</div>}>
-              <LiveMap operationsMode resizeSignal={messages.length} />
-            </Suspense>
-          </DashboardPanel>
-
-          <DashboardPanel title='SOS Alerts' icon={ShieldAlert} action={sosAlertCount ? 'Action required' : 'All clear'} className={(sosAlertCount ? 'border-rose-400/30 bg-rose-950/20 shadow-[0_0_34px_rgba(244,63,94,0.14)] ' : '') + 'min-h-[34rem]'}>
-            <SosResolutionPanel alerts={siteAlerts} siteName={selectedSite} canManage={canManage} resolvingId={resolvingSosId} acknowledgedIds={acknowledgedSosIds} soundPrompt={sosSoundPrompt} onAcknowledge={handleAcknowledgeSos} onEnableSound={handleEnableSosSound} onResolve={handleResolveSos} />
-          </DashboardPanel>
-        </main>
-
-        {canManage ? <section className='mx-dashboard-panel rounded-lg border border-emerald-400/20 p-4 shadow-[0_0_30px_rgba(14,165,233,0.07)]'>
-          <div className='mb-3 flex items-center justify-between gap-3'>
-            <div>
-              <h2 className='flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-100'><Smartphone className='h-4 w-4 text-emerald-300' /> WhatsApp Access Management</h2>
-              <p className='mt-1 text-xs text-slate-400'>Authorize and revoke WhatsApp numbers for {selectedSite} without using the assistant.</p>
-            </div>
-            <span className='rounded-md border border-emerald-400/25 px-2 py-1 text-xs font-bold text-emerald-200'>{whatsappAuthorizations.data?.length ?? 0} records</span>
-          </div>
-          <WhatsAppAuthorizationPanel rows={whatsappAuthorizations.data ?? []} users={workflowContext.users} siteId={selectedSiteId} loading={whatsappAuthorizations.isLoading} onCreate={async (input) => {
-            const result = await runManagementAction({ action: 'create_whatsapp_authorization', input: { ...input, site_id: selectedSiteId, created_via: 'command_center_screen' } });
-            return result.summary;
-          }} onRevoke={async (authorizationId) => {
-            const result = await runManagementAction({ action: 'revoke_whatsapp_authorization', input: { site_id: selectedSiteId, authorization_id: authorizationId } });
-            return result.summary;
-          }} />
-        </section> : null}
-
-        <section className='grid gap-3 xl:grid-cols-[1.15fr_0.85fr_0.85fr]'>
-          <DashboardPanel title="Today's Activity Timeline" icon={Activity}>
-            <ActivityTimeline buckets={activityBuckets} />
-          </DashboardPanel>
-          <DashboardPanel title='Current Patrols' icon={Route} action={livePatrolRows.length ? 'Live' : 'Today'}>
-            <ActivePatrolRows rows={topPatrols} />
-          </DashboardPanel>
-          <DashboardPanel title='Open Incidents' icon={AlertTriangle} action='Current'>
-            <RecentIncidentRows rows={recentIncidents} />
-          </DashboardPanel>
-        </section>
+                {sosAlertCount ? <div>
+                  <p className='mx-rail-heading text-rose-200'>SOS</p>
+                  <div className='mt-3'>
+                    <SosResolutionPanel alerts={siteAlerts} siteName={selectedSite} canManage={canManage} resolvingId={resolvingSosId} acknowledgedIds={acknowledgedSosIds} soundPrompt={sosSoundPrompt} onAcknowledge={handleAcknowledgeSos} onEnableSound={handleEnableSosSound} onResolve={handleResolveSos} />
+                  </div>
+                </div> : null}
+              </section>
+            </aside>
+          </main>
+        </div>
       </div>
-    </div>
     </MxPatrolVideoBackground>
   );
 }
@@ -1043,6 +1009,27 @@ const toneClasses: Record<Tone, { border: string; text: string; bg: string; glow
   blue: { border: 'border-blue-400/25', text: 'text-blue-300', bg: 'bg-blue-400/10', glow: 'shadow-[0_0_28px_rgba(96,165,250,0.14)]' },
 };
 
+function CommandMetric({ icon: Icon, label, value, detail, tone, active = false, onClick }: { icon: typeof Bot; label: string; value: number; detail: string; tone: Tone; active?: boolean; onClick?: () => void }) {
+  const classes = toneClasses[tone];
+  const content = (
+    <div className='mx-command-metric flex items-center justify-between gap-3'>
+      <div className='flex min-w-0 items-center gap-3'>
+        <Icon className={'h-4 w-4 shrink-0 ' + (active ? 'text-rose-300' : classes.text)} />
+        <div className='min-w-0'>
+          <p className='truncate text-xs font-bold uppercase tracking-[0.12em] text-slate-300'>{label}</p>
+          <p className='truncate text-[11px] text-slate-500'>{active ? 'New activity' : detail}</p>
+        </div>
+      </div>
+      <span className={(active ? 'text-rose-300' : 'text-white') + ' font-mono text-2xl font-black leading-none'}>{value}</span>
+    </div>
+  );
+  return onClick ? <button type='button' onClick={onClick} className='block w-full text-left'>{content}</button> : content;
+}
+
+function ActivityRailRow({ label, value, active = false, onClick }: { label: string; value: number; active?: boolean; onClick?: () => void }) {
+  const content = <div className='mx-activity-rail-row flex items-center justify-between gap-3'><span>{label}</span><span className={active ? 'text-rose-300' : 'text-cyan-100'}>{value}</span></div>;
+  return onClick ? <button type='button' onClick={onClick} className='block w-full text-left'>{content}</button> : content;
+}
 function DashboardPanel({ title, icon: Icon, action, children, className = '', bodyClassName = '' }: { title: string; icon: typeof Bot; action?: string; children: ReactNode; className?: string; bodyClassName?: string }) {
   return (
     <section className={`mx-dashboard-panel flex flex-col rounded-lg border border-cyan-400/15 ${className}`}>

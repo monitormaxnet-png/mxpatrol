@@ -1491,48 +1491,36 @@ export type Database = {
         Row: {
           captured_at: string
           company_id: string
-          content_type: string | null
           created_at: string
           device_identifier: string
-          duration_seconds: number | null
-          filename: string | null
           gps_accuracy: number | null
           gps_lat: number | null
           gps_lng: number | null
           id: string
-          media_type: string
           site_id: string | null
           storage_path: string
         }
         Insert: {
           captured_at: string
           company_id: string
-          content_type?: string | null
           created_at?: string
           device_identifier: string
-          duration_seconds?: number | null
-          filename?: string | null
           gps_accuracy?: number | null
           gps_lat?: number | null
           gps_lng?: number | null
           id?: string
-          media_type?: string
           site_id?: string | null
           storage_path: string
         }
         Update: {
           captured_at?: string
           company_id?: string
-          content_type?: string | null
           created_at?: string
           device_identifier?: string
-          duration_seconds?: number | null
-          filename?: string | null
           gps_accuracy?: number | null
           gps_lat?: number | null
           gps_lng?: number | null
           id?: string
-          media_type?: string
           site_id?: string | null
           storage_path?: string
         }
@@ -1552,7 +1540,8 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }      incidents: {
+      }
+      incidents: {
         Row: {
           ai_classification: string | null
           ai_suggested_action: string | null
@@ -3689,7 +3678,6 @@ export type Database = {
         | "force_security_check"
         | "require_app_update"
         | "revoke_device"
-        | "voice_message"
       device_action:
         | "enrolled"
         | "activated"
@@ -3853,7 +3841,6 @@ export const Constants = {
         "force_security_check",
         "require_app_update",
         "revoke_device",
-        "voice_message",
       ],
       device_action: [
         "enrolled",

@@ -116,6 +116,14 @@ export default function ControlRoomVoiceMessagePanel({ siteId, selectedSite, dev
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+        if (cancellingRef.current) {
+          cancellingRef.current = false;
+          chunksRef.current = [];
+          setRecording(false);
+          if (timerRef.current) window.clearInterval(timerRef.current);
+          timerRef.current = null;
+          return;
+        }
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || mimeType || 'audio/webm' });
         setRecordedBlob(blob);
         setRecordedAt(Date.now());
@@ -125,6 +133,7 @@ export default function ControlRoomVoiceMessagePanel({ siteId, selectedSite, dev
         timerRef.current = null;
       };
       recorder.onerror = () => toast.error('Recording interrupted');
+      cancellingRef.current = false;
       recorder.start();
       setRecording(true);
       timerRef.current = window.setInterval(() => {
@@ -145,7 +154,10 @@ export default function ControlRoomVoiceMessagePanel({ siteId, selectedSite, dev
   };
 
   const cancelRecording = () => {
-    if (recording) stopRecording();
+    if (recording) {
+      cancellingRef.current = true;
+      stopRecording();
+    }
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     clearPreview();

@@ -7,7 +7,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Loader2, CheckCircle2, XCircle, Clock, Send,
+  Loader2, CheckCircle2, XCircle, Clock, Send, SkipForward,
   Lock, Trash, Smartphone, Settings, Download, Upload,
 } from "lucide-react";
 
@@ -16,6 +16,7 @@ const statusConfig: Record<string, { label: string; icon: typeof Clock; color: s
   sent: { label: "Sent", icon: Send, color: "bg-primary/10 text-primary border-primary/30" },
   executed: { label: "Executed", icon: CheckCircle2, color: "bg-success/10 text-success border-success/30" },
   failed: { label: "Failed", icon: XCircle, color: "bg-destructive/10 text-destructive border-destructive/30" },
+  skipped: { label: "Skipped", icon: SkipForward, color: "bg-muted/40 text-muted-foreground border-muted-foreground/30" },
 };
 
 const typeIcons: Record<string, typeof Lock> = {
@@ -34,6 +35,7 @@ const typeLabels: Record<string, string> = {
   update_policy: "Policy",
   install_app: "Install",
   uninstall_app: "Uninstall",
+  voice_message: "Voice Message",
 };
 
 export default function CommandTracker() {
@@ -70,7 +72,9 @@ export default function CommandTracker() {
         </TableHeader>
         <TableBody>
           {commands.map((cmd: any) => {
-            const status = statusConfig[cmd.status] || statusConfig.pending;
+            const playbackStatus = typeof cmd.result === "object" && cmd.result ? String(cmd.result.playback_status ?? "") : "";
+            const statusKey = cmd.command_type === "voice_message" && playbackStatus === "skipped" ? "skipped" : String(cmd.status ?? "pending");
+            const status = statusConfig[statusKey] || statusConfig.pending;
             const StatusIcon = status.icon;
             const TypeIcon = typeIcons[cmd.command_type] || Settings;
 

@@ -93,9 +93,11 @@ describe("remaining partial item regressions", () => {
   it("exposes SOS resolution and WhatsApp management in Command Center UI", () => {
     const source = read("src/pages/CommandCenter.tsx");
     expect(source).toContain("function SosResolutionPanel");
-    expect(source).toContain("<DashboardPanel title='SOS Alerts'");
-    expect(source).toContain("note={sosAlertCount ? 'Action required' : 'All clear'}");
-    expect(source).toContain("Acknowledge != Resolve");
+    expect(source).toContain("<SosResolutionPanel alerts={siteAlerts}");
+    expect(source).toContain("detail={sosAlertCount ? 'Action required' : 'All clear'}");
+    expect(source).toContain("const handleAcknowledgeSos = (alert: DashboardAlert) =>");
+    expect(source).toContain("onAcknowledge={handleAcknowledgeSos}");
+    expect(source).toContain("onResolve={handleResolveSos}");
     expect(source).toContain("Resolve SOS");
     expect(source).toContain("Acknowledge");
     expect(source).toContain("Enable SOS Sound");
@@ -104,8 +106,12 @@ describe("remaining partial item regressions", () => {
     expect(source).toContain("seenSosIdsRef");
     expect(source).toContain("resolveSosAlert(alert.id, selectedSiteId)");
     expect(source).toContain("Management access required");
-    expect(source).toContain("WhatsApp Access Management");
-    expect(source).toContain("command_center_screen");
+    expect(source).toContain("function WhatsAppAuthorizationPanel");
+    expect(source).toContain("addAssistant('WHATSAPP MANAGEMENT - '");
+    expect(source).toContain("action: 'list_whatsapp_authorizations'");
+    expect(source).toContain("action: 'create_whatsapp_authorization'");
+    expect(source).toContain("action: 'revoke_whatsapp_authorization'");
+    expect(source).toContain("created_via: 'web_command_center'");
     expect(source).toContain("from('alerts').select('*, sites(name), checkpoints(name), patrol_sessions(status, patrol_routes(name), patrol_templates(name))')");
   });
 

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertTriangle, ArrowRight, Bell, Bot, Camera, CheckCircle2, ChevronDown, Clock3, Cpu, FileText, Lock, MapPin, Mic, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, Bell, Bot, Camera, CheckCircle2, ChevronDown, Clock3, Cpu, FileText, Loader2, Lock, MapPin, Mic, Pause, Play, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
 import { MxPatrolVideoBackground } from '@/components/branding/MxPatrolVideoBackground';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +11,7 @@ import { useAlerts, useDevices, useIncidents, useScanLogs, useCheckpoints, useRe
 import { useReportJobs } from '@/hooks/useReports';
 import { supabase } from '@/integrations/supabase/client';
 import { LiveSecureDeviceManagementPanel } from '@/components/command-center/LiveSecureDeviceManagementPanel';
+import ControlRoomVoiceMessagePanel from '@/components/command-center/ControlRoomVoiceMessagePanel';
 import PendingUnregisteredCheckpoints from '@/components/dashboard/PendingUnregisteredCheckpoints';
 import {
   ASSISTANT_MENUS,
@@ -974,13 +975,7 @@ export default function CommandCenter() {
                   </div>
                 </div>
 
-                <div>
-                  <p className='mx-rail-heading'>Voice Messages</p>
-                  <div className='mt-3 space-y-2 text-xs text-slate-300'>
-                    {todayRecordings.slice(0, 4).map((row) => <button key={row.id} type='button' onClick={() => openActivityMetric('recordings')} className='mx-voice-row w-full text-left'><span className='truncate'>{row.filename ?? row.storage_path?.split('/').pop() ?? 'Voice recording'}</span><span className='text-slate-500'>{assistantTime(row.captured_at ?? row.created_at) ?? '--:--'}</span></button>)}
-                    {!todayRecordings.length ? <p className='rounded-lg border border-white/5 bg-black/20 px-3 py-2 text-slate-500'>No voice recordings today.</p> : null}
-                  </div>
-                </div>
+                <VoiceMessagesPanel recordings={todayRecordings} selectedSite={selectedSite} siteId={selectedSiteId} devices={siteDevices} canSend={canManage || isPlatformOwner} onOpenAll={() => openActivityMetric('recordings')} />
 
                 <div>
                   <p className='mx-rail-heading'>Current Patrols</p>
@@ -1033,6 +1028,132 @@ function CommandMetric({ icon: Icon, label, value, detail, tone, active = false,
 function ActivityRailRow({ label, value, active = false, onClick }: { label: string; value: number; active?: boolean; onClick?: () => void }) {
   const content = <div className='mx-activity-rail-row flex items-center justify-between gap-3'><span>{label}</span><span className={active ? 'text-rose-300' : 'text-cyan-100'}>{value}</span></div>;
   return onClick ? <button type='button' onClick={onClick} className='block w-full text-left'>{content}</button> : content;
+}
+function formatVoiceDurationSeconds(seconds: number | null | undefined) {
+  const safeSeconds = Math.max(0, Math.round(Number(seconds ?? 0) || 0));
+  return `${String(Math.floor(safeSeconds / 60)).padStart(2, '0')}:${String(safeSeconds % 60).padStart(2, '0')}`;
+}
+
+function VoiceMessagesPanel({ recordings, selectedSite, siteId, devices, canSend, onOpenAll }: { recordings: RecordingActivity[]; selectedSite: string; siteId: string | null; devices: DashboardDevice[]; canSend: boolean; onOpenAll: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [errorId, setErrorId] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+    };
+  }, []);
+
+  const stopCurrent = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      audioRef.current = null;
+    }
+    setPlaying(false);
+    setProgress(0);
+  };
+
+  const playRecording = async (recording: RecordingActivity) => {
+    if (!recording.storage_path) {
+      setErrorId(recording.id);
+      return;
+    }
+
+    if (activeId === recording.id && audioRef.current && playing) {
+      audioRef.current.pause();
+      setPlaying(false);
+      return;
+    }
+
+    if (activeId === recording.id && audioRef.current && !playing) {
+      await audioRef.current.play();
+      setPlaying(true);
+      return;
+    }
+
+    stopCurrent();
+    setActiveId(recording.id);
+    setLoadingId(recording.id);
+    setErrorId(null);
+
+    const { data, error } = await supabase.storage.from('incident-reports').createSignedUrl(recording.storage_path, 60 * 10);
+    if (error || !data?.signedUrl) {
+      setLoadingId(null);
+      setErrorId(recording.id);
+      return;
+    }
+
+    const audio = new Audio(data.signedUrl);
+    audioRef.current = audio;
+    setAudioUrl(data.signedUrl);
+    audio.ontimeupdate = () => setProgress(audio.duration ? Math.min(100, (audio.currentTime / audio.duration) * 100) : 0);
+    audio.onended = () => {
+      setPlaying(false);
+      setProgress(100);
+    };
+    audio.onerror = () => {
+      setPlaying(false);
+      setErrorId(recording.id);
+    };
+
+    try {
+      await audio.play();
+      setPlaying(true);
+    } catch {
+      setErrorId(recording.id);
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  return (
+    <div className='mx-voice-panel'>
+      <div className='flex items-center justify-between gap-3'>
+        <div>
+          <p className='mx-rail-heading'>Voice Messages</p>
+          <p className='mt-1 text-[10px] uppercase tracking-[0.12em] text-slate-500'>Received Recordings</p>
+        </div>
+        <div className='flex shrink-0 items-center gap-2'>
+          <button type='button' onClick={onOpenAll} className='text-[10px] font-bold uppercase tracking-[0.1em] text-cyan-300 hover:text-cyan-100'>View All</button>
+          {canSend ? <button type='button' onClick={() => setExpanded((value) => !value)} className='mx-record-voice-button'><Mic className='h-3.5 w-3.5' /> {expanded ? 'Close' : 'Record Voice'}</button> : null}
+        </div>
+      </div>
+
+      <div className='mt-3 space-y-2 text-xs text-slate-300'>
+        {recordings.slice(0, 4).map((row) => {
+          const isActive = activeId === row.id;
+          const isLoading = loadingId === row.id;
+          const isError = errorId === row.id;
+          return <button key={row.id} type='button' onClick={() => void playRecording(row)} className='mx-voice-row w-full text-left'>
+            <span className='flex min-w-0 flex-1 items-center gap-2'>
+              <span className='mx-voice-play-icon'>{isLoading ? <Loader2 className='h-3.5 w-3.5 animate-spin' /> : isActive && playing ? <Pause className='h-3.5 w-3.5' /> : <Play className='h-3.5 w-3.5' />}</span>
+              <span className='min-w-0 flex-1'>
+                <span className='block truncate text-slate-100'>{row.filename ?? row.storage_path?.split('/').pop() ?? 'Guard recording'}</span>
+                <span className='block truncate text-[10px] text-slate-500'>{row.device_identifier ?? 'RG360 device'} - {assistantTime(row.captured_at ?? row.created_at) ?? '--:--'}</span>
+                {isActive ? <span className='mt-1 block h-1 overflow-hidden rounded-full bg-white/10'><span className='block h-full rounded-full bg-cyan-300' style={{ width: `${progress}%` }} /></span> : null}
+                {isError ? <span className='mt-1 block text-[10px] text-rose-300'>Playback unavailable</span> : null}
+              </span>
+            </span>
+            <span className='font-mono text-[11px] text-slate-400'>{formatVoiceDurationSeconds(row.duration_seconds)}</span>
+          </button>;
+        })}
+        {!recordings.length ? <p className='rounded-lg border border-white/5 bg-black/20 px-3 py-2 text-slate-500'>No voice recordings today.</p> : null}
+      </div>
+
+      {expanded ? <div className='mx-voice-composer mt-3'><ControlRoomVoiceMessagePanel siteId={siteId} selectedSite={selectedSite} devices={devices} /></div> : null}
+      {audioUrl ? <audio className='sr-only' src={audioUrl} aria-hidden='true' /> : null}
+    </div>
+  );
 }
 function DashboardPanel({ title, icon: Icon, action, children, className = '', bodyClassName = '' }: { title: string; icon: typeof Bot; action?: string; children: ReactNode; className?: string; bodyClassName?: string }) {
   return (

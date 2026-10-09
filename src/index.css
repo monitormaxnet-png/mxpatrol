@@ -3289,3 +3289,48 @@
     display: none !important;
   }
 }
+
+/* Compact dashboard voice messaging controls */
+.mx-voice-panel .mx-record-voice-button {
+  display: inline-flex;
+  height: 1.8rem;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  background: rgba(34, 211, 238, 0.08);
+  padding: 0 0.65rem;
+  color: rgba(165, 243, 252, 0.96);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mx-voice-play-icon {
+  display: inline-flex;
+  width: 1.8rem;
+  height: 1.8rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.32);
+  background: rgba(34, 211, 238, 0.1);
+  color: rgb(103, 232, 249);
+}
+
+.mx-voice-panel .mx-voice-row {
+  align-items: center;
+  min-height: 3.35rem !important;
+}
+
+.mx-voice-composer .mx-control-room-voice {
+  border-color: rgba(34, 211, 238, 0.16);
+  background: rgba(0, 8, 12, 0.42);
+  padding: 0.75rem;
+}
+
+.mx-voice-composer audio {
+  color-scheme: dark;
+}

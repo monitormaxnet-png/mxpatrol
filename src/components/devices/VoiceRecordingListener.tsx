@@ -66,7 +66,6 @@ export default function VoiceRecordingListener() {
       if (detail.status === "error") {
         const reason = detail.reason || "unknown";
         if (reason === "too_short") {
-          window.dispatchEvent(new CustomEvent("mxpatrol:voice-feedback", { detail: { id: `voice-short-${Date.now()}`, status: "cancelled", deviceIdentifier: deviceInfo.deviceIdentifier, capturedAt, message: "Hold Volume Down to record" } }));
           toast.info("Hold Volume Down to record a voice message");
           return;
         }

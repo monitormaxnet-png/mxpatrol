@@ -707,6 +707,7 @@ export default function CommandCenter() {
       const result = await runManagementAction({ action: 'revoke_whatsapp_authorization', input: { site_id: selectedSiteId, authorization_id: authorizationId } });
       return result.summary;
     }} />);
+    if (action.startsWith('attendance_')) return addAssistant('AI FACIAL ATTENDANCE - ' + selectedSite, <AttendanceFoundationPanel action={action} site={selectedSite} />);
     if (action === 'routes' || action === 'schedules') return addAssistant(action === 'routes' ? 'PATROL ROUTES' : 'PATROL SCHEDULES', <ConfigList kind={action} siteId={selectedSiteId} />);
     if (action.startsWith('report:')) {
       const period = action.slice(7) as keyof typeof PERIODS;
@@ -1618,6 +1619,132 @@ function CompanyList({ rows, loading, selectedId, onSelect }: { rows: AssistantC
   return <div className='space-y-2'>{rows.slice(0, 20).map((company, index) => <button key={company.id} type='button' onClick={() => onSelect(company)} className={(company.id === selectedId ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-slate-950/70 text-slate-300') + ' grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3 py-2 text-left'}><span className='font-mono text-emerald-300'>{index + 1}.</span><span className='min-w-0'><span className='block truncate font-bold'>{company.name}</span><span className='block text-xs text-slate-400'>{company.status ?? 'active'}</span></span><span className='text-xs text-slate-400'>Sites: {company.site_count ?? 0}</span></button>)}</div>;
 }
 function MetricGrid({ items }: { items: Array<[string, number | string]> }) { return <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>{items.map(([label, value]) => <div key={label} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><p className='text-2xl font-black text-emerald-300'>{value}</p><p className='text-xs text-slate-400'>{label}</p></div>)}</div>; }
+function AttendanceFoundationPanel({ action, site }: { action: string; site: string }) {
+  const labels: Record<string, string> = {
+    attendance_overview: 'Attendance Overview',
+    attendance_enrollment: 'Guard Biometric Enrollment',
+    attendance_biometric_testing: 'Biometric Test Evaluation',
+    attendance_events: 'Live Attendance Events',
+    attendance_reviews: 'Attendance Reviews',
+    attendance_shifts: 'Shift Management',
+    attendance_reports: 'Attendance Reports',
+  };
+  if (action === 'attendance_biometric_testing') return <BiometricEvaluationPanel site={site} />;
+  return <div className='space-y-3'>
+    <p className='text-slate-300'><b>{labels[action] ?? 'Attendance Management'}</b> is available for <b>{site}</b> as a secure foundation module.</p>
+    <div className='grid gap-2 text-xs sm:grid-cols-2'>
+      <div className='rounded-lg border border-cyan-400/15 bg-black/20 p-3'><b className='text-cyan-200'>Current state</b><p className='mt-1 text-slate-400'>Facial attendance events are stored as pending review unless a dedicated biometric provider is configured.</p></div>
+      <div className='rounded-lg border border-emerald-400/15 bg-black/20 p-3'><b className='text-emerald-200'>RG360 workflow</b><p className='mt-1 text-slate-400'>Attendance mode uses Clock In / Clock Out plus Volume Up capture. Patrol photo mode remains separate.</p></div>
+      <div className='rounded-lg border border-amber-400/15 bg-black/20 p-3'><b className='text-amber-200'>Review required</b><p className='mt-1 text-slate-400'>Unknown, ambiguous, spoof-suspected, poor-quality, and provider-unconfigured events require supervisor review.</p></div>
+      <div className='rounded-lg border border-white/10 bg-black/20 p-3'><b className='text-slate-200'>Privacy</b><p className='mt-1 text-slate-400'>Attendance photos are stored in the private attendance-evidence bucket and must be accessed through signed review flows.</p></div>
+    </div>
+    <p className='text-xs text-slate-500'>Production biometric identification is intentionally disabled until MXPATROL_BIOMETRIC_PROVIDER and provider credentials are configured server-side.</p>
+  </div>;
+}
+function BiometricEvaluationPanel({ site }: { site: string }) {
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [selectedGuardByCapture, setSelectedGuardByCapture] = useState<Record<string, string>>({});
+  const [outcomeByCapture, setOutcomeByCapture] = useState<Record<string, string>>({});
+  const captures = useQuery({
+    queryKey: ['biometric_test_captures', site],
+    queryFn: async () => {
+      const client = supabase as any;
+      const { data, error } = await client
+        .from('biometric_test_captures')
+        .select('id, test_capture_identifier, candidate_guard_id, actual_guard_id, similarity_score, candidate_margin, candidate_count, image_quality_status, outcome_status, review_outcome, processing_duration_ms, captured_at, device_identifier, test_session_id, liveness_status')
+        .order('captured_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const guards = useQuery({
+    queryKey: ['biometric_test_guard_labels'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('guards').select('id, full_name, employee_id, biometric_enrollment_status').eq('is_active', true).order('full_name').limit(200);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const rows = (captures.data ?? []) as any[];
+  const labeled = rows.filter((row) => row.review_outcome && row.review_outcome !== 'unlabeled' && row.review_outcome !== 'ignore');
+  const count = Math.max(labeled.length, 1);
+  const metric = (name: string) => labeled.filter((row) => row.review_outcome === name).length / count;
+  const detectionFailures = rows.filter((row) => ['poor_quality', 'failed'].includes(String(row.outcome_status))).length / Math.max(rows.length, 1);
+  const qualityRejected = rows.filter((row) => String(row.image_quality_status) !== 'passed').length / Math.max(rows.length, 1);
+  const latencies = rows.map((row) => Number(row.processing_duration_ms)).filter(Number.isFinite).sort((a, b) => a - b);
+  const percentile = (p: number) => latencies.length ? latencies[Math.min(latencies.length - 1, Math.floor((latencies.length - 1) * p))] : null;
+  const pct = (value: number) => Math.round(value * 1000) / 10 + '%';
+
+  const saveLabel = async (row: any) => {
+    const actualGuardId = selectedGuardByCapture[row.id] || row.actual_guard_id || null;
+    const reviewOutcome = outcomeByCapture[row.id] || row.review_outcome || 'unlabeled';
+    setSavingId(row.id);
+    try {
+      const client = supabase as any;
+      const { error } = await client.from('biometric_test_captures').update({ actual_guard_id: actualGuardId || null, review_outcome: reviewOutcome, labeled_at: new Date().toISOString() }).eq('id', row.id);
+      if (error) throw error;
+      await captures.refetch();
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return <div className='space-y-3'>
+    <p className='text-slate-300'><b>Biometric Test Evaluation</b> is isolated from live attendance for <b>{site}</b>. Captures remain review-only and never display VERIFIED.</p>
+    <div className='grid gap-2 text-xs sm:grid-cols-3'>
+      <div className='rounded-lg border border-cyan-400/15 bg-black/20 p-3'><b className='text-cyan-200'>Correct ID rate</b><p className='mt-1 text-lg font-black text-white'>{pct(metric('correct_identification'))}</p></div>
+      <div className='rounded-lg border border-rose-400/15 bg-black/20 p-3'><b className='text-rose-200'>False ID rate</b><p className='mt-1 text-lg font-black text-white'>{pct(metric('false_identification'))}</p></div>
+      <div className='rounded-lg border border-amber-400/15 bg-black/20 p-3'><b className='text-amber-200'>False rejection</b><p className='mt-1 text-lg font-black text-white'>{pct(metric('false_rejection'))}</p></div>
+      <div className='rounded-lg border border-white/10 bg-black/20 p-3'><b className='text-slate-200'>Ambiguous</b><p className='mt-1 text-lg font-black text-white'>{pct(metric('ambiguous'))}</p></div>
+      <div className='rounded-lg border border-white/10 bg-black/20 p-3'><b className='text-slate-200'>Detection failure</b><p className='mt-1 text-lg font-black text-white'>{pct(detectionFailures)}</p></div>
+      <div className='rounded-lg border border-white/10 bg-black/20 p-3'><b className='text-slate-200'>Quality rejected</b><p className='mt-1 text-lg font-black text-white'>{pct(qualityRejected)}</p></div>
+    </div>
+    <div className='rounded-lg border border-emerald-400/15 bg-black/20 p-3 text-xs text-slate-300'>
+      <b className='text-emerald-200'>Threshold calibration</b>
+      <p className='mt-1'>Similarity distributions are recorded as raw capture data. Candidate thresholds and margins can be evaluated here, but production thresholds are not changed automatically.</p>
+      <p className='mt-1'>Latency p50: {percentile(0.5) ?? '-'} ms · p95: {percentile(0.95) ?? '-'} ms · labeled captures: {labeled.length} / {rows.length}</p>
+    </div>
+    <div className='space-y-2'>
+      {captures.isLoading ? <p className='text-slate-400'>Loading biometric test captures...</p> : rows.length === 0 ? <p className='text-slate-400'>No RG360 biometric test captures yet. Enable test mode on a paired RG360 and capture with Volume Up.</p> : rows.slice(0, 12).map((row) => <div key={row.id} className='rounded-xl border border-white/10 bg-black/25 p-3 text-xs'>
+        <div className='flex flex-wrap items-start justify-between gap-2'>
+          <div>
+            <b className='text-cyan-200'>{row.test_capture_identifier}</b>
+            <p className='text-slate-400'>{row.device_identifier} · {assistantDate(row.captured_at)} {assistantTime(row.captured_at)} · {row.test_session_id ?? 'no session'}</p>
+          </div>
+          <span className='rounded-full border border-cyan-400/20 px-2 py-1 font-bold uppercase text-cyan-200'>{String(row.outcome_status).replace(/_/g, ' ')}</span>
+        </div>
+        <div className='mt-2 grid gap-2 sm:grid-cols-4'>
+          <span>Candidate: <b>{row.candidate_guard_id ? String(row.candidate_guard_id).slice(0, 8) : 'none'}</b></span>
+          <span>Similarity: <b>{row.similarity_score == null ? '-' : Number(row.similarity_score).toFixed(3)}</b></span>
+          <span>Quality: <b>{row.image_quality_status ?? '-'}</b></span>
+          <span>Duration: <b>{row.processing_duration_ms ?? '-'} ms</b></span>
+        </div>
+        <div className='mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]'>
+          <select value={selectedGuardByCapture[row.id] ?? row.actual_guard_id ?? ''} onChange={(event) => setSelectedGuardByCapture((current) => ({ ...current, [row.id]: event.target.value }))} className='rounded-lg border border-white/10 bg-slate-950/80 px-2 py-2 text-white'>
+            <option value=''>Actual identity unknown</option>
+            {(guards.data ?? []).map((guard: any) => <option key={guard.id} value={guard.id}>{guard.full_name ?? guard.employee_id ?? guard.id}</option>)}
+          </select>
+          <select value={outcomeByCapture[row.id] ?? row.review_outcome ?? 'unlabeled'} onChange={(event) => setOutcomeByCapture((current) => ({ ...current, [row.id]: event.target.value }))} className='rounded-lg border border-white/10 bg-slate-950/80 px-2 py-2 text-white'>
+            <option value='unlabeled'>Unlabeled</option>
+            <option value='correct_identification'>Correct identification</option>
+            <option value='false_identification'>False identification</option>
+            <option value='false_rejection'>False rejection</option>
+            <option value='ambiguous'>Ambiguous</option>
+            <option value='face_detection_failed'>Face detection failed</option>
+            <option value='quality_rejected'>Quality rejected</option>
+            <option value='spoof_test'>Spoof / replay test</option>
+            <option value='ignore'>Ignore</option>
+          </select>
+          <button type='button' disabled={savingId === row.id} onClick={() => saveLabel(row)} className='rounded-lg border border-cyan-400/30 px-3 py-2 font-bold text-cyan-200 disabled:opacity-50'>{savingId === row.id ? 'Saving...' : 'Save Label'}</button>
+        </div>
+      </div>)}
+    </div>
+    <p className='text-xs text-slate-500'>Liveness limitation: printed-photo and phone-screen replay tests must be labeled by authorized testers. The current still-image heuristic is research-only.</p>
+  </div>;
+}
+
 function CurrentDatalogEntries({ rows }: { rows: DatalogSubmission[] }) {
   const entries = rows.map((entry) => {
     const label = String(entry.checkpoints?.data_log_label ?? entry.responses_json?.label ?? 'Datalog');

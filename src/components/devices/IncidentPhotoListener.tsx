@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getDeviceLocation } from "@/lib/deviceGeolocation";
 import { getPatrolDeviceInfo } from "@/lib/deviceInfo";
 import { useOfflineIncidentPhotoQueue } from "@/hooks/useOfflineIncidentPhotoQueue";
+import { isBiometricTestModeActive } from "@/components/devices/BiometricTestCaptureListener";
 
 type IncidentPhotoDetail = {
   schema?: string;

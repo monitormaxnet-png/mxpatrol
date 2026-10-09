@@ -10,6 +10,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import DevicePresenceHeartbeat from "@/components/devices/DevicePresenceHeartbeat";
 import HardwareSosListener from "@/components/devices/HardwareSosListener";
 import IncidentPhotoListener from "@/components/devices/IncidentPhotoListener";
+import BiometricTestCaptureListener from "@/components/devices/BiometricTestCaptureListener";
 import VoiceRecordingListener from "@/components/devices/VoiceRecordingListener";
 import DeviceVoiceCommandListener from "@/components/devices/DeviceVoiceCommandListener";
 import SystemFeedbackOverlay from "@/components/feedback/SystemFeedbackOverlay";
@@ -104,6 +105,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <NativeScannerRouteGuard />
+          <BiometricTestCaptureListener />
           <IncidentPhotoListener />
           <VoiceRecordingListener />
           <DeviceVoiceCommandListener />

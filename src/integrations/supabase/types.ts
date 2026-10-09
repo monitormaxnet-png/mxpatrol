@@ -209,6 +209,611 @@ export type Database = {
           },
         ]
       }
+      attendance_events: {
+        Row: {
+          biometric_provider_reference: string | null
+          candidate_summary: Json
+          captured_at: string
+          company_id: string
+          created_at: string
+          device_id: string | null
+          device_identifier: string
+          event_type: string
+          gps_accuracy: number | null
+          guard_id: string | null
+          id: string
+          idempotency_key: string | null
+          latitude: number | null
+          liveness_result: Json
+          longitude: number | null
+          notes: string | null
+          offline_sync_status: string
+          photo_reference: string | null
+          provider_name: string | null
+          provider_result: Json
+          received_at: string
+          review_status: string
+          shift_id: string | null
+          site_id: string | null
+          source_event_id: string | null
+          updated_at: string
+          verification_status: string
+          verified_at: string | null
+        }
+        Insert: {
+          biometric_provider_reference?: string | null
+          candidate_summary?: Json
+          captured_at: string
+          company_id: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier: string
+          event_type: string
+          gps_accuracy?: number | null
+          guard_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          latitude?: number | null
+          liveness_result?: Json
+          longitude?: number | null
+          notes?: string | null
+          offline_sync_status?: string
+          photo_reference?: string | null
+          provider_name?: string | null
+          provider_result?: Json
+          received_at?: string
+          review_status?: string
+          shift_id?: string | null
+          site_id?: string | null
+          source_event_id?: string | null
+          updated_at?: string
+          verification_status?: string
+          verified_at?: string | null
+        }
+        Update: {
+          biometric_provider_reference?: string | null
+          candidate_summary?: Json
+          captured_at?: string
+          company_id?: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string
+          event_type?: string
+          gps_accuracy?: number | null
+          guard_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          latitude?: number | null
+          liveness_result?: Json
+          longitude?: number | null
+          notes?: string | null
+          offline_sync_status?: string
+          photo_reference?: string | null
+          provider_name?: string | null
+          provider_result?: Json
+          received_at?: string
+          review_status?: string
+          shift_id?: string | null
+          site_id?: string | null
+          source_event_id?: string | null
+          updated_at?: string
+          verification_status?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_events_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_events_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_events_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_events_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_reviews: {
+        Row: {
+          attendance_event_id: string
+          company_id: string
+          created_at: string
+          decision: string
+          guard_id: string | null
+          id: string
+          metadata: Json
+          reason: string
+          reviewed_at: string
+          reviewer_id: string | null
+        }
+        Insert: {
+          attendance_event_id: string
+          company_id: string
+          created_at?: string
+          decision: string
+          guard_id?: string | null
+          id?: string
+          metadata?: Json
+          reason: string
+          reviewed_at?: string
+          reviewer_id?: string | null
+        }
+        Update: {
+          attendance_event_id?: string
+          company_id?: string
+          created_at?: string
+          decision?: string
+          guard_id?: string | null
+          id?: string
+          metadata?: Json
+          reason?: string
+          reviewed_at?: string
+          reviewer_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_reviews_attendance_event_id_fkey"
+            columns: ["attendance_event_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_reviews_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_reviews_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_sessions: {
+        Row: {
+          clock_in_at: string | null
+          clock_in_event_id: string | null
+          clock_out_at: string | null
+          clock_out_event_id: string | null
+          company_id: string
+          created_at: string
+          gross_minutes: number | null
+          guard_id: string
+          id: string
+          late_minutes: number
+          metadata: Json
+          overtime_minutes: number
+          payroll_ready: boolean
+          reconciliation_status: string
+          session_status: string
+          shift_id: string | null
+          site_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          clock_in_at?: string | null
+          clock_in_event_id?: string | null
+          clock_out_at?: string | null
+          clock_out_event_id?: string | null
+          company_id: string
+          created_at?: string
+          gross_minutes?: number | null
+          guard_id: string
+          id?: string
+          late_minutes?: number
+          metadata?: Json
+          overtime_minutes?: number
+          payroll_ready?: boolean
+          reconciliation_status?: string
+          session_status?: string
+          shift_id?: string | null
+          site_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          clock_in_at?: string | null
+          clock_in_event_id?: string | null
+          clock_out_at?: string | null
+          clock_out_event_id?: string | null
+          company_id?: string
+          created_at?: string
+          gross_minutes?: number | null
+          guard_id?: string
+          id?: string
+          late_minutes?: number
+          metadata?: Json
+          overtime_minutes?: number
+          payroll_ready?: boolean
+          reconciliation_status?: string
+          session_status?: string
+          shift_id?: string | null
+          site_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_sessions_clock_in_event_id_fkey"
+            columns: ["clock_in_event_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_clock_out_event_id_fkey"
+            columns: ["clock_out_event_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_shifts: {
+        Row: {
+          company_id: string
+          created_at: string
+          grace_end_minutes: number
+          grace_start_minutes: number
+          guard_id: string
+          id: string
+          metadata: Json
+          scheduled_end: string
+          scheduled_start: string
+          shift_status: string
+          site_id: string
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          grace_end_minutes?: number
+          grace_start_minutes?: number
+          guard_id: string
+          id?: string
+          metadata?: Json
+          scheduled_end: string
+          scheduled_start: string
+          shift_status?: string
+          site_id: string
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          grace_end_minutes?: number
+          grace_start_minutes?: number
+          guard_id?: string
+          id?: string
+          metadata?: Json
+          scheduled_end?: string
+          scheduled_start?: string
+          shift_status?: string
+          site_id?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_shifts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_shifts_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_shifts_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      biometric_test_captures: {
+        Row: {
+          actual_guard_id: string | null
+          attendance_event_id: string | null
+          candidate_count: number
+          candidate_guard_id: string | null
+          candidate_margin: number | null
+          captured_at: string
+          company_id: string
+          created_at: string
+          device_id: string | null
+          device_identifier: string
+          device_model: string | null
+          expected_guard_id: string | null
+          id: string
+          image_quality: Json
+          image_quality_status: string | null
+          labeled_at: string | null
+          labeled_by: string | null
+          lighting_condition: string | null
+          liveness_result: Json
+          liveness_status: string | null
+          metadata: Json
+          notes: string | null
+          outcome_status: string
+          participant_reference: string | null
+          processing_duration_ms: number | null
+          received_at: string
+          review_outcome: string
+          similarity_score: number | null
+          site_id: string | null
+          test_capture_identifier: string
+          test_session_id: string | null
+          testing_mode: string
+          updated_at: string
+        }
+        Insert: {
+          actual_guard_id?: string | null
+          attendance_event_id?: string | null
+          candidate_count?: number
+          candidate_guard_id?: string | null
+          candidate_margin?: number | null
+          captured_at: string
+          company_id: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier: string
+          device_model?: string | null
+          expected_guard_id?: string | null
+          id?: string
+          image_quality?: Json
+          image_quality_status?: string | null
+          labeled_at?: string | null
+          labeled_by?: string | null
+          lighting_condition?: string | null
+          liveness_result?: Json
+          liveness_status?: string | null
+          metadata?: Json
+          notes?: string | null
+          outcome_status?: string
+          participant_reference?: string | null
+          processing_duration_ms?: number | null
+          received_at?: string
+          review_outcome?: string
+          similarity_score?: number | null
+          site_id?: string | null
+          test_capture_identifier: string
+          test_session_id?: string | null
+          testing_mode?: string
+          updated_at?: string
+        }
+        Update: {
+          actual_guard_id?: string | null
+          attendance_event_id?: string | null
+          candidate_count?: number
+          candidate_guard_id?: string | null
+          candidate_margin?: number | null
+          captured_at?: string
+          company_id?: string
+          created_at?: string
+          device_id?: string | null
+          device_identifier?: string
+          device_model?: string | null
+          expected_guard_id?: string | null
+          id?: string
+          image_quality?: Json
+          image_quality_status?: string | null
+          labeled_at?: string | null
+          labeled_by?: string | null
+          lighting_condition?: string | null
+          liveness_result?: Json
+          liveness_status?: string | null
+          metadata?: Json
+          notes?: string | null
+          outcome_status?: string
+          participant_reference?: string | null
+          processing_duration_ms?: number | null
+          received_at?: string
+          review_outcome?: string
+          similarity_score?: number | null
+          site_id?: string | null
+          test_capture_identifier?: string
+          test_session_id?: string | null
+          testing_mode?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "biometric_test_captures_actual_guard_id_fkey"
+            columns: ["actual_guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_test_captures_attendance_event_id_fkey"
+            columns: ["attendance_event_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_test_captures_candidate_guard_id_fkey"
+            columns: ["candidate_guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_test_captures_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_test_captures_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_test_captures_expected_guard_id_fkey"
+            columns: ["expected_guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_test_captures_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      biometric_threshold_evaluations: {
+        Row: {
+          ambiguous_match_frequency: number | null
+          company_id: string
+          correct_identification_rate: number | null
+          created_at: string
+          created_by: string | null
+          evaluation_name: string
+          face_detection_failure_rate: number | null
+          false_identification_rate: number | null
+          false_rejection_rate: number | null
+          id: string
+          image_quality_rejection_rate: number | null
+          margin_threshold: number
+          metadata: Json
+          notes: string | null
+          p50_processing_latency_ms: number | null
+          p95_processing_latency_ms: number | null
+          sample_count: number
+          site_id: string | null
+          threshold: number
+        }
+        Insert: {
+          ambiguous_match_frequency?: number | null
+          company_id: string
+          correct_identification_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          evaluation_name: string
+          face_detection_failure_rate?: number | null
+          false_identification_rate?: number | null
+          false_rejection_rate?: number | null
+          id?: string
+          image_quality_rejection_rate?: number | null
+          margin_threshold?: number
+          metadata?: Json
+          notes?: string | null
+          p50_processing_latency_ms?: number | null
+          p95_processing_latency_ms?: number | null
+          sample_count?: number
+          site_id?: string | null
+          threshold: number
+        }
+        Update: {
+          ambiguous_match_frequency?: number | null
+          company_id?: string
+          correct_identification_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          evaluation_name?: string
+          face_detection_failure_rate?: number | null
+          false_identification_rate?: number | null
+          false_rejection_rate?: number | null
+          id?: string
+          image_quality_rejection_rate?: number | null
+          margin_threshold?: number
+          metadata?: Json
+          notes?: string | null
+          p50_processing_latency_ms?: number | null
+          p95_processing_latency_ms?: number | null
+          sample_count?: number
+          site_id?: string | null
+          threshold?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "biometric_threshold_evaluations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_threshold_evaluations_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       camera_events: {
         Row: {
           camera_id: string
@@ -1383,6 +1988,100 @@ export type Database = {
           },
         ]
       }
+      guard_biometric_enrollments: {
+        Row: {
+          authorized_by: string | null
+          company_id: string
+          created_at: string
+          deleted_at: string | null
+          enrolled_at: string | null
+          enrollment_status: string
+          guard_id: string
+          id: string
+          lawful_basis: string | null
+          liveness_status: string | null
+          metadata: Json
+          privacy_notice_version: string | null
+          provider_name: string
+          provider_reference: string | null
+          quality_status: string | null
+          retention_policy: string | null
+          revoked_at: string | null
+          sample_count: number
+          site_id: string | null
+          template_version: number
+          updated_at: string
+        }
+        Insert: {
+          authorized_by?: string | null
+          company_id: string
+          created_at?: string
+          deleted_at?: string | null
+          enrolled_at?: string | null
+          enrollment_status?: string
+          guard_id: string
+          id?: string
+          lawful_basis?: string | null
+          liveness_status?: string | null
+          metadata?: Json
+          privacy_notice_version?: string | null
+          provider_name: string
+          provider_reference?: string | null
+          quality_status?: string | null
+          retention_policy?: string | null
+          revoked_at?: string | null
+          sample_count?: number
+          site_id?: string | null
+          template_version?: number
+          updated_at?: string
+        }
+        Update: {
+          authorized_by?: string | null
+          company_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          enrolled_at?: string | null
+          enrollment_status?: string
+          guard_id?: string
+          id?: string
+          lawful_basis?: string | null
+          liveness_status?: string | null
+          metadata?: Json
+          privacy_notice_version?: string | null
+          provider_name?: string
+          provider_reference?: string | null
+          quality_status?: string | null
+          retention_policy?: string | null
+          revoked_at?: string | null
+          sample_count?: number
+          site_id?: string | null
+          template_version?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guard_biometric_enrollments_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guard_biometric_enrollments_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guard_biometric_enrollments_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       guard_scores: {
         Row: {
           company_id: string
@@ -1440,6 +2139,9 @@ export type Database = {
       guards: {
         Row: {
           badge_number: string
+          biometric_enrolled_at: string | null
+          biometric_enrollment_status: string
+          biometric_template_version: number
           company_id: string
           created_at: string
           full_name: string
@@ -1453,6 +2155,9 @@ export type Database = {
         }
         Insert: {
           badge_number: string
+          biometric_enrolled_at?: string | null
+          biometric_enrollment_status?: string
+          biometric_template_version?: number
           company_id: string
           created_at?: string
           full_name: string
@@ -1466,6 +2171,9 @@ export type Database = {
         }
         Update: {
           badge_number?: string
+          biometric_enrolled_at?: string | null
+          biometric_enrollment_status?: string
+          biometric_template_version?: number
           company_id?: string
           created_at?: string
           full_name?: string
@@ -3028,6 +3736,83 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ttech_biometric_template_secrets: {
+        Row: {
+          company_id: string
+          created_at: string
+          engine_version: string
+          enrollment_id: string
+          guard_id: string
+          id: string
+          quality: Json
+          revoked_at: string | null
+          site_id: string | null
+          status: string
+          template_version: number
+          updated_at: string
+          vector: Json
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          engine_version: string
+          enrollment_id: string
+          guard_id: string
+          id?: string
+          quality?: Json
+          revoked_at?: string | null
+          site_id?: string | null
+          status?: string
+          template_version?: number
+          updated_at?: string
+          vector: Json
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          engine_version?: string
+          enrollment_id?: string
+          guard_id?: string
+          id?: string
+          quality?: Json
+          revoked_at?: string | null
+          site_id?: string | null
+          status?: string
+          template_version?: number
+          updated_at?: string
+          vector?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ttech_biometric_template_secrets_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ttech_biometric_template_secrets_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "guard_biometric_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ttech_biometric_template_secrets_guard_id_fkey"
+            columns: ["guard_id"]
+            isOneToOne: false
+            referencedRelation: "guards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ttech_biometric_template_secrets_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
             referencedColumns: ["id"]
           },
         ]

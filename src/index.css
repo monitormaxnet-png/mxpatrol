@@ -3334,3 +3334,221 @@
 .mx-voice-composer audio {
   color-scheme: dark;
 }
+
+/* Command Center assistant HUD alignment */
+.mx-command-center .mx-ai-assistant {
+  border: 1px solid rgba(34, 211, 238, 0.22) !important;
+  border-radius: 0.9rem !important;
+  background: rgba(2, 10, 14, 0.22) !important;
+  box-shadow: none !important;
+  color: rgba(226, 232, 240, 0.96);
+  backdrop-filter: blur(3px) saturate(1.05) !important;
+  -webkit-backdrop-filter: blur(3px) saturate(1.05) !important;
+}
+
+.mx-command-center .mx-ai-assistant > .shrink-0 {
+  border-color: rgba(34, 211, 238, 0.16) !important;
+  padding: 0.8rem !important;
+  background: rgba(0, 8, 12, 0.14);
+}
+
+.mx-command-center .mx-ai-assistant h2 {
+  color: rgba(34, 211, 238, 0.98) !important;
+  font-size: 0.78rem !important;
+  line-height: 1;
+  letter-spacing: 0.14em !important;
+}
+
+.mx-command-center .mx-ai-assistant h2 svg {
+  width: 1.05rem !important;
+  height: 1.05rem !important;
+  color: rgb(103, 232, 249) !important;
+}
+
+.mx-command-center .mx-ai-assistant h2 + p {
+  margin-top: 0.32rem !important;
+  color: rgba(110, 231, 183, 0.88) !important;
+  font-size: 0.64rem !important;
+  letter-spacing: 0.16em !important;
+}
+
+.mx-command-center .mx-ai-assistant h2 + p + p {
+  margin-top: 0.18rem;
+  color: rgba(148, 163, 184, 0.88) !important;
+  font-size: 0.68rem !important;
+}
+
+.mx-command-center .mx-ai-assistant .rounded-full.border.border-cyan-400\/20 {
+  border-color: rgba(34, 211, 238, 0.28) !important;
+  background: rgba(34, 211, 238, 0.08);
+  padding: 0.28rem 0.55rem !important;
+  color: rgba(165, 243, 252, 0.96) !important;
+  font-size: 0.62rem !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mx-command-center .mx-ai-composer {
+  border-color: rgba(34, 211, 238, 0.14) !important;
+  background: rgba(0, 8, 12, 0.18) !important;
+  padding: 0.65rem !important;
+}
+
+.mx-command-center .mx-ai-composer .flex.items-center {
+  gap: 0.55rem !important;
+}
+
+.mx-command-center .mx-ai-input {
+  height: 2.35rem !important;
+  border-color: rgba(34, 211, 238, 0.18) !important;
+  background: rgba(0, 8, 12, 0.28) !important;
+  padding-inline: 0.85rem !important;
+  color: rgba(248, 250, 252, 0.96) !important;
+  font-size: 0.76rem !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.mx-command-center .mx-ai-input::placeholder {
+  color: rgba(148, 163, 184, 0.72) !important;
+}
+
+.mx-command-center .mx-ai-composer button[type="submit"] {
+  width: 2.35rem !important;
+  height: 2.35rem !important;
+  background: rgba(34, 211, 238, 0.92) !important;
+  color: rgb(2, 8, 12) !important;
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.18) !important;
+}
+
+.mx-command-center .mx-ai-composer button[type="submit"] svg {
+  width: 1rem !important;
+  height: 1rem !important;
+}
+
+.mx-command-center .mx-ai-composer p {
+  margin-top: 0.42rem !important;
+  color: rgba(100, 116, 139, 0.95) !important;
+  font-size: 0.58rem !important;
+}
+
+.mx-command-center .mx-ai-body {
+  gap: 0 !important;
+  padding: 0.65rem !important;
+}
+
+.mx-command-center .mx-ai-body > * + * {
+  margin-top: 0.55rem !important;
+}
+
+.mx-command-center .mx-ai-message {
+  border-color: rgba(34, 211, 238, 0.14) !important;
+  border-radius: 0.65rem !important;
+  background: rgba(0, 8, 12, 0.2) !important;
+  padding: 0.72rem !important;
+  color: rgba(226, 232, 240, 0.96) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(2px) saturate(1.03);
+  -webkit-backdrop-filter: blur(2px) saturate(1.03);
+}
+
+.mx-command-center .mx-ai-message-user {
+  border: 1px solid rgba(52, 211, 153, 0.22) !important;
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: rgba(236, 253, 245, 0.98) !important;
+}
+
+.mx-command-center .mx-ai-message-title {
+  margin-bottom: 0.42rem !important;
+  color: rgba(34, 211, 238, 0.94) !important;
+  font-size: 0.66rem !important;
+  line-height: 1;
+  letter-spacing: 0.13em !important;
+}
+
+.mx-command-center .mx-ai-message-content {
+  color: rgba(226, 232, 240, 0.94) !important;
+  font-size: 0.76rem !important;
+  line-height: 1.48 !important;
+}
+
+.mx-command-center .mx-ai-message-content p,
+.mx-command-center .mx-ai-message-content li {
+  color: rgba(226, 232, 240, 0.94);
+}
+
+.mx-command-center .mx-ai-message-content .text-slate-300,
+.mx-command-center .mx-ai-message-content .text-slate-400 {
+  color: rgba(148, 163, 184, 0.9) !important;
+}
+
+.mx-command-center .mx-ai-number-list {
+  margin-top: 0.55rem !important;
+  font-size: 0.76rem;
+}
+
+.mx-command-center .mx-ai-number-list span {
+  color: rgba(110, 231, 183, 0.9) !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 800;
+}
+
+.mx-command-center .mx-ai-shortcut {
+  min-height: 2.55rem !important;
+  border-color: rgba(34, 211, 238, 0.16) !important;
+  border-radius: 0.65rem !important;
+  background: rgba(0, 8, 12, 0.2) !important;
+  padding: 0.55rem 0.65rem !important;
+  color: rgba(226, 232, 240, 0.95) !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.mx-command-center .mx-ai-shortcut:hover {
+  border-color: rgba(34, 211, 238, 0.34) !important;
+  background: rgba(34, 211, 238, 0.08) !important;
+}
+
+.mx-command-center .mx-ai-shortcut svg {
+  width: 1rem !important;
+  height: 1rem !important;
+  color: rgb(103, 232, 249) !important;
+}
+
+.mx-command-center .mx-ai-body .grid.gap-2.sm\:grid-cols-2 {
+  gap: 0.5rem !important;
+}
+
+.mx-command-center .mx-ai-body .rounded-xl,
+.mx-command-center .mx-ai-body .rounded-2xl {
+  border-radius: 0.65rem !important;
+}
+
+.mx-command-center .mx-ai-body button:not(.mx-ai-shortcut):not([type="submit"]) {
+  border-color: rgba(34, 211, 238, 0.18) !important;
+  background: rgba(0, 8, 12, 0.2) !important;
+  padding: 0.48rem 0.7rem !important;
+  color: rgba(226, 232, 240, 0.95) !important;
+  font-size: 0.72rem !important;
+  box-shadow: none !important;
+}
+
+.mx-command-center .mx-ai-body button:not(.mx-ai-shortcut):not([type="submit"]):hover {
+  border-color: rgba(34, 211, 238, 0.34) !important;
+  background: rgba(34, 211, 238, 0.08) !important;
+}
+
+.mx-command-center .mx-ai-body .border-emerald-400\/20,
+.mx-command-center .mx-ai-body .border-emerald-400\/25,
+.mx-command-center .mx-ai-body .border-cyan-400\/20 {
+  border-color: rgba(34, 211, 238, 0.16) !important;
+}
+
+.mx-command-center .mx-ai-body .bg-emerald-400\/10,
+.mx-command-center .mx-ai-body .bg-slate-950\/70,
+.mx-command-center .mx-ai-body .bg-slate-950\/85,
+.mx-command-center .mx-ai-body .bg-slate-900\/75 {
+  background-color: rgba(0, 8, 12, 0.2) !important;
+}

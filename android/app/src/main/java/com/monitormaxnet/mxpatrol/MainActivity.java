@@ -64,6 +64,7 @@ public class MainActivity extends BridgeActivity {
     private static final int VOICE_RECORDING_KEY_CODE = KeyEvent.KEYCODE_VOLUME_DOWN;
     private static final int VOICE_RECORDING_MAX_MS = 60_000;
     private static final int VOICE_RECORDING_DELETE_GRACE_MS = 2 * 60_000;
+    private static final int VOICE_RECORDING_MIN_MS = 1_000;
     private final SparseLongArray keyDownTimes = new SparseLongArray();
     private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private boolean incidentPhotoCaptureInProgress = false;
@@ -399,9 +400,9 @@ public class MainActivity extends BridgeActivity {
             emitVoiceRecordingStatus("stopped", base64, durationMs, reason);
         } catch (Exception error) {
             Log.w(TAG, "Voice recording stop failed", error);
-            emitVoiceRecordingError("recording_stop_failed");
+            emitVoiceRecordingError(durationMs < VOICE_RECORDING_MIN_MS ? "too_short" : "recording_stop_failed");
         } finally {
-            scheduleVoiceRecordingDelete(completedFile);
+            deleteVoiceRecordingFile(completedFile);
         }
 
     }
@@ -442,6 +443,14 @@ public class MainActivity extends BridgeActivity {
         }, VOICE_RECORDING_DELETE_GRACE_MS);
     }
 
+    private void deleteVoiceRecordingFile(File file) {
+        // Audio bytes are handed to the web layer (which queues offline), so the cache file is removed right away to prevent re-upload on restart.
+        if (file != null && file.exists() && !file.delete()) {
+            Log.w(TAG, "Failed to delete voice temp file: " + file.getAbsolutePath());
+            scheduleVoiceRecordingDelete(file);
+        }
+    }
+
     private void emitPendingVoiceRecordings() {
         File directory = new File(getCacheDir(), "voice-recordings");
         File[] files = directory.listFiles((dir, name) -> name != null && name.endsWith(".m4a"));
@@ -453,8 +462,8 @@ public class MainActivity extends BridgeActivity {
                 byte[] bytes = readVoiceRecordingBytes(file);
                 String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
                 long ageMs = Math.max(0, System.currentTimeMillis() - file.lastModified());
+                deleteVoiceRecordingFile(file);
                 emitVoiceRecordingStatus("stopped", base64, Math.min(ageMs, VOICE_RECORDING_MAX_MS), "recovered");
-                scheduleVoiceRecordingDelete(file);
             } catch (Exception error) {
                 Log.w(TAG, "Failed to recover pending voice recording", error);
             }

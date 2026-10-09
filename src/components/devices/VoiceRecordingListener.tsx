@@ -65,6 +65,10 @@ export default function VoiceRecordingListener() {
 
       if (detail.status === "error") {
         const reason = detail.reason || "unknown";
+        if (reason === "too_short") {
+          toast.info("Hold Volume Down to record a voice message");
+          return;
+        }
         console.warn("[VoiceRecording] recording error " + reason);
         window.dispatchEvent(new CustomEvent("mxpatrol:voice-feedback", {
           detail: {

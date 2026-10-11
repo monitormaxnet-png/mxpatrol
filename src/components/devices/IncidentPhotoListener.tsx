@@ -28,6 +28,7 @@ export default function IncidentPhotoListener() {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
 
     const handleIncidentPhoto = async (event: Event) => {
+      if (isBiometricTestModeActive()) return;
       const detail = parseIncidentPhotoEvent(event);
       if (!detail) return;
 

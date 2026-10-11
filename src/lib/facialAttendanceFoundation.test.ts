@@ -92,4 +92,45 @@ describe('AI facial attendance foundation', () => {
     expect(commandCenter).toContain('Save Label');
   });
 
+
+  it('exposes RG360 biometric test mode without double-routing Volume Up photos', () => {
+    const scanner = read('src/pages/NFCScanner.tsx');
+    const incidentListener = read('src/components/devices/IncidentPhotoListener.tsx');
+    const biometricListener = read('src/components/devices/BiometricTestCaptureListener.tsx');
+    const css = read('src/index.css');
+
+    expect(scanner).toContain('biometricTestAvailable = isNativeScanner && devicePaired && !scannerBlocked');
+    expect(scanner).toContain('Biometric Test');
+    expect(scanner).toContain('BIOMETRIC TEST MODE');
+    expect(scanner).toContain('PRESS VOLUME UP TO CAPTURE FACE');
+    expect(scanner).toContain('BACK TO SCANNER');
+    expect(scanner).toContain('setBiometricTestMode(true)');
+    expect(scanner).toContain('setBiometricTestMode(false)');
+    expect(scanner).toContain('pageshow');
+    expect(scanner).toContain('visibilitychange');
+
+    expect(incidentListener).toContain('if (isBiometricTestModeActive()) return;');
+    expect(incidentListener.indexOf('if (isBiometricTestModeActive()) return;')).toBeLessThan(incidentListener.indexOf('device-incident-photo'));
+    expect(biometricListener).toContain('biometric_test_mode: true');
+    expect(biometricListener).toContain('useOfflineBiometricTestQueue');
+    expect(css).toContain('.rg360-biometric-action');
+  });
+
+  it('connects the Web AI Assistant to biometric management enrollment testing attendance and reviews', () => {
+    const menus = read('src/lib/assistantMenus.ts');
+    const commandCenter = read('src/pages/CommandCenter.tsx');
+
+    expect(menus).toContain('Biometric Management');
+    expect(menus).toContain('attendance_biometric_management');
+    expect(commandCenter).toContain('function BiometricManagementPanel');
+    expect(commandCenter).toContain('TTECH | MX PATROL');
+    expect(commandCenter).toContain('Register Facial Biometric');
+    expect(commandCenter).toContain("supabase.functions.invoke('ttech-biometric-enrollment'");
+    expect(commandCenter).toContain("action: 'enroll'");
+    expect(commandCenter).toContain("action: 'revoke'");
+    expect(commandCenter).toContain("from('biometric_test_captures')");
+    expect(commandCenter).toContain("from('attendance_events')");
+    expect(commandCenter).toContain("storage.from('attendance-evidence').createSignedUrl");
+    expect(commandCenter).toContain('Automatic attendance approval remains disabled');
+  });
 });

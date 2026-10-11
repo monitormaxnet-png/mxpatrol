@@ -25,6 +25,7 @@ import { describeScanResult, formatProgress, type StructuredScanResult } from "@
 import DataLogFormOverlay from "@/components/scanner/DataLogFormOverlay";
 import HardwareSosListener from "@/components/devices/HardwareSosListener";
 import TTechMxPatrolLogo from "@/components/branding/TTechMxPatrolLogo";
+import { isBiometricTestModeActive, setBiometricTestMode } from "@/components/devices/BiometricTestCaptureListener";
 
 const FaceVerification = lazy(() => import("@/components/scanner/FaceVerification"));
 
@@ -96,6 +97,7 @@ type PairingCodeResponse = { ok?: boolean; display_code?: string; pairing_code?:
 const NFCScanner = () => {
   const queryClient = useQueryClient();
   const { syncQueue, syncing, pendingCount } = useOfflineScanQueue();
+  const [biometricTestMode, setBiometricTestModeState] = useState(false);
 
   const [gps, setGps] = useState<ScanGps>(null);
   const [gpsStatus, setGpsStatus] = useState<"idle" | "capturing" | "available" | "pending" | "unavailable">("idle");
@@ -119,6 +121,20 @@ const NFCScanner = () => {
     result: ScanValidationResult;
     scanData: FaceScanData;
   } | null>(null);
+
+  useEffect(() => {
+    setBiometricTestMode(false);
+    setBiometricTestModeState(false);
+    const syncBiometricMode = () => setBiometricTestModeState(isBiometricTestModeActive());
+    window.addEventListener("mxpatrol:biometric-test-mode", syncBiometricMode);
+    window.addEventListener("pageshow", syncBiometricMode);
+    document.addEventListener("visibilitychange", syncBiometricMode);
+    return () => {
+      window.removeEventListener("mxpatrol:biometric-test-mode", syncBiometricMode);
+      window.removeEventListener("pageshow", syncBiometricMode);
+      document.removeEventListener("visibilitychange", syncBiometricMode);
+    };
+  }, []);
 
   // Online/offline tracking
   useEffect(() => {
@@ -153,6 +169,7 @@ const NFCScanner = () => {
   });
   const scannerBlocked = restrictedState.kind !== "active";
   const scannerBlockedStatus = restrictedStateToScannerStatus(restrictedState.kind);
+  const biometricTestAvailable = isNativeScanner && devicePaired && !scannerBlocked;
 
   const { data: pairingRequest = null } = useQuery({
     queryKey: ["device-pairing-code", localDeviceIdentifier, restrictedState.kind],
@@ -589,6 +606,20 @@ const NFCScanner = () => {
 
   const { errorMessage: nfcErrorMessage, startScanning: startNfcScanning, stopScanning: stopNfcScanning, status: nfcStatus, supported: nfcSupported } = nfcReader;
 
+  const openBiometricTestMode = useCallback(() => {
+    setBiometricTestMode(true);
+    setBiometricTestModeState(true);
+    setScannerStatus("idle");
+    toast.info("BIOMETRIC TEST MODE: press Volume Up to capture face");
+  }, []);
+
+  const closeBiometricTestMode = useCallback(() => {
+    setBiometricTestMode(false);
+    setBiometricTestModeState(false);
+    setScannerStatus(nfcSupported ? "scanning" : "idle");
+    toast.info("Scanner mode restored");
+  }, [nfcSupported]);
+
   useEffect(() => {
     void ensureLocationPermission().catch(() => {
       setGpsStatus("pending");
@@ -836,6 +867,17 @@ const NFCScanner = () => {
               CANCEL VERIFICATION
             </Button>
           </section>
+        ) : biometricTestMode ? (
+          <section className="rg360-face-panel rg360-biometric-test-panel" aria-label="Biometric test mode">
+            <TTechMxPatrolLogo variant="header" priority className="rg360-logo" />
+            <div className="rg360-state-icon rg360-tone-info"><ShieldAlert className="h-12 w-12" /></div>
+            <h1>BIOMETRIC TEST MODE</h1>
+            <p>PRESS VOLUME UP TO CAPTURE FACE</p>
+            <small>Captures are saved for supervisor review only. Attendance approval remains disabled.</small>
+            <Button type="button" className="rg360-secondary-action" onClick={closeBiometricTestMode}>
+              BACK TO SCANNER
+            </Button>
+          </section>
         ) : pendingDataLog?.result.data_log_form && dataLogOpen ? (
           <DataLogFormOverlay
             form={pendingDataLog.result.data_log_form}
@@ -868,6 +910,11 @@ const NFCScanner = () => {
               feedbackDetail={latestFeedback.detail}
             />
             <PatrolContextCard patrol={activePatrol} latestFeedback={latestFeedback.detail} />
+            {biometricTestAvailable ? (
+              <Button type="button" className="rg360-biometric-action" onClick={openBiometricTestMode}>
+                Biometric Test
+              </Button>
+            ) : null}
 
             <StatusFooter
               gpsLabel={gpsLabel}

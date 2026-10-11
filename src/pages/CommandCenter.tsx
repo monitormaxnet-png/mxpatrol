@@ -1623,12 +1623,14 @@ function AttendanceFoundationPanel({ action, site }: { action: string; site: str
   const labels: Record<string, string> = {
     attendance_overview: 'Attendance Overview',
     attendance_enrollment: 'Guard Biometric Enrollment',
+    attendance_biometric_management: 'Biometric Management',
     attendance_biometric_testing: 'Biometric Test Evaluation',
     attendance_events: 'Live Attendance Events',
     attendance_reviews: 'Attendance Reviews',
     attendance_shifts: 'Shift Management',
     attendance_reports: 'Attendance Reports',
   };
+  if (action === 'attendance_biometric_management') return <BiometricManagementPanel site={site} />;
   if (action === 'attendance_biometric_testing') return <BiometricEvaluationPanel site={site} />;
   return <div className='space-y-3'>
     <p className='text-slate-300'><b>{labels[action] ?? 'Attendance Management'}</b> is available for <b>{site}</b> as a secure foundation module.</p>
@@ -1641,6 +1643,185 @@ function AttendanceFoundationPanel({ action, site }: { action: string; site: str
     <p className='text-xs text-slate-500'>Production biometric identification is intentionally disabled until MXPATROL_BIOMETRIC_PROVIDER and provider credentials are configured server-side.</p>
   </div>;
 }
+function BiometricManagementPanel({ site }: { site: string }) {
+  const [activeView, setActiveView] = useState<'enrollment' | 'testing' | 'attendance' | 'reviews'>('enrollment');
+  const [selectedGuardId, setSelectedGuardId] = useState('');
+  const [sampleFiles, setSampleFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [reviewPhotoUrl, setReviewPhotoUrl] = useState<string | null>(null);
+
+  const guards = useQuery({
+    queryKey: ['biometric_management_guards'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('guards').select('id, full_name, employee_id, is_active, biometric_enrollment_status, biometric_enrolled_at').eq('is_active', true).order('full_name').limit(250);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const enrollments = useQuery({
+    queryKey: ['biometric_management_enrollments'],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('ttech-biometric-enrollment', { body: { action: 'status' } });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return ((data as any)?.enrollments ?? []) as any[];
+    },
+  });
+  const testCaptures = useQuery({
+    queryKey: ['biometric_management_test_captures'],
+    queryFn: async () => {
+      const client = supabase as any;
+      const { data, error } = await client.from('biometric_test_captures').select('id, test_capture_identifier, candidate_guard_id, actual_guard_id, similarity_score, image_quality_status, outcome_status, review_outcome, processing_duration_ms, captured_at, device_identifier').order('captured_at', { ascending: false }).limit(100);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const attendanceEvents = useQuery({
+    queryKey: ['biometric_management_attendance_events'],
+    queryFn: async () => {
+      const client = supabase as any;
+      const { data, error } = await client.from('attendance_events').select('id, guard_id, device_identifier, event_type, verification_status, review_status, captured_at, photo_reference, provider_name, sites(name), guards(full_name)').order('captured_at', { ascending: false }).limit(80);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const attendanceReviews = useQuery({
+    queryKey: ['biometric_management_attendance_reviews'],
+    queryFn: async () => {
+      const client = supabase as any;
+      const { data, error } = await client.from('attendance_events').select('id, guard_id, device_identifier, event_type, verification_status, review_status, captured_at, photo_reference, candidate_summary, provider_result, sites(name), guards(full_name)').eq('review_status', 'pending').order('captured_at', { ascending: false }).limit(50);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const guardRows = (guards.data ?? []) as any[];
+  const enrollmentRows = (enrollments.data ?? []) as any[];
+  const testRows = (testCaptures.data ?? []) as any[];
+  const attendanceRows = (attendanceEvents.data ?? []) as any[];
+  const reviewRows = (attendanceReviews.data ?? []) as any[];
+  const enrolledGuardIds = new Set(enrollmentRows.filter((row) => row.enrollment_status === 'active').map((row) => String(row.guard_id)));
+  const overview: Array<[string, number | string]> = [
+    ['Enrolled Guards', enrolledGuardIds.size],
+    ['Pending Enrollment', guardRows.filter((row) => !enrolledGuardIds.has(String(row.id))).length],
+    ['Test Captures', testRows.length],
+    ['Pending Reviews', reviewRows.length],
+  ];
+
+  const readFileBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read image'));
+    reader.readAsDataURL(file);
+  });
+
+  const refreshAll = async () => {
+    await Promise.all([guards.refetch(), enrollments.refetch(), testCaptures.refetch(), attendanceEvents.refetch(), attendanceReviews.refetch()]);
+  };
+
+  const enrollGuard = async () => {
+    setNotice(null);
+    if (!selectedGuardId) return setNotice('Select a guard before enrollment.');
+    if (sampleFiles.length < 2) return setNotice('Upload at least two supervised JPEG enrollment samples.');
+    setBusy(true);
+    try {
+      const samples = await Promise.all(sampleFiles.slice(0, 6).map(async (file) => ({ face_photo_base64: await readFileBase64(file), captured_at: new Date().toISOString() })));
+      const { data, error } = await supabase.functions.invoke('ttech-biometric-enrollment', { body: { action: 'enroll', guard_id: selectedGuardId, samples, privacy_notice_version: 'mxpatrol-biometric-test-v1', lawful_basis: 'supervised_test_consent', retention_policy: 'review_required_testing' } });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      setNotice('Enrollment saved for supervised biometric testing.');
+      setSampleFiles([]);
+      await refreshAll();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Enrollment failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeEnrollment = async (enrollmentId: string) => {
+    if (!confirm('Revoke this biometric enrollment?')) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('ttech-biometric-enrollment', { body: { action: 'revoke', enrollment_id: enrollmentId, reason: 'revoked_from_biometric_management' } });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      setNotice('Enrollment revoked.');
+      await refreshAll();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Revocation failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openEvidence = async (path?: string | null) => {
+    setReviewPhotoUrl(null);
+    if (!path) return setNotice('No attendance evidence photo is attached.');
+    const { data, error } = await supabase.storage.from('attendance-evidence').createSignedUrl(path, 60 * 5);
+    if (error || !data?.signedUrl) return setNotice(error?.message ?? 'Could not open private attendance evidence.');
+    setReviewPhotoUrl(data.signedUrl);
+  };
+
+  return <div className='space-y-4 text-sm'>
+    <div>
+      <p className='text-[11px] font-black uppercase tracking-[0.14em] text-cyan-300'>TTECH | MX PATROL</p>
+      <h3 className='mt-1 text-lg font-black uppercase tracking-[0.08em] text-white'>Biometric Management</h3>
+      <p className='mt-1 text-xs text-slate-400'>Connected to the existing TTECH native enrollment, test capture, attendance and review tables. Automatic attendance approval remains disabled.</p>
+    </div>
+    <MetricGrid items={overview} />
+    <div className='flex flex-wrap gap-2'>
+      {[['enrollment', 'Enrollment'], ['testing', 'Testing'], ['attendance', 'Attendance'], ['reviews', 'Reviews']].map(([key, label]) => <button key={key} type='button' onClick={() => setActiveView(key as any)} className={(activeView === key ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em]'}>{label}</button>)}
+    </div>
+    {notice ? <p className='rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3 text-xs text-cyan-100'>{notice}</p> : null}
+    {activeView === 'enrollment' ? <section className='space-y-3 rounded-xl border border-white/10 bg-black/20 p-3'>
+      <div><b className='text-cyan-200'>Guard Enrollment</b><p className='mt-1 text-xs text-slate-400'>Select an existing guard, upload 2-6 supervised JPEG samples, and call the existing ttech-biometric-enrollment Edge Function.</p></div>
+      <div className='grid gap-2 md:grid-cols-[1fr_1fr_auto]'>
+        <select value={selectedGuardId} onChange={(event) => setSelectedGuardId(event.target.value)} className='rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-white'>
+          <option value=''>Select guard</option>
+          {guardRows.map((guard) => <option key={guard.id} value={guard.id}>{guard.full_name ?? guard.employee_id ?? guard.id} - {guard.biometric_enrollment_status ?? 'not_enrolled'}</option>)}
+        </select>
+        <input type='file' accept='image/jpeg,image/jpg' multiple onChange={(event) => setSampleFiles(Array.from(event.target.files ?? []).slice(0, 6))} className='rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-cyan-400 file:px-2 file:py-1 file:text-xs file:font-bold file:text-black' />
+        <button type='button' disabled={busy} onClick={enrollGuard} className='rounded-lg bg-cyan-400 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-black disabled:opacity-50'>Register Facial Biometric</button>
+      </div>
+      <div className='space-y-2'>
+        {enrollmentRows.length === 0 ? <p className='text-xs text-slate-400'>No biometric enrollments found.</p> : enrollmentRows.slice(0, 12).map((row) => <div key={row.id} className='flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-slate-950/55 p-3 text-xs'>
+          <span><b className='text-white'>{String(row.guard_id).slice(0, 8)}</b><span className='ml-2 text-slate-400'>{row.provider_name} · {row.sample_count ?? 0} samples · {row.enrollment_status}</span></span>
+          {row.enrollment_status === 'active' ? <button type='button' disabled={busy} onClick={() => revokeEnrollment(String(row.id))} className='rounded-md border border-rose-400/30 px-2 py-1 font-bold text-rose-200'>Revoke</button> : null}
+        </div>)}
+      </div>
+    </section> : null}
+    {activeView === 'testing' ? <section className='space-y-2 rounded-xl border border-white/10 bg-black/20 p-3'>
+      <b className='text-cyan-200'>Biometric Testing</b>
+      {testRows.length === 0 ? <p className='text-xs text-slate-400'>No RG360 biometric test captures yet.</p> : testRows.slice(0, 14).map((row) => <div key={row.id} className='grid gap-2 rounded-lg border border-white/10 bg-slate-950/55 p-3 text-xs md:grid-cols-[1.2fr_1fr_1fr_1fr]'>
+        <span><b>{row.test_capture_identifier}</b><br /><span className='text-slate-500'>{assistantDate(row.captured_at)} {assistantTime(row.captured_at)}</span></span>
+        <span>Candidate<br /><b className='text-cyan-200'>{row.candidate_guard_id ? String(row.candidate_guard_id).slice(0, 8) : 'none'}</b></span>
+        <span>Score<br /><b>{row.similarity_score == null ? '-' : Number(row.similarity_score).toFixed(3)}</b></span>
+        <span>Status<br /><b>{String(row.outcome_status ?? 'review_required').replace(/_/g, ' ')}</b></span>
+      </div>)}
+    </section> : null}
+    {activeView === 'attendance' ? <section className='space-y-2 rounded-xl border border-white/10 bg-black/20 p-3'>
+      <b className='text-cyan-200'>Attendance Attempts</b>
+      {attendanceRows.length === 0 ? <p className='text-xs text-slate-400'>No attendance attempts found.</p> : attendanceRows.slice(0, 14).map((row) => <div key={row.id} className='grid gap-2 rounded-lg border border-white/10 bg-slate-950/55 p-3 text-xs md:grid-cols-[1fr_1fr_1fr_1fr]'>
+        <span><b>{row.guards?.full_name ?? String(row.guard_id ?? 'Unknown').slice(0, 8)}</b><br /><span className='text-slate-500'>{row.sites?.name ?? site}</span></span>
+        <span>{row.event_type}<br /><b>{assistantDate(row.captured_at)} {assistantTime(row.captured_at)}</b></span>
+        <span>Device<br /><b>{row.device_identifier}</b></span>
+        <span>Verification<br /><b className={row.verification_status === 'verified' ? 'text-emerald-200' : 'text-amber-200'}>{String(row.verification_status).replace(/_/g, ' ')}</b></span>
+      </div>)}
+    </section> : null}
+    {activeView === 'reviews' ? <section className='space-y-2 rounded-xl border border-white/10 bg-black/20 p-3'>
+      <b className='text-cyan-200'>Supervisor Reviews</b>
+      {reviewPhotoUrl ? <img src={reviewPhotoUrl} alt='Private attendance evidence' className='max-h-56 rounded-lg border border-white/10 object-contain' /> : null}
+      {reviewRows.length === 0 ? <p className='text-xs text-slate-400'>No pending biometric attendance reviews.</p> : reviewRows.slice(0, 12).map((row) => <div key={row.id} className='flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/55 p-3 text-xs'>
+        <span><b>{row.guards?.full_name ?? String(row.guard_id ?? 'Unknown').slice(0, 8)}</b><span className='ml-2 text-slate-400'>{row.device_identifier} · {String(row.verification_status).replace(/_/g, ' ')}</span></span>
+        <button type='button' onClick={() => openEvidence(row.photo_reference)} className='rounded-md border border-cyan-400/30 px-2 py-1 font-bold text-cyan-200'>Open Evidence</button>
+      </div>)}
+    </section> : null}
+  </div>;
+}
+
 function BiometricEvaluationPanel({ site }: { site: string }) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [selectedGuardByCapture, setSelectedGuardByCapture] = useState<Record<string, string>>({});

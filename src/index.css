@@ -3552,3 +3552,33 @@
 .mx-command-center .mx-ai-body .bg-slate-900\/75 {
   background-color: rgba(0, 8, 12, 0.2) !important;
 }
+
+.rg360-biometric-action {
+  align-self: center;
+  min-height: 34px;
+  padding: 0 18px;
+  border: 1px solid rgba(34, 211, 238, 0.42);
+  border-radius: 999px;
+  background: rgba(2, 12, 18, 0.58);
+  color: rgb(103, 232, 249);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.12);
+}
+
+.rg360-biometric-action:hover,
+.rg360-biometric-action:focus-visible {
+  border-color: rgba(34, 211, 238, 0.72);
+  background: rgba(8, 31, 39, 0.72);
+  color: white;
+}
+
+.rg360-biometric-test-panel small {
+  max-width: 22rem;
+  color: rgba(226, 232, 240, 0.68);
+  text-align: center;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}

@@ -907,8 +907,8 @@ export default function CommandCenter() {
             </div>
           </header>
 
-          <main className='mx-command-zones grid flex-1 gap-4 xl:grid-cols-[minmax(22rem,27rem)_minmax(22rem,1fr)_minmax(20rem,25rem)]'>
-            <section className='mx-ai-assistant mx-command-left flex min-h-[calc(100vh-7.5rem)] flex-col overflow-hidden'>
+          <main className='mx-command-zones grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(22rem,27rem)_minmax(22rem,1fr)_minmax(20rem,25rem)]'>
+            <section className='mx-ai-assistant mx-command-left flex h-[calc(100vh-7.5rem)] min-h-0 flex-col overflow-hidden'>
               <div className='shrink-0 border-b border-white/10 px-4 py-3'>
                 <div className='flex items-start justify-between gap-3'>
                   <div>
@@ -943,9 +943,9 @@ export default function CommandCenter() {
               </div>
             </section>
 
-            <section className='mx-command-center-stage hidden min-h-[calc(100vh-7.5rem)] xl:block' aria-label='MX Patrol background video focus' />
+            <section className='mx-command-center-stage hidden h-[calc(100vh-7.5rem)] min-h-0 xl:block' aria-label='MX Patrol background video focus' />
 
-            <aside className='mx-command-right min-h-[calc(100vh-7.5rem)] overflow-y-auto px-1 py-1'>
+            <aside className='mx-command-right h-[calc(100vh-7.5rem)] min-h-0 overflow-y-auto px-1 py-1'>
               <section className='mx-ops-rail space-y-5'>
                 <div>
                   <p className='mx-rail-heading'>Operations</p>

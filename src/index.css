@@ -3582,3 +3582,63 @@
   font-size: 0.72rem;
   line-height: 1.5;
 }
+
+/* Command Center assistant internal scrolling */
+.mx-command-center .mx-command-zones {
+  min-height: 0 !important;
+  align-items: stretch !important;
+}
+
+.mx-command-center .mx-command-left,
+.mx-command-center .mx-command-right,
+.mx-command-center .mx-command-center-stage {
+  height: calc(100vh - 7.5rem) !important;
+  min-height: 0 !important;
+  max-height: calc(100vh - 7.5rem) !important;
+}
+
+.mx-command-center .mx-ai-assistant {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.mx-command-center .mx-ai-assistant > .flex.min-h-0.flex-1 {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.mx-command-center .mx-ai-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-color: rgba(34, 211, 238, 0.45) rgba(0, 8, 12, 0.18);
+  scrollbar-width: thin;
+}
+
+.mx-command-center .mx-ai-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mx-command-center .mx-ai-body::-webkit-scrollbar-track {
+  background: rgba(0, 8, 12, 0.18);
+}
+
+.mx-command-center .mx-ai-body::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.38);
+  border-radius: 999px;
+}
+
+@media (max-width: 1279px) {
+  .mx-command-center .mx-command-left {
+    height: min(72vh, 42rem) !important;
+    max-height: min(72vh, 42rem) !important;
+  }
+
+  .mx-command-center .mx-command-right {
+    height: auto !important;
+    max-height: none !important;
+  }
+}

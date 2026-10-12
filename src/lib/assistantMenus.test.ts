@@ -52,6 +52,22 @@ describe("context-aware numeric menu routing", () => {
     expect(resolveAssistantInput(userState(), "8", guard)).toMatchObject({ kind: "unknown" });
   });
 
+  it("attendance management routes biometric management as option 2", () => {
+    const attendanceMenu = ASSISTANT_MENUS.management_attendance.items.map((item) => item.label);
+    expect(attendanceMenu).toEqual([
+      "Attendance Overview",
+      "Biometric Management",
+      "Biometric Test Evaluation",
+      "Live Attendance Events",
+      "Attendance Reviews",
+      "Shift Management",
+      "Attendance Reports",
+      "Back",
+    ]);
+    expect(resolveAssistantInput(mgmtState("management_attendance"), "2", manager)).toMatchObject({ kind: "action", action: "attendance_biometric_management" });
+    expect(resolveAssistantInput(mgmtState("management_attendance"), "8", manager)).toMatchObject({ kind: "menu", menuKey: MANAGEMENT_HOME });
+  });
+
   it("numeric meaning changes after submenu navigation", () => {
     const opened = resolveAssistantInput(mgmtState(), "2", manager);
     const before = resolveAssistantInput(mgmtState(), "2", manager);

@@ -166,7 +166,6 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
     parent: MANAGEMENT_HOME,
     items: [
       { label: 'Attendance Overview', action: 'attendance_overview' },
-      { label: 'Guard Biometric Enrollment', action: 'attendance_enrollment' },
       { label: 'Biometric Management', action: 'attendance_biometric_management' },
       { label: 'Biometric Test Evaluation', action: 'attendance_biometric_testing' },
       { label: 'Live Attendance Events', action: 'attendance_events' },
@@ -243,7 +242,6 @@ const MANAGEMENT_ONLY_ACTIONS = new Set([
   'view_whatsapp_numbers',
   'revoke_whatsapp_access',
   'attendance_overview',
-  'attendance_enrollment',
   'attendance_biometric_management',
   'attendance_biometric_testing',
   'attendance_events',

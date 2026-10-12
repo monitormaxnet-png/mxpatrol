@@ -61,7 +61,6 @@ type AssistantLayoutSource = 'auto' | 'manual';
 const EXPANDED_WORKSPACE_ACTIONS = new Set([
   'attendance_biometric_management',
   'attendance_biometric_testing',
-  'attendance_enrollment',
   'attendance_reviews',
   'attendance_reports',
   'saved_reports',
@@ -766,7 +765,7 @@ export default function CommandCenter() {
       const result = await runManagementAction({ action: 'revoke_whatsapp_authorization', input: { site_id: selectedSiteId, authorization_id: authorizationId } });
       return result.summary;
     }} />);
-    if (action.startsWith('attendance_')) return addAssistant('AI FACIAL ATTENDANCE - ' + selectedSite, <AttendanceFoundationPanel action={action} site={selectedSite} />);
+    if (action.startsWith('attendance_')) return addAssistant('AI FACIAL ATTENDANCE - ' + selectedSite, <AttendanceFoundationPanel action={action} site={selectedSite} siteId={selectedSiteId} companyId={activityCompanyId} />);
     if (action === 'routes' || action === 'schedules') return addAssistant(action === 'routes' ? 'PATROL ROUTES' : 'PATROL SCHEDULES', <ConfigList kind={action} siteId={selectedSiteId} />);
     if (action.startsWith('report:')) {
       const period = action.slice(7) as keyof typeof PERIODS;
@@ -1707,10 +1706,9 @@ function CompanyList({ rows, loading, selectedId, onSelect }: { rows: AssistantC
   return <div className='space-y-2'>{rows.slice(0, 20).map((company, index) => <button key={company.id} type='button' onClick={() => onSelect(company)} className={(company.id === selectedId ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-slate-950/70 text-slate-300') + ' grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3 py-2 text-left'}><span className='font-mono text-emerald-300'>{index + 1}.</span><span className='min-w-0'><span className='block truncate font-bold'>{company.name}</span><span className='block text-xs text-slate-400'>{company.status ?? 'active'}</span></span><span className='text-xs text-slate-400'>Sites: {company.site_count ?? 0}</span></button>)}</div>;
 }
 function MetricGrid({ items }: { items: Array<[string, number | string]> }) { return <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>{items.map(([label, value]) => <div key={label} className='rounded-xl border border-white/10 bg-slate-950/70 p-3'><p className='text-2xl font-black text-emerald-300'>{value}</p><p className='text-xs text-slate-400'>{label}</p></div>)}</div>; }
-function AttendanceFoundationPanel({ action, site }: { action: string; site: string }) {
+function AttendanceFoundationPanel({ action, site, siteId, companyId }: { action: string; site: string; siteId: string | null; companyId: string | null }) {
   const labels: Record<string, string> = {
     attendance_overview: 'Attendance Overview',
-    attendance_enrollment: 'Guard Biometric Enrollment',
     attendance_biometric_management: 'Biometric Management',
     attendance_biometric_testing: 'Biometric Test Evaluation',
     attendance_events: 'Live Attendance Events',
@@ -1718,7 +1716,7 @@ function AttendanceFoundationPanel({ action, site }: { action: string; site: str
     attendance_shifts: 'Shift Management',
     attendance_reports: 'Attendance Reports',
   };
-  if (action === 'attendance_biometric_management') return <BiometricManagementPanel site={site} />;
+  if (action === 'attendance_biometric_management') return <BiometricManagementPanel site={site} siteId={siteId} companyId={companyId} />;
   if (action === 'attendance_biometric_testing') return <BiometricEvaluationPanel site={site} />;
   return <div className='space-y-3'>
     <p className='text-slate-300'><b>{labels[action] ?? 'Attendance Management'}</b> is available for <b>{site}</b> as a secure foundation module.</p>
@@ -1731,9 +1729,11 @@ function AttendanceFoundationPanel({ action, site }: { action: string; site: str
     <p className='text-xs text-slate-500'>Production biometric identification is intentionally disabled until MXPATROL_BIOMETRIC_PROVIDER and provider credentials are configured server-side.</p>
   </div>;
 }
-function BiometricManagementPanel({ site }: { site: string }) {
+function BiometricManagementPanel({ site, siteId, companyId }: { site: string; siteId: string | null; companyId: string | null }) {
   const [activeView, setActiveView] = useState<'enrollment' | 'testing' | 'attendance' | 'reviews'>('enrollment');
   const [selectedGuardId, setSelectedGuardId] = useState('');
+  const [enrollmentMode, setEnrollmentMode] = useState<'existing' | 'new'>('existing');
+  const [newGuard, setNewGuard] = useState({ fullName: '', employeeNumber: '' });
   const [sampleFiles, setSampleFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -1742,7 +1742,7 @@ function BiometricManagementPanel({ site }: { site: string }) {
   const guards = useQuery({
     queryKey: ['biometric_management_guards'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('guards').select('id, full_name, employee_id, is_active, biometric_enrollment_status, biometric_enrolled_at').eq('is_active', true).order('full_name').limit(250);
+      const { data, error } = await supabase.from('guards').select('id, full_name, badge_number, is_active, biometric_enrollment_status, biometric_enrolled_at').eq('is_active', true).order('full_name').limit(250);
       if (error) throw error;
       return data ?? [];
     },
@@ -1808,6 +1808,41 @@ function BiometricManagementPanel({ site }: { site: string }) {
     await Promise.all([guards.refetch(), enrollments.refetch(), testCaptures.refetch(), attendanceEvents.refetch(), attendanceReviews.refetch()]);
   };
 
+  const createBiometricGuard = async () => {
+    setNotice(null);
+    const fullName = newGuard.fullName.trim();
+    const employeeNumber = newGuard.employeeNumber.trim();
+    if (!fullName || !employeeNumber) return setNotice('Full name and employee number are required.');
+    if (!companyId) return setNotice('Select a company or site before registering a guard.');
+    const duplicate = guardRows.find((guard) => String(guard.badge_number ?? '').toLowerCase() === employeeNumber.toLowerCase());
+    if (duplicate) {
+      setSelectedGuardId(String(duplicate.id));
+      setEnrollmentMode('existing');
+      return setNotice('A guard with this employee number already exists. The existing guard is selected for facial enrollment.');
+    }
+    setBusy(true);
+    try {
+      const client = supabase as any;
+      const { data, error } = await client
+        .from('guards')
+        .insert({ company_id: companyId, badge_number: employeeNumber, full_name: fullName, is_active: true, biometric_enrollment_status: 'not_enrolled' })
+        .select('id, full_name, badge_number, biometric_enrollment_status')
+        .single();
+      if (error) throw error;
+      const createdId = String(data?.id ?? '');
+      if (!createdId) throw new Error('Guard registration did not return a guard id.');
+      setSelectedGuardId(createdId);
+      setNewGuard({ fullName: '', employeeNumber: '' });
+      setEnrollmentMode('existing');
+      setNotice('Guard registered as active. Upload supervised facial samples to continue enrollment.');
+      await refreshAll();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Guard registration failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const enrollGuard = async () => {
     setNotice(null);
     if (!selectedGuardId) return setNotice('Select a guard before enrollment.');
@@ -1815,7 +1850,7 @@ function BiometricManagementPanel({ site }: { site: string }) {
     setBusy(true);
     try {
       const samples = await Promise.all(sampleFiles.slice(0, 6).map(async (file) => ({ face_photo_base64: await readFileBase64(file), captured_at: new Date().toISOString() })));
-      const { data, error } = await supabase.functions.invoke('ttech-biometric-enrollment', { body: { action: 'enroll', guard_id: selectedGuardId, samples, privacy_notice_version: 'mxpatrol-biometric-test-v1', lawful_basis: 'supervised_test_consent', retention_policy: 'review_required_testing' } });
+      const { data, error } = await supabase.functions.invoke('ttech-biometric-enrollment', { body: { action: 'enroll', guard_id: selectedGuardId, site_id: siteId, samples, privacy_notice_version: 'mxpatrol-biometric-test-v1', lawful_basis: 'supervised_test_consent', retention_policy: 'review_required_testing' } });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       setNotice('Enrollment saved for supervised biometric testing.');
@@ -1865,19 +1900,36 @@ function BiometricManagementPanel({ site }: { site: string }) {
     </div>
     {notice ? <p className='rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3 text-xs text-cyan-100'>{notice}</p> : null}
     {activeView === 'enrollment' ? <section className='space-y-3 rounded-xl border border-white/10 bg-black/20 p-3'>
-      <div><b className='text-cyan-200'>Guard Enrollment</b><p className='mt-1 text-xs text-slate-400'>Select an existing guard, upload 2-6 supervised JPEG samples, and call the existing ttech-biometric-enrollment Edge Function.</p></div>
-      <div className='grid gap-2 md:grid-cols-[1fr_1fr_auto]'>
+      <div><b className='text-cyan-200'>Enrollment</b><p className='mt-1 text-xs text-slate-400'>Register a new active guard or select an existing guard, then upload 2-6 supervised JPEG samples using the existing ttech-biometric-enrollment Edge Function.</p></div>
+      <div className='flex flex-wrap gap-2'>
+        <button type='button' onClick={() => setEnrollmentMode('new')} className={(enrollmentMode === 'new' ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em]'}>Register New Guard</button>
+        <button type='button' onClick={() => setEnrollmentMode('existing')} className={(enrollmentMode === 'existing' ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em]'}>Select Existing Guard</button>
+      </div>
+      {enrollmentMode === 'new' ? <div className='grid gap-2 rounded-lg border border-cyan-400/15 bg-slate-950/45 p-3 md:grid-cols-2'>
+        <label className='space-y-1 text-xs text-slate-300'>Full name<input type='text' value={newGuard.fullName} onChange={(event) => setNewGuard((prev) => ({ ...prev, fullName: event.target.value }))} className='w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/60' placeholder='Guard full name' /></label>
+        <label className='space-y-1 text-xs text-slate-300'>Employee number<input type='text' value={newGuard.employeeNumber} onChange={(event) => setNewGuard((prev) => ({ ...prev, employeeNumber: event.target.value }))} className='w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/60' placeholder='Employee number' /></label>
+        <div className='rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-400'><span className='block uppercase tracking-[0.12em] text-slate-500'>Assigned company</span><b className='text-slate-200'>{companyId ? 'Current company' : 'Select company/site first'}</b></div>
+        <div className='rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-400'><span className='block uppercase tracking-[0.12em] text-slate-500'>Assigned site</span><b className='text-slate-200'>{siteId ? site : 'Company-level guard'}</b><span className='ml-2 text-emerald-300'>Active</span></div>
+        <button type='button' disabled={busy || !companyId} onClick={createBiometricGuard} className='rounded-lg bg-cyan-400 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-black disabled:opacity-50 md:col-span-2'>Next: Facial Enrollment</button>
+      </div> : null}
+      {enrollmentMode === 'existing' ? <div className='grid gap-2 md:grid-cols-[1fr_auto]'>
         <select value={selectedGuardId} onChange={(event) => setSelectedGuardId(event.target.value)} className='rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-white'>
           <option value=''>Select guard</option>
-          {guardRows.map((guard) => <option key={guard.id} value={guard.id}>{guard.full_name ?? guard.employee_id ?? guard.id} - {guard.biometric_enrollment_status ?? 'not_enrolled'}</option>)}
+          {guardRows.map((guard) => <option key={guard.id} value={guard.id}>{guard.full_name ?? guard.badge_number ?? guard.id} - {guard.badge_number ?? 'no employee number'} - {guard.biometric_enrollment_status ?? 'not_enrolled'}</option>)}
         </select>
+        <span className='rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-400'>{selectedGuardId ? 'Ready for facial samples' : 'Choose a guard'}</span>
+      </div> : null}
+      <div className='grid gap-2 md:grid-cols-[1fr_auto]'>
         <input type='file' accept='image/jpeg,image/jpg' multiple onChange={(event) => setSampleFiles(Array.from(event.target.files ?? []).slice(0, 6))} className='rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-cyan-400 file:px-2 file:py-1 file:text-xs file:font-bold file:text-black' />
-        <button type='button' disabled={busy} onClick={enrollGuard} className='rounded-lg bg-cyan-400 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-black disabled:opacity-50'>Register Facial Biometric</button>
+        <button type='button' disabled={busy} onClick={enrollGuard} className='rounded-lg bg-cyan-400 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-black disabled:opacity-50'>{enrolledGuardIds.has(String(selectedGuardId)) ? 'Re-enroll Facial Biometric' : 'Register Facial Biometric'}</button>
       </div>
       <div className='space-y-2'>
         {enrollmentRows.length === 0 ? <p className='text-xs text-slate-400'>No biometric enrollments found.</p> : enrollmentRows.slice(0, 12).map((row) => <div key={row.id} className='flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-slate-950/55 p-3 text-xs'>
           <span><b className='text-white'>{String(row.guard_id).slice(0, 8)}</b><span className='ml-2 text-slate-400'>{row.provider_name} · {row.sample_count ?? 0} samples · {row.enrollment_status}</span></span>
-          {row.enrollment_status === 'active' ? <button type='button' disabled={busy} onClick={() => revokeEnrollment(String(row.id))} className='rounded-md border border-rose-400/30 px-2 py-1 font-bold text-rose-200'>Revoke</button> : null}
+          <span className='flex flex-wrap gap-2'>
+            <button type='button' disabled={busy} onClick={() => { setSelectedGuardId(String(row.guard_id)); setEnrollmentMode('existing'); setNotice('Guard selected for re-enrollment. Upload fresh supervised samples.'); }} className='rounded-md border border-cyan-400/30 px-2 py-1 font-bold text-cyan-200'>Re-enroll</button>
+            {row.enrollment_status === 'active' ? <button type='button' disabled={busy} onClick={() => revokeEnrollment(String(row.id))} className='rounded-md border border-rose-400/30 px-2 py-1 font-bold text-rose-200'>Revoke</button> : null}
+          </span>
         </div>)}
       </div>
     </section> : null}
@@ -1930,7 +1982,7 @@ function BiometricEvaluationPanel({ site }: { site: string }) {
   const guards = useQuery({
     queryKey: ['biometric_test_guard_labels'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('guards').select('id, full_name, employee_id, biometric_enrollment_status').eq('is_active', true).order('full_name').limit(200);
+      const { data, error } = await supabase.from('guards').select('id, full_name, badge_number, biometric_enrollment_status').eq('is_active', true).order('full_name').limit(200);
       if (error) throw error;
       return data ?? [];
     },
@@ -1993,7 +2045,7 @@ function BiometricEvaluationPanel({ site }: { site: string }) {
         <div className='mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]'>
           <select value={selectedGuardByCapture[row.id] ?? row.actual_guard_id ?? ''} onChange={(event) => setSelectedGuardByCapture((current) => ({ ...current, [row.id]: event.target.value }))} className='rounded-lg border border-white/10 bg-slate-950/80 px-2 py-2 text-white'>
             <option value=''>Actual identity unknown</option>
-            {(guards.data ?? []).map((guard: any) => <option key={guard.id} value={guard.id}>{guard.full_name ?? guard.employee_id ?? guard.id}</option>)}
+            {(guards.data ?? []).map((guard: any) => <option key={guard.id} value={guard.id}>{guard.full_name ?? guard.badge_number ?? guard.id}</option>)}
           </select>
           <select value={outcomeByCapture[row.id] ?? row.review_outcome ?? 'unlabeled'} onChange={(event) => setOutcomeByCapture((current) => ({ ...current, [row.id]: event.target.value }))} className='rounded-lg border border-white/10 bg-slate-950/80 px-2 py-2 text-white'>
             <option value='unlabeled'>Unlabeled</option>

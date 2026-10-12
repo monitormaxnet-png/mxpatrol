@@ -51,7 +51,9 @@ describe('AI facial attendance foundation', () => {
     expect(menus).toContain('Attendance Management');
     expect(menus).toContain('management_attendance');
     expect(menus).toContain('attendance_overview');
-    expect(menus).toContain('attendance_enrollment');
+    expect(menus).not.toContain('Guard Biometric Enrollment');
+    expect(menus).not.toContain('attendance_enrollment');
+    expect(menus).toContain('Biometric Management');
     expect(commandCenter).toContain('AttendanceFoundationPanel');
     expect(commandCenter).toContain('Patrol photo mode remains separate');
     expect(commandCenter).toContain('Production biometric identification is intentionally disabled');
@@ -124,6 +126,12 @@ describe('AI facial attendance foundation', () => {
     expect(menus).toContain('attendance_biometric_management');
     expect(commandCenter).toContain('function BiometricManagementPanel');
     expect(commandCenter).toContain('TTECH | MX PATROL');
+    expect(commandCenter).toContain('Register New Guard');
+    expect(commandCenter).toContain('Select Existing Guard');
+    expect(commandCenter).toContain('createBiometricGuard');
+    expect(commandCenter).toContain("from('guards')");
+    expect(commandCenter).toContain('badge_number');
+    expect(commandCenter).toContain('Next: Facial Enrollment');
     expect(commandCenter).toContain('Register Facial Biometric');
     expect(commandCenter).toContain("supabase.functions.invoke('ttech-biometric-enrollment'");
     expect(commandCenter).toContain("action: 'enroll'");

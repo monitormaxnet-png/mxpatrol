@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, AlertTriangle, ArrowRight, Bell, Bot, Camera, CheckCircle2, ChevronDown, Clock3, Cpu, FileText, Loader2, Lock, MapPin, Mic, Pause, Play, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, Bell, Bot, Camera, CheckCircle2, ChevronDown, Clock3, Cpu, FileText, Loader2, Lock, MapPin, Maximize2, Mic, Minimize2, Pause, Play, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
 import { MxPatrolVideoBackground } from '@/components/branding/MxPatrolVideoBackground';
 import { useAuth } from '@/contexts/AuthContext';
@@ -54,6 +54,27 @@ import { startSosSiren, stopSosSiren } from '@/lib/sosSirenManager';
 const LiveMap = lazy(() => import('@/components/dashboard/LiveMap'));
 
 type Message = { id: number; from: 'assistant' | 'user'; title?: string; body: ReactNode };
+type AssistantPanelLayout = 'compact' | 'expanded';
+type AssistantLayoutSource = 'auto' | 'manual';
+const EXPANDED_WORKSPACE_ACTIONS = new Set([
+  'attendance_biometric_management',
+  'attendance_biometric_testing',
+  'attendance_enrollment',
+  'attendance_reviews',
+  'attendance_reports',
+  'saved_reports',
+  'routes',
+  'schedules',
+  'pending_nfc',
+  'view_companies',
+  'view_sites',
+  'view_whatsapp_numbers',
+  'secure_devices',
+]);
+const EXPANDED_ACTION_PREFIXES = ['report:'];
+function actionNeedsExpandedAssistant(action: string) {
+  return EXPANDED_WORKSPACE_ACTIONS.has(action) || action.startsWith('attendance_') || EXPANDED_ACTION_PREFIXES.some((prefix) => action.startsWith(prefix));
+}
 type SessionRow = AssistantPatrolRow & { patrol_routes?: { id?: string | null; name: string } | null; patrol_templates?: { id?: string | null; name: string } | null; sites?: { name: string } | null };
 type MissedCheckpointRow = {
   id: string;
@@ -110,6 +131,8 @@ export default function CommandCenter() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inlinePanel, setInlinePanel] = useState<ReactNode | null>(null);
+  const [assistantLayout, setAssistantLayout] = useState<AssistantPanelLayout>('compact');
+  const [assistantLayoutSource, setAssistantLayoutSource] = useState<AssistantLayoutSource>('auto');
   const [pendingConfirm, setPendingConfirm] = useState<null | { label: string; run: () => Promise<void> }>(null);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
@@ -469,6 +492,21 @@ export default function CommandCenter() {
 
   const addAssistant = (title: string, body: ReactNode) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'assistant', title, body }]);
   const addUser = (body: string) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'user', body }]);
+  const setAutomaticAssistantLayout = (layout: AssistantPanelLayout) => {
+    setAssistantLayoutSource('auto');
+    setAssistantLayout(layout);
+  };
+  const requestAssistantWorkspace = (layout: AssistantPanelLayout) => {
+    if (assistantLayoutSource === 'manual') return;
+    setAssistantLayout(layout);
+  };
+  const toggleAssistantLayout = () => {
+    setAssistantLayout((current) => {
+      const next = current === 'expanded' ? 'compact' : 'expanded';
+      setAssistantLayoutSource(next === 'expanded' ? 'manual' : 'auto');
+      return next;
+    });
+  };
 
   const workflowContext: WorkflowContext = useMemo(() => ({
     siteId: selectedSiteId,
@@ -523,6 +561,7 @@ export default function CommandCenter() {
   const showWorkflowReply = (reply: WorkflowReply) => {
     if (reply.kind === 'cancelled' || reply.kind === 'denied') {
       setWorkflow(null);
+      if (reply.kind === 'cancelled') setAutomaticAssistantLayout('compact');
       return addAssistant(reply.title, <WorkflowBody lines={reply.lines} />);
     }
     if (reply.kind === 'confirm') {
@@ -548,6 +587,7 @@ export default function CommandCenter() {
 
 
   const showMenu = (key: string) => {
+    setAutomaticAssistantLayout('compact');
     const node = menuNode(key);
     if (key === 'user_patrol_status' || key === 'management_patrol_status') {
       return addAssistant(`PATROL STATUS TODAY - ${selectedSite}`, <PatrolStatusOverview site={selectedSite} rows={periodRows('today').sessions} node={node} loading={patrols.isLoading} />);
@@ -674,6 +714,9 @@ export default function CommandCenter() {
     void acknowledgeActivity(activityType).catch((error) => addAssistant('ACKNOWLEDGEMENT FAILED', <p>{error instanceof Error ? error.message : 'Could not save activity acknowledgement.'}</p>));
   };
   const runAction = (action: string) => {
+    const expandedAction = actionNeedsExpandedAssistant(action);
+    if (expandedAction) requestAssistantWorkspace('expanded');
+    else if (assistantLayoutSource === 'auto') setAssistantLayout('compact');
     if (action === 'change_site') return addAssistant('CHANGE SITE', <SitePicker sites={availableSites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
     if (action === 'dashboard_guidance') return addAssistant('DASHBOARD', <p>User Mode is for reports only. Use the Dashboard panels for live/current operations such as patrol status, devices, SOS, incidents, datalog, and live activity.</p>);
     if (action === 'live') return addAssistant('LIVE NOW - ' + selectedSite, <Summary devices={siteDevices} alerts={todayRows.alerts} incidents={openIncidents} patrols={operationPatrolRows} scans={todayRows.scans} />);
@@ -779,6 +822,7 @@ export default function CommandCenter() {
     if (pendingConfirm && /^(no|cancel)$/i.test(text)) {
       setPendingConfirm(null);
       setWorkflow(null);
+      setAutomaticAssistantLayout('compact');
       addAssistant('CANCELLED', <p>Nothing was changed. No partial record was created.</p>);
       return;
     }
@@ -817,6 +861,7 @@ export default function CommandCenter() {
 
   const switchMode = () => submit(mode === 'management' ? 'user' : 'management');
   const homeNode = menuNode(homeMenu(mode));
+  const assistantExpanded = assistantLayout === 'expanded';
   const todayRows = periodRows('today');
   const todayPatrolRows = todayRows.sessions;
   const todayDataLogs = siteDataLogs.filter((row) => {
@@ -908,7 +953,7 @@ export default function CommandCenter() {
           </header>
 
           <main className='mx-command-zones grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(22rem,27rem)_minmax(22rem,1fr)_minmax(20rem,25rem)]'>
-            <section className='mx-ai-assistant mx-command-left flex h-[calc(100vh-7.5rem)] min-h-0 flex-col overflow-hidden'>
+            <section className={(assistantExpanded ? 'mx-ai-assistant-expanded ' : '') + 'mx-ai-assistant mx-command-left flex h-[calc(100vh-7.5rem)] min-h-0 flex-col overflow-hidden'} data-layout={assistantLayout}>
               <div className='shrink-0 border-b border-white/10 px-4 py-3'>
                 <div className='flex items-start justify-between gap-3'>
                   <div>
@@ -916,7 +961,10 @@ export default function CommandCenter() {
                     <p className='mt-1 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-300'>MX Patrol</p>
                     <p className='text-xs text-slate-400'>Viewing: {selectedSite}</p>
                   </div>
-                  <span className='rounded-full border border-cyan-400/20 px-2 py-1 text-[11px] font-bold text-cyan-200'>{mode === 'management' ? 'Management' : 'User'}</span>
+                  <div className='flex shrink-0 items-center gap-2'>
+                    <span className='rounded-full border border-cyan-400/20 px-2 py-1 text-[11px] font-bold text-cyan-200'>{mode === 'management' ? 'Management' : 'User'}</span>
+                    <button type='button' onClick={toggleAssistantLayout} className='mx-ai-layout-toggle' aria-label={assistantExpanded ? 'Collapse Web AI Assistant' : 'Expand Web AI Assistant'} title={assistantExpanded ? 'Collapse assistant' : 'Expand assistant'}>{assistantExpanded ? <Minimize2 className='h-3.5 w-3.5' /> : <Maximize2 className='h-3.5 w-3.5' />}</button>
+                  </div>
                 </div>
               </div>
               <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>

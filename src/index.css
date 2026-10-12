@@ -3642,3 +3642,57 @@
     max-height: none !important;
   }
 }
+
+/* Adaptive Web AI Assistant workspace */
+.mx-command-center .mx-command-left {
+  justify-self: start;
+  transition:
+    width 220ms ease,
+    max-width 220ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease,
+    background-color 220ms ease;
+}
+
+.mx-command-center .mx-ai-assistant-expanded {
+  width: min(72vw, 58rem) !important;
+  max-width: calc(100vw - 2rem) !important;
+  z-index: 45 !important;
+  border-color: rgba(34, 211, 238, 0.34) !important;
+  background: rgba(2, 10, 14, 0.34) !important;
+  box-shadow: 0 0 34px rgba(34, 211, 238, 0.10) !important;
+}
+
+.mx-command-center .mx-ai-layout-toggle {
+  display: inline-flex;
+  width: 1.9rem;
+  height: 1.9rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: 999px;
+  background: rgba(0, 8, 12, 0.22);
+  color: rgba(165, 243, 252, 0.94);
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.mx-command-center .mx-ai-layout-toggle:hover {
+  border-color: rgba(34, 211, 238, 0.42);
+  background: rgba(34, 211, 238, 0.10);
+  color: rgb(224, 252, 254);
+}
+
+@media (max-width: 1279px) {
+  .mx-command-center .mx-ai-assistant-expanded,
+  .mx-command-center .mx-command-left {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mx-command-center .mx-command-left,
+  .mx-command-center .mx-ai-layout-toggle {
+    transition: none !important;
+  }
+}

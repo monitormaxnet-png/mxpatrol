@@ -54,7 +54,9 @@ import { startSosSiren, stopSosSiren } from '@/lib/sosSirenManager';
 const LiveMap = lazy(() => import('@/components/dashboard/LiveMap'));
 
 type Message = { id: number; from: 'assistant' | 'user'; title?: string; body: ReactNode };
-type AssistantPanelLayout = 'compact' | 'expanded';
+type AdaptivePanelLayout = 'compact' | 'expanded';
+type AssistantPanelLayout = AdaptivePanelLayout;
+type MapPanelLayout = AdaptivePanelLayout;
 type AssistantLayoutSource = 'auto' | 'manual';
 const EXPANDED_WORKSPACE_ACTIONS = new Set([
   'attendance_biometric_management',
@@ -133,6 +135,8 @@ export default function CommandCenter() {
   const [inlinePanel, setInlinePanel] = useState<ReactNode | null>(null);
   const [assistantLayout, setAssistantLayout] = useState<AssistantPanelLayout>('compact');
   const [assistantLayoutSource, setAssistantLayoutSource] = useState<AssistantLayoutSource>('auto');
+  const [mapLayout, setMapLayout] = useState<MapPanelLayout>('compact');
+  const [mapResizeSignal, setMapResizeSignal] = useState(0);
   const [pendingConfirm, setPendingConfirm] = useState<null | { label: string; run: () => Promise<void> }>(null);
   const [workflow, setWorkflow] = useState<WorkflowState | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
@@ -492,21 +496,33 @@ export default function CommandCenter() {
 
   const addAssistant = (title: string, body: ReactNode) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'assistant', title, body }]);
   const addUser = (body: string) => setMessages((rows) => [...rows, { id: Date.now() + rows.length, from: 'user', body }]);
+  const pulseMapResize = () => window.setTimeout(() => setMapResizeSignal((value) => value + 1), 80);
+  const setMapPanelLayout = (layout: MapPanelLayout) => {
+    setMapLayout(layout);
+    pulseMapResize();
+  };
   const setAutomaticAssistantLayout = (layout: AssistantPanelLayout) => {
     setAssistantLayoutSource('auto');
     setAssistantLayout(layout);
   };
   const requestAssistantWorkspace = (layout: AssistantPanelLayout) => {
     if (assistantLayoutSource === 'manual') return;
+    if (layout === 'expanded') setMapPanelLayout('compact');
     setAssistantLayout(layout);
+  };
+  const setMapWorkspace = (layout: MapPanelLayout) => {
+    if (layout === 'expanded') setAutomaticAssistantLayout('compact');
+    setMapPanelLayout(layout);
   };
   const toggleAssistantLayout = () => {
     setAssistantLayout((current) => {
       const next = current === 'expanded' ? 'compact' : 'expanded';
+      if (next === 'expanded') setMapPanelLayout('compact');
       setAssistantLayoutSource(next === 'expanded' ? 'manual' : 'auto');
       return next;
     });
   };
+  const toggleMapLayout = () => setMapWorkspace(mapLayout === 'expanded' ? 'compact' : 'expanded');
 
   const workflowContext: WorkflowContext = useMemo(() => ({
     siteId: selectedSiteId,
@@ -832,6 +848,12 @@ export default function CommandCenter() {
     }
 
 
+    if (/^(open |view |show )?(live )?map$/i.test(text) || /^(track|tracking) (device|guard|patrol)/i.test(text)) {
+      setMapWorkspace('expanded');
+      addAssistant('LIVE MAP EXPANDED', <p>The Live Map is expanded. Use the map header control or press Escape to return it to compact mode.</p>);
+      return;
+    }
+
     const result = resolveAssistantInput(state, text, { canManage, isPlatformOwner });
     setState(result.state);
 
@@ -862,6 +884,21 @@ export default function CommandCenter() {
   const switchMode = () => submit(mode === 'management' ? 'user' : 'management');
   const homeNode = menuNode(homeMenu(mode));
   const assistantExpanded = assistantLayout === 'expanded';
+  const mapExpanded = mapLayout === 'expanded';
+
+  useEffect(() => {
+    if (mapLayout !== 'expanded') return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setMapWorkspace('compact');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mapLayout]);
+
+  useEffect(() => {
+    pulseMapResize();
+  }, [mapLayout]);
+
   const todayRows = periodRows('today');
   const todayPatrolRows = todayRows.sessions;
   const todayDataLogs = siteDataLogs.filter((row) => {
@@ -1015,11 +1052,14 @@ export default function CommandCenter() {
                   </div>
                 </div>
 
-                <div>
-                  <p className='mx-rail-heading'>Live Map</p>
-                  <div className='mx-compact-live-map mt-3'>
+                <div className={(mapExpanded ? 'mx-live-map-panel-expanded ' : '') + 'mx-live-map-panel'} data-layout={mapLayout}>
+                  <div className='mx-live-map-header flex items-center justify-between gap-3'>
+                    <p className='mx-rail-heading'>Live Map</p>
+                    <button type='button' onClick={toggleMapLayout} className='mx-ai-layout-toggle' aria-label={mapExpanded ? 'Collapse Live Map' : 'Expand Live Map'} title={mapExpanded ? 'Collapse map' : 'Expand map'}>{mapExpanded ? <Minimize2 className='h-3.5 w-3.5' /> : <Maximize2 className='h-3.5 w-3.5' />}</button>
+                  </div>
+                  <div className='mx-compact-live-map mx-live-map-frame mt-3'>
                     <Suspense fallback={<div className='flex h-full items-center justify-center text-xs text-slate-500'>Loading live map...</div>}>
-                      <LiveMap operationsMode showCheckpoints showDevices showRoutes showScans showSos />
+                      <LiveMap operationsMode showCheckpoints showDevices showRoutes showScans showSos resizeSignal={mapResizeSignal} />
                     </Suspense>
                   </div>
                 </div>

@@ -122,7 +122,7 @@ async function revoke(actor: Awaited<ReturnType<typeof resolveActor>>, body: Ext
 
 async function status(actor: Awaited<ReturnType<typeof resolveActor>>, guardId?: string) {
   const { service, companyId, isPlatformOwner } = actor;
-  let query = service.from("guard_biometric_enrollments").select("id, company_id, guard_id, site_id, provider_name, template_version, enrollment_status, quality_status, liveness_status, sample_count, enrolled_at, revoked_at, created_at").order("created_at", { ascending: false }).limit(50);
+  let query = service.from("guard_biometric_enrollments").select("id, company_id, guard_id, site_id, provider_name, template_version, enrollment_status, quality_status, liveness_status, sample_count, enrolled_at, revoked_at, created_at").order("created_at", { ascending: false }).limit(500);
   if (!isPlatformOwner && companyId) query = query.eq("company_id", companyId);
   if (guardId) query = query.eq("guard_id", guardId);
   const { data, error } = await query;

@@ -81,6 +81,22 @@ describe("context-aware numeric menu routing", () => {
     expect(result).toMatchObject({ kind: "menu", menuKey: MANAGEMENT_HOME });
   });
 
+  it("uses navigation history for repeated back commands", () => {
+    const attendance = resolveAssistantInput(mgmtState(), "11", manager);
+    expect(attendance).toMatchObject({ kind: "menu", menuKey: "management_attendance" });
+    expect(attendance.state.history).toEqual([MANAGEMENT_HOME]);
+
+    const backToManagement = resolveAssistantInput(attendance.state, "BACK", manager);
+    expect(backToManagement).toMatchObject({ kind: "menu", menuKey: MANAGEMENT_HOME });
+    expect(backToManagement.state.history).toEqual([]);
+  });
+
+  it("does not treat longer messages containing back as navigation", () => {
+    const result = resolveAssistantInput(mgmtState("management_attendance"), "go back later", manager);
+    expect(result.kind).not.toBe("menu");
+    expect(result.state.activeMenu).toBe("management_attendance");
+  });
+
   it("menu returns to the current mode home", () => {
     expect(resolveAssistantInput(mgmtState("management_reports"), "menu", manager)).toMatchObject({ menuKey: MANAGEMENT_HOME });
     expect(resolveAssistantInput(userState("user_reports"), "menu", guard)).toMatchObject({ menuKey: USER_HOME });

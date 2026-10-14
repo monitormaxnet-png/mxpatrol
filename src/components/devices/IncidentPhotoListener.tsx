@@ -6,6 +6,7 @@ import { getDeviceLocation } from "@/lib/deviceGeolocation";
 import { getPatrolDeviceInfo } from "@/lib/deviceInfo";
 import { useOfflineIncidentPhotoQueue } from "@/hooks/useOfflineIncidentPhotoQueue";
 import { isBiometricTestModeActive } from "@/components/devices/BiometricTestCaptureListener";
+import { getRg360CameraMode } from "@/lib/rg360CameraMode";
 
 type IncidentPhotoDetail = {
   schema?: string;
@@ -28,7 +29,7 @@ export default function IncidentPhotoListener() {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
 
     const handleIncidentPhoto = async (event: Event) => {
-      if (isBiometricTestModeActive()) return;
+      if (isBiometricTestModeActive() || getRg360CameraMode() !== "PATROL") return;
       const detail = parseIncidentPhotoEvent(event);
       if (!detail) return;
 

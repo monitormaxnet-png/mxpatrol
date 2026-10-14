@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getDeviceLocation } from "@/lib/deviceGeolocation";
 import { getPatrolDeviceInfo } from "@/lib/deviceInfo";
 import { useOfflineBiometricTestQueue } from "@/hooks/useOfflineBiometricTestQueue";
+import { getRg360CameraMode, releaseRg360CameraMode, setRg360CameraMode } from "@/lib/rg360CameraMode";
 
 const TEST_MODE_KEY = "mxpatrol_biometric_test_mode";
 const TEST_EVENT_TYPE_KEY = "mxpatrol_biometric_test_event_type";
@@ -21,12 +22,14 @@ type IncidentPhotoDetail = {
 };
 
 export function isBiometricTestModeActive() {
-  return typeof window !== "undefined" && window.localStorage.getItem(TEST_MODE_KEY) === "true";
+  return typeof window !== "undefined" && window.localStorage.getItem(TEST_MODE_KEY) === "true" && getRg360CameraMode() === "BIOMETRIC_TEST";
 }
 
 export function setBiometricTestMode(active: boolean) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(TEST_MODE_KEY, active ? "true" : "false");
+  if (active) setRg360CameraMode("BIOMETRIC_TEST");
+  else releaseRg360CameraMode("BIOMETRIC_TEST");
   window.dispatchEvent(new CustomEvent("mxpatrol:biometric-test-mode", { detail: { active } }));
 }
 

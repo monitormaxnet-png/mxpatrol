@@ -134,6 +134,7 @@ export default function CommandCenter() {
   const [inlinePanel, setInlinePanel] = useState<ReactNode | null>(null);
   const [assistantLayout, setAssistantLayout] = useState<AssistantPanelLayout>('compact');
   const [assistantLayoutSource, setAssistantLayoutSource] = useState<AssistantLayoutSource>('auto');
+  const [workspaceReturnMenu, setWorkspaceReturnMenu] = useState<string | null>(null);
   const [mapLayout, setMapLayout] = useState<MapPanelLayout>('compact');
   const [mapResizeSignal, setMapResizeSignal] = useState(0);
   const [pendingConfirm, setPendingConfirm] = useState<null | { label: string; run: () => Promise<void> }>(null);
@@ -599,9 +600,18 @@ export default function CommandCenter() {
     setWorkflow(reply.state);
     return addAssistant(reply.title, <WorkflowBody lines={reply.lines} options={reply.options} />);
   };
-
+  const returnFromAssistantWorkspace = (key: string) => {
+    setWorkflow(null);
+    setPendingConfirm(null);
+    setInlinePanel(null);
+    setWorkspaceReturnMenu(null);
+    setAutomaticAssistantLayout('compact');
+    setState((prev) => ({ ...prev, activeMenu: key }));
+    return showMenu(key);
+  };
 
   const showMenu = (key: string) => {
+    setWorkspaceReturnMenu(null);
     setAutomaticAssistantLayout('compact');
     const node = menuNode(key);
     if (key === 'user_patrol_status' || key === 'management_patrol_status') {
@@ -728,8 +738,8 @@ export default function CommandCenter() {
     if (activityType === 'sos') todaySosAlerts.filter((alert) => !alert.is_read).forEach(handleAcknowledgeSos);
     void acknowledgeActivity(activityType).catch((error) => addAssistant('ACKNOWLEDGEMENT FAILED', <p>{error instanceof Error ? error.message : 'Could not save activity acknowledgement.'}</p>));
   };
-  const runAction = (action: string) => {
-    const expandedAction = actionNeedsExpandedAssistant(action);
+  const runAction = (action: string) => {    const expandedAction = actionNeedsExpandedAssistant(action);
+    setWorkspaceReturnMenu(state.activeMenu);
     if (expandedAction) requestAssistantWorkspace('expanded');
     else if (assistantLayoutSource === 'auto') setAssistantLayout('compact');
     if (action === 'change_site') return addAssistant('CHANGE SITE', <SitePicker sites={availableSites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
@@ -825,8 +835,16 @@ export default function CommandCenter() {
     if (!text) return;
     if (!raw) setInput('');
     forceNextScrollRef.current = true;
-    shouldAutoScrollRef.current = true;
-    addUser(text);
+    shouldAutoScrollRef.current = true;    addUser(text);
+    const isBackCommand = /^back$/i.test(text);
+
+    if (isBackCommand && workspaceReturnMenu && !workflow && !pendingConfirm) {
+      return returnFromAssistantWorkspace(workspaceReturnMenu);
+    }
+
+    if (isBackCommand && workflow) {
+      return addAssistant('WORKFLOW IN PROGRESS', <p>This form has unsaved information. Type <b>cancel</b> to discard it, or continue answering the current prompt.</p>);
+    }
 
     if (pendingConfirm && /^(yes|confirm|y)$/i.test(text)) {
       const job = pendingConfirm;
@@ -854,10 +872,9 @@ export default function CommandCenter() {
     }
 
     const result = resolveAssistantInput(state, text, { canManage, isPlatformOwner });
-    setState(result.state);
-
-    if (result.kind === 'menu') {
+    setState(result.state);    if (result.kind === 'menu') {
       if (result.state.mode !== state.mode) setInlinePanel(null);
+      setWorkspaceReturnMenu(null);
       return showMenu(result.menuKey);
     }
     if (result.kind === 'denied') {
@@ -1734,7 +1751,24 @@ function attendanceEvidencePath(...candidates: Array<string | null | undefined>)
 function biometricCaptureEvidencePath(row: any) {
   return attendanceEvidencePath(row?.attendance_events?.photo_reference, row?.attendance_events?.provider_result?.evidence_path, row?.provider_result?.evidence_path);
 }
+type BiometricCaptureHistoryFilter = 'pending' | 'enrollment_used' | 'dismissed' | 'retake_required';
+function biometricCaptureLifecycle(row: any): BiometricCaptureHistoryFilter {
+  const review = String(row?.review_outcome ?? 'unlabeled');
+  const notes = String(row?.notes ?? row?.metadata?.notes ?? '');
+  if (review === 'quality_rejected') return 'retake_required';
+  if (review === 'ignore' && /supervised RG360 evidence|starting evidence|enrollment/i.test(notes)) return 'enrollment_used';
+  if (review === 'ignore') return 'dismissed';
+  return 'pending';
+}
+function biometricCaptureLifecycleLabel(row: any) {
+  const lifecycle = biometricCaptureLifecycle(row);
+  if (lifecycle === 'enrollment_used') return 'Used for Enrollment';
+  if (lifecycle === 'dismissed') return 'Dismissed';
+  if (lifecycle === 'retake_required') return 'Retake Required';
+  return 'Pending';
+}
 function isPendingUnregisteredFace(row: any) {
+  if (biometricCaptureLifecycle(row) !== 'pending') return false;
   const review = String(row?.review_outcome ?? 'unlabeled');
   if (review !== 'unlabeled') return false;
   const outcome = String(row?.outcome_status ?? 'review_required');
@@ -1746,6 +1780,7 @@ function isEligibleEnrollmentCapture(row: any) {
   const quality = String(row?.image_quality_status ?? '').toLowerCase();
   const outcome = String(row?.outcome_status ?? '').toLowerCase();
   const path = biometricCaptureEvidencePath(row);
+  if (biometricCaptureLifecycle(row) !== 'pending') return false;
   if (!path) return false;
   if (quality.includes('poor') || quality.includes('failed') || quality.includes('rejected')) return false;
   if (['poor_quality', 'failed'].includes(outcome)) return false;
@@ -1753,6 +1788,7 @@ function isEligibleEnrollmentCapture(row: any) {
 }
 function enrollmentCaptureLabel(row: any) {
   if (!biometricCaptureEvidencePath(row)) return 'Missing evidence object';
+  if (biometricCaptureLifecycle(row) !== 'pending') return biometricCaptureLifecycleLabel(row);
   if (!isEligibleEnrollmentCapture(row)) return 'Retake required';
   return 'Eligible sample';
 }
@@ -1788,11 +1824,13 @@ function AttendanceFoundationPanel({ action, site, siteId, companyId }: { action
   </div>;
 }
 function BiometricManagementPanel({ site, siteId, companyId }: { site: string; siteId: string | null; companyId: string | null }) {
-  const [activeView, setActiveView] = useState<'enrollment' | 'testing' | 'attendance' | 'reviews'>('enrollment');
+  const queryClient = useQueryClient();
+  const [activeView, setActiveView] = useState<'guards' | 'captures' | 'attendance' | 'testing'>('guards');
   const [selectedGuardId, setSelectedGuardId] = useState('');
   const [enrollmentMode, setEnrollmentMode] = useState<'existing' | 'new'>('existing');
   const [newGuard, setNewGuard] = useState({ fullName: '', employeeNumber: '' });
-  const [enrollmentSource, setEnrollmentSource] = useState<'existing_captures' | 'rg360_capture' | 'manual_upload'>('existing_captures');
+  const [captureHistoryFilter, setCaptureHistoryFilter] = useState<BiometricCaptureHistoryFilter>('pending');
+  const [biometricRealtimeNotice, setBiometricRealtimeNotice] = useState<string | null>(null);
   const [selectedCaptureSampleIds, setSelectedCaptureSampleIds] = useState<string[]>([]);
   const [sampleFiles, setSampleFiles] = useState<File[]>([]);
   const sampleInputRef = useRef<HTMLInputElement | null>(null);
@@ -1824,10 +1862,11 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
     queryKey: ['biometric_management_test_captures'],
     queryFn: async () => {
       const client = supabase as any;
-      const { data, error } = await client.from('biometric_test_captures').select('id, test_capture_identifier, attendance_event_id, site_id, candidate_guard_id, actual_guard_id, similarity_score, candidate_count, image_quality_status, outcome_status, review_outcome, processing_duration_ms, captured_at, device_identifier, sites(name), attendance_events(photo_reference, provider_result)').order('captured_at', { ascending: false }).limit(100);
+      const { data, error } = await client.from('biometric_test_captures').select('id, company_id, test_capture_identifier, attendance_event_id, site_id, candidate_guard_id, actual_guard_id, similarity_score, candidate_count, image_quality_status, outcome_status, review_outcome, processing_duration_ms, captured_at, device_identifier, notes, labeled_at, sites(name), attendance_events(photo_reference, provider_result)').order('captured_at', { ascending: false }).limit(100);
       if (error) throw error;
       return data ?? [];
     },
+    refetchInterval: 15000,
   });
   const attendanceEvents = useQuery({
     queryKey: ['biometric_management_attendance_events'],
@@ -1837,6 +1876,7 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
       if (error) throw error;
       return data ?? [];
     },
+    refetchInterval: 30000,
   });
   const attendanceReviews = useQuery({
     queryKey: ['biometric_management_attendance_reviews'],
@@ -1855,9 +1895,9 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
   const reviewRows = (attendanceReviews.data ?? []) as any[];
   const pendingFaceRows = testRows.filter(isPendingUnregisteredFace);
   const pendingFaceKey = testRows.map((row) => row.id + ':' + (biometricCaptureEvidencePath(row) ?? '')).join('|');
-  const selectedPendingCapture = pendingFaceRows.find((row) => row.id === selectedPendingCaptureId) ?? null;
-  const enrollmentCaptureRows = testRows.filter((row) => row.review_outcome !== 'ignore');
-  const selectedCaptureRows = enrollmentCaptureRows.filter((row) => selectedCaptureSampleIds.includes(String(row.id)));
+  const captureInboxRows = testRows.filter((row) => biometricCaptureLifecycle(row) === captureHistoryFilter || selectedCaptureSampleIds.includes(String(row.id)));
+  const selectedInboxCapture = testRows.find((row) => row.id === selectedPendingCaptureId) ?? null;
+  const selectedCaptureRows = testRows.filter((row) => selectedCaptureSampleIds.includes(String(row.id)));
   const enrollmentSampleCount = sampleFiles.length + selectedCaptureRows.length;
   const activeEnrollmentRows = enrollmentRows.filter((row) => row.enrollment_status === 'active');
   const enrolledGuardIds = new Set(activeEnrollmentRows.map((row) => String(row.guard_id)));
@@ -1904,6 +1944,31 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
     await Promise.all([guards.refetch(), enrollments.refetch(), testCaptures.refetch(), attendanceEvents.refetch(), attendanceReviews.refetch()]);
   };
 
+  useEffect(() => {
+    if (!companyId) return;
+    const refreshBiometrics = (reason: string) => {
+      if (reason === 'capture') setBiometricRealtimeNotice('NEW CAPTURE RECEIVED');
+      void Promise.all([testCaptures.refetch(), attendanceReviews.refetch(), attendanceEvents.refetch(), guards.refetch(), enrollments.refetch()]);
+      void queryClient.invalidateQueries({ queryKey: ['biometric_management_test_captures'] });
+      void queryClient.invalidateQueries({ queryKey: ['biometric_management_enrollments'] });
+    };
+    const filter = 'company_id=eq.' + companyId;
+    const channel = supabase
+      .channel('biometric-management-' + companyId + '-' + Date.now())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'biometric_test_captures', filter }, () => refreshBiometrics('capture'))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'biometric_test_captures', filter }, () => refreshBiometrics('capture_update'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guard_biometric_enrollments', filter }, () => refreshBiometrics('enrollment'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guards', filter }, () => refreshBiometrics('guard'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_events', filter }, () => refreshBiometrics('attendance'))
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [attendanceEvents, attendanceReviews, companyId, enrollments, guards, queryClient, testCaptures]);
+
+  const manualBiometricRefresh = async () => {
+    setBiometricRealtimeNotice(null);
+    await refreshAll();
+  };
+
   const createBiometricGuard = async () => {
     setNotice(null);
     const fullName = newGuard.fullName.trim();
@@ -1944,8 +2009,12 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
     if (!selectedGuardId) return setNotice('Select or register a guard before facial enrollment.');
     if (enrollmentSampleCount < 2) return setNotice('Select at least two eligible supervised enrollment samples before registering the facial biometric.');
     if (enrollmentSampleCount > 6) return setNotice('Use no more than six supervised enrollment samples.');
+    const alreadyUsedCapture = selectedCaptureRows.find((row) => biometricCaptureLifecycle(row) !== 'pending');
+    if (alreadyUsedCapture) return setNotice('One selected RG360 capture is no longer pending. Refresh the capture list and choose another sample.');
     const unusableCapture = selectedCaptureRows.find((row) => !isEligibleEnrollmentCapture(row));
     if (unusableCapture) return setNotice('One selected RG360 capture is missing evidence or has poor quality. Request a retake or choose another sample.');
+    const missingPreviewCapture = selectedCaptureRows.find((row) => !pendingEvidenceUrls[row.id]);
+    if (missingPreviewCapture) return setNotice('One selected RG360 capture has no available photograph preview. Request a retake before enrollment.');
     setBusy(true);
     try {
       const captureSamples = await Promise.all(selectedCaptureRows.map(async (row) => {
@@ -1973,7 +2042,7 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
       setSelectedGuardId('');
       setSelectedPendingCaptureId('');
       setSelectedCaptureSampleIds([]);
-      setEnrollmentSource('existing_captures');
+      setCaptureHistoryFilter('pending');
       setNewGuard({ fullName: '', employeeNumber: '' });
       setEnrollmentMode('new');
     } catch (error) {
@@ -2015,9 +2084,9 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
 
   const beginEnrollmentFromPendingFace = (row: any, mode: 'existing' | 'new') => {
     setSelectedPendingCaptureId(row.id);
-    setActiveView('enrollment');
+    setActiveView('guards');
     setEnrollmentMode(mode);
-    setEnrollmentSource('existing_captures');
+    setCaptureHistoryFilter('pending');
     setSelectedCaptureSampleIds((current) => current.includes(row.id) ? current : [...current, row.id].slice(0, 6));
     if (mode === 'existing') setNotice('Pending face selected as an enrollment sample. Choose the confirmed guard, then select at least one more supervised sample.');
     else setNotice('Pending face selected as an enrollment sample. Register the confirmed guard first, then select additional supervised samples.');
@@ -2048,11 +2117,12 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
     </div>
     <MetricGrid items={overview} />
     <div className='flex flex-wrap gap-2'>
-      {[['enrollment', 'Enrollment'], ['testing', 'Testing'], ['attendance', 'Attendance'], ['reviews', 'Reviews']].map(([key, label]) => <button key={key} type='button' onClick={() => setActiveView(key as any)} className={(activeView === key ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em]'}>{label}</button>)}
+      {[['guards', 'Guards'], ['captures', 'Captures'], ['attendance', 'Attendance']].map(([key, label]) => <button key={key} type='button' onClick={() => setActiveView(key as any)} className={(activeView === key ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em]'}>{label}</button>)}
+      <button type='button' onClick={() => setActiveView('testing')} className={(activeView === 'testing' ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em]'}>Testing / Diagnostics</button>
     </div>
     {notice ? <p className='rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3 text-xs text-cyan-100'>{notice}</p> : null}
-    {activeView === 'enrollment' ? <section className='space-y-3 rounded-xl border border-white/10 bg-black/20 p-3'>
-      <div><b className='text-cyan-200'>Enrollment</b><p className='mt-1 text-xs text-slate-400'>Register a new active guard or select an existing guard, then upload 2-6 supervised JPEG samples using the existing ttech-biometric-enrollment Edge Function.</p></div>
+    {activeView === 'guards' ? <section className='space-y-3 rounded-xl border border-white/10 bg-black/20 p-3'>
+      <div><b className='text-cyan-200'>Guard Enrollment</b><p className='mt-1 text-xs text-slate-400'>Facial Enrollment registers or re-enrolls a guard identity. It creates biometric templates only after backend confirmation and never creates attendance records.</p></div>
       <div className='flex flex-wrap gap-2'>
         <button type='button' onClick={() => setEnrollmentMode('new')} className={(enrollmentMode === 'new' ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em]'}>Register New Guard</button>
         <button type='button' onClick={() => setEnrollmentMode('existing')} className={(enrollmentMode === 'existing' ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.1em]'}>Select Existing Guard</button>
@@ -2070,33 +2140,25 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
           {guardRows.map((guard) => <option key={guard.id} value={guard.id}>{guard.full_name ?? guard.badge_number ?? guard.id} - {guard.badge_number ?? 'no employee number'} - {guard.biometric_enrollment_status ?? 'not_enrolled'}</option>)}
         </select>
         <span className='rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-400'>{selectedGuardId ? 'Ready for facial samples' : 'Choose a guard'}</span>
+        {guardRows.length === 0 ? <p className='rounded-lg border border-amber-400/20 bg-amber-400/10 p-2 text-xs text-amber-100 md:col-span-2'>No registered guards are available for this company/site. Use Register New Guard first.</p> : null}
       </div> : null}
-      <div className='space-y-2 rounded-lg border border-white/10 bg-slate-950/35 p-3'>
-        <b className='text-xs uppercase tracking-[0.12em] text-cyan-200'>Facial Enrollment Source</b>
-        <div className='grid gap-2 md:grid-cols-3'>
-          {[['existing_captures', 'Existing RG360 Captures'], ['rg360_capture', 'Capture Using RG360'], ['manual_upload', 'Upload Photos Manually']].map(([key, label]) => <button key={key} type='button' onClick={() => { setEnrollmentSource(key as any); if (key !== 'existing_captures') setSelectedCaptureSampleIds([]); if (key !== 'manual_upload') { setSampleFiles([]); if (sampleInputRef.current) sampleInputRef.current.value = ''; } }} className={(enrollmentSource === key ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-lg border px-3 py-2 text-xs font-black uppercase tracking-[0.08em]'}>{label}</button>)}
+      <div className='space-y-3 rounded-lg border border-cyan-400/15 bg-slate-950/35 p-3'>
+        <div className='flex flex-wrap items-center justify-between gap-2'>
+          <b className='text-xs uppercase tracking-[0.12em] text-cyan-200'>Facial Samples</b>
+          <span className='text-xs text-slate-400'>{selectedCaptureRows.length} RG360 selected / {sampleFiles.length} uploaded</span>
         </div>
-      </div>
-      {enrollmentSource === 'existing_captures' ? <div className='space-y-2 rounded-lg border border-cyan-400/15 bg-black/20 p-3'>
-        <div className='flex flex-wrap items-center justify-between gap-2'><b className='text-xs uppercase tracking-[0.12em] text-cyan-200'>Existing RG360 Captures</b><span className='text-xs text-slate-400'>{selectedCaptureRows.length} selected / {enrollmentCaptureRows.length} available</span></div>
-        {enrollmentCaptureRows.length === 0 ? <p className='text-xs text-slate-400'>No RG360 biometric test captures are available yet.</p> : <div className='grid gap-2 md:grid-cols-2'>
-          {enrollmentCaptureRows.slice(0, 8).map((row) => {
-            const eligible = isEligibleEnrollmentCapture(row);
-            const selected = selectedCaptureSampleIds.includes(String(row.id));
-            return <button key={row.id} type='button' disabled={!eligible} onClick={() => setSelectedCaptureSampleIds((current) => selected ? current.filter((id) => id !== row.id) : [...current, row.id].slice(0, 6))} className={(selected ? 'border-emerald-300/60 bg-emerald-400/10' : eligible ? 'border-white/10 bg-slate-950/45' : 'border-amber-400/20 bg-amber-400/5 opacity-70') + ' grid grid-cols-[72px_1fr] gap-2 rounded-lg border p-2 text-left text-xs'}>
-              <span className='h-16 overflow-hidden rounded-md border border-white/10 bg-black/30'>{pendingEvidenceUrls[row.id] ? <img src={pendingEvidenceUrls[row.id]} alt='RG360 enrollment sample option' className='h-full w-full object-cover' /> : <span className='flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-500'>No preview</span>}</span>
-              <span className='min-w-0'><b className='block truncate text-slate-100'>{row.device_identifier ?? 'RG360'} - {row.sites?.name ?? site}</b><span className='block text-slate-400'>{assistantDate(row.captured_at)} {assistantTime(row.captured_at)}</span><span className={eligible ? 'block text-emerald-200' : 'block text-amber-200'}>{enrollmentCaptureLabel(row)}</span><span className='block text-slate-500'>Quality: {row.image_quality_status ?? 'unknown'}</span></span>
-            </button>;
-          })}
-        </div>}
-        <p className='text-[11px] text-slate-500'>Supervisor confirmation is still required. Existing captures are only proposed samples; MX Patrol will not infer identity from them.</p>
-      </div> : null}
-      {enrollmentSource === 'rg360_capture' ? <p className='rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3 text-xs text-cyan-100'>Capture new photos using RG360: put the device in Biometric Test Mode, capture with Volume Up, then return here and choose the new captures from Existing RG360 Captures.</p> : null}
-      {enrollmentMode === 'new' ? <p className='rounded-lg border border-amber-400/20 bg-amber-400/10 p-2 text-xs text-amber-100'>Step 1: save the guard with Next: Facial Enrollment. Step 2: select or upload 2-6 supervised samples and press Register Facial Biometric.</p> : null}
-      {enrollmentMode === 'existing' && selectedGuardId && enrollmentSampleCount > 0 && enrollmentSampleCount < 2 ? <p className='rounded-lg border border-amber-400/20 bg-amber-400/10 p-2 text-xs text-amber-100'>At least two supervised samples are required. Add one more RG360 capture or uploaded photograph before submitting.</p> : null}
-      <div className='grid gap-2 md:grid-cols-[1fr_auto]'>
-        <input ref={sampleInputRef} type='file' accept='image/jpeg,image/jpg' multiple disabled={enrollmentSource !== 'manual_upload'} onChange={(event) => setSampleFiles(Array.from(event.target.files ?? []).slice(0, 6))} className='rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-cyan-400 file:px-2 file:py-1 file:text-xs file:font-bold file:text-black' />
-        <button type='button' disabled={busy || enrollmentMode === 'new' || !selectedGuardId || enrollmentSampleCount < 2} onClick={enrollGuard} className='rounded-lg bg-cyan-400 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-black disabled:opacity-50'>{busy ? 'Registering...' : enrolledGuardIds.has(String(selectedGuardId)) ? 'Re-enroll Facial Biometric' : 'Register Facial Biometric'}</button>
+        <p className='text-xs text-slate-400'>Use the Captures tab to choose verified RG360 photographs, or upload 2-6 supervised JPEG samples here. MX Patrol will not enroll a guard from evidence that has no visible private preview.</p>
+        {selectedCaptureRows.length ? <div className='grid gap-2 md:grid-cols-2'>{selectedCaptureRows.map((row) => <div key={row.id} className='grid grid-cols-[72px_1fr_auto] items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2 text-xs'>
+          <span className='h-16 overflow-hidden rounded-md border border-white/10 bg-black/30'>{pendingEvidenceUrls[row.id] ? <img src={pendingEvidenceUrls[row.id]} alt='Selected RG360 enrollment sample' className='h-full w-full object-cover' /> : <span className='flex h-full items-center justify-center px-1 text-center text-[9px] text-amber-200'>PHOTO UNAVAILABLE - RETAKE REQUIRED</span>}</span>
+          <span className='min-w-0'><b className='block truncate text-slate-100'>{row.device_identifier ?? 'RG360'} - {row.sites?.name ?? site}</b><span className='block text-slate-400'>{assistantDate(row.captured_at)} {assistantTime(row.captured_at)}</span><span className='block text-emerald-200'>Selected for enrollment</span></span>
+          <button type='button' onClick={() => setSelectedCaptureSampleIds((current) => current.filter((id) => id !== row.id))} className='rounded-md border border-white/10 px-2 py-1 font-bold text-slate-200'>Remove</button>
+        </div>)}</div> : <p className='rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-slate-500'>No RG360 captures selected. Open Captures to review evidence first.</p>}
+        {enrollmentMode === 'new' ? <p className='rounded-lg border border-amber-400/20 bg-amber-400/10 p-2 text-xs text-amber-100'>Step 1: save the guard with Next: Facial Enrollment. Step 2: select or upload 2-6 supervised samples and press Register Facial Biometric.</p> : null}
+        {enrollmentMode === 'existing' && selectedGuardId && enrollmentSampleCount > 0 && enrollmentSampleCount < 2 ? <p className='rounded-lg border border-amber-400/20 bg-amber-400/10 p-2 text-xs text-amber-100'>At least two supervised samples are required. Add one more RG360 capture or uploaded photograph before submitting.</p> : null}
+        <div className='grid gap-2 md:grid-cols-[1fr_auto]'>
+          <input ref={sampleInputRef} type='file' accept='image/jpeg,image/jpg' multiple onChange={(event) => setSampleFiles(Array.from(event.target.files ?? []).slice(0, 6))} className='rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-slate-200 file:mr-3 file:rounded-md file:border-0 file:bg-cyan-400 file:px-2 file:py-1 file:text-xs file:font-bold file:text-black' />
+          <button type='button' disabled={busy || enrollmentMode === 'new' || !selectedGuardId || enrollmentSampleCount < 2} onClick={enrollGuard} className='rounded-lg bg-cyan-400 px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-black disabled:opacity-50'>{busy ? 'Registering...' : enrolledGuardIds.has(String(selectedGuardId)) ? 'Re-enroll Facial Biometric' : 'Register Facial Biometric'}</button>
+        </div>
       </div>
       <div className='grid gap-3 lg:grid-cols-2'>
         <div className='space-y-2'>
@@ -2121,35 +2183,53 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
         </div>
       </div>
     </section> : null}
-    {activeView === 'enrollment' ? <section className='space-y-3 rounded-xl border border-cyan-400/15 bg-black/20 p-3'>
+    {activeView === 'captures' ? <section className='space-y-3 rounded-xl border border-cyan-400/15 bg-black/20 p-3'>
       <div className='flex flex-wrap items-start justify-between gap-2'>
-        <div><b className='text-cyan-200'>Pending Unregistered Faces</b><p className='mt-1 text-xs text-slate-400'>Biometric Management - capture review. Unknown captures are unresolved evidence, not automatic identity proof.</p></div>
-        <span className='rounded-full border border-cyan-400/25 px-2 py-1 text-xs font-black text-cyan-100'>{pendingFaceRows.length} Pending</span>
+        <div><b className='text-cyan-200'>Capture Inbox</b><p className='mt-1 text-xs text-slate-400'>One supervisor inbox for RG360 facial photographs. Missing photographs are retake required and cannot be used for enrollment.</p></div>
+        <span className='rounded-full border border-cyan-400/25 px-2 py-1 text-xs font-black text-cyan-100'>{captureInboxRows.length} Shown</span>
       </div>
-      {pendingFaceRows.length === 0 ? <p className='text-xs text-slate-400'>No unresolved RG360 biometric test captures are waiting for enrollment review.</p> : <div className='grid gap-3 lg:grid-cols-2'>
-        {pendingFaceRows.slice(0, 6).map((row, index) => <div key={row.id} className={(selectedPendingCaptureId === row.id ? 'border-emerald-300/50 bg-emerald-400/10' : 'border-white/10 bg-slate-950/45') + ' rounded-xl border p-3 text-xs'}>
-          <div className='grid gap-3 sm:grid-cols-[112px_1fr]'>
-            <button type='button' onClick={() => openEvidence(biometricCaptureEvidencePath(row))} className='h-28 overflow-hidden rounded-lg border border-white/10 bg-black/30'>
-              {pendingEvidenceUrls[row.id] ? <img src={pendingEvidenceUrls[row.id]} alt='Pending biometric face evidence' className='h-full w-full object-cover' loading='lazy' /> : <span className='flex h-full items-center justify-center px-2 text-center text-[10px] text-slate-500'>Evidence unavailable</span>}
-            </button>
-            <div className='min-w-0 space-y-1'>
-              <b className='block truncate text-cyan-100'>Unresolved Capture #{String(index + 1).padStart(3, '0')}</b>
-              <p className='text-slate-400'>{row.device_identifier ?? 'RG360'} - {row.sites?.name ?? site}</p>
-              <p className='text-slate-400'>{assistantDate(row.captured_at)} {assistantTime(row.captured_at)}</p>
-              <p className='text-amber-100'>{pendingFaceStatus(row)}</p>
-              <p className='text-slate-500'>Quality: {row.image_quality_status ?? 'unknown'} - Review: {row.review_outcome ?? 'unlabeled'}</p>
-            </div>
-          </div>
-          <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-            <button type='button' onClick={() => beginEnrollmentFromPendingFace(row, 'existing')} className='rounded-lg border border-cyan-400/30 px-3 py-2 font-bold text-cyan-200'>Existing Guard</button>
-            <button type='button' onClick={() => beginEnrollmentFromPendingFace(row, 'new')} className='rounded-lg border border-emerald-400/30 px-3 py-2 font-bold text-emerald-200'>New Guard</button>
-            <button type='button' onClick={() => openEvidence(biometricCaptureEvidencePath(row))} className='rounded-lg border border-white/10 px-3 py-2 font-bold text-slate-200'>Open Evidence</button>
-            <button type='button' disabled={pendingActionId === row.id} onClick={() => updatePendingFaceReview(row, 'quality_rejected', 'Retake required from Pending Unregistered Faces review.')} className='rounded-lg border border-amber-400/30 px-3 py-2 font-bold text-amber-200 disabled:opacity-50'>Request Retake</button>
-            <button type='button' disabled={pendingActionId === row.id} onClick={() => updatePendingFaceReview(row, 'ignore', window.prompt('Dismiss reason for this unresolved face?') || 'Dismissed from Pending Unregistered Faces review.')} className='rounded-lg border border-rose-400/30 px-3 py-2 font-bold text-rose-200 disabled:opacity-50 sm:col-span-2'>Dismiss with Reason</button>
-          </div>
-          <p className='mt-2 text-[11px] text-slate-500'>Enrollment requires supervisor confirmation and additional accepted facial samples. This capture is preserved as review evidence.</p>
-        </div>)}
+      <div className='flex flex-wrap gap-2'>
+        {[['pending', 'Pending'], ['enrollment_used', 'Used for Enrollment'], ['dismissed', 'Dismissed'], ['retake_required', 'Retake Required']].map(([key, label]) => <button key={key} type='button' onClick={() => setCaptureHistoryFilter(key as BiometricCaptureHistoryFilter)} className={(captureHistoryFilter === key ? 'border-cyan-300/60 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-black/20 text-slate-300') + ' rounded-full border px-2 py-1 text-[11px] font-black uppercase tracking-[0.08em]'}>{label}</button>)}
+      </div>
+      {captureInboxRows.length === 0 ? <p className='text-xs text-slate-400'>No RG360 biometric captures match this view.</p> : <div className='grid gap-3 lg:grid-cols-2'>
+        {captureInboxRows.slice(0, 10).map((row, index) => {
+          const previewAvailable = Boolean(pendingEvidenceUrls[row.id]);
+          const eligible = isEligibleEnrollmentCapture(row) && previewAvailable;
+          const selected = selectedCaptureSampleIds.includes(String(row.id));
+          const status = !previewAvailable ? 'PHOTO UNAVAILABLE - RETAKE REQUIRED' : enrollmentCaptureLabel(row);
+          return <button key={row.id} type='button' onClick={() => { setSelectedPendingCaptureId(String(row.id)); setReviewPhotoUrl(pendingEvidenceUrls[row.id] ?? null); setEvidencePreviewError(pendingEvidenceUrls[row.id] ? null : 'PHOTO UNAVAILABLE - RETAKE REQUIRED. Click Open Evidence to retry signed access or request a retake.'); }} className={(selectedPendingCaptureId === row.id ? 'border-cyan-300/60 bg-cyan-400/10' : selected ? 'border-emerald-300/50 bg-emerald-400/10' : eligible ? 'border-white/10 bg-slate-950/45' : 'border-amber-400/20 bg-amber-400/5') + ' grid grid-cols-[96px_1fr] gap-3 rounded-xl border p-3 text-left text-xs'}>
+            <span className='h-24 overflow-hidden rounded-lg border border-white/10 bg-black/30'>{previewAvailable ? <img src={pendingEvidenceUrls[row.id]} alt='Biometric capture evidence preview' className='h-full w-full object-cover' loading='lazy' /> : <span className='flex h-full items-center justify-center px-2 text-center text-[10px] text-amber-200'>PHOTO UNAVAILABLE<br />RETAKE REQUIRED</span>}</span>
+            <span className='min-w-0 space-y-1'>
+              <b className='block truncate text-cyan-100'>Capture #{String(index + 1).padStart(3, '0')}</b>
+              <span className='block text-slate-400'>{row.device_identifier ?? 'RG360'} - {row.sites?.name ?? site}</span>
+              <span className='block text-slate-400'>{assistantDate(row.captured_at)} {assistantTime(row.captured_at)}</span>
+              <span className={eligible ? 'block text-emerald-200' : 'block text-amber-200'}>{status}</span>
+              <span className='block text-slate-500'>Quality: {row.image_quality_status ?? 'unknown'} - Review: {biometricCaptureLifecycleLabel(row)}</span>
+            </span>
+          </button>;
+        })}
       </div>}
+      {selectedInboxCapture ? <div className='space-y-3 rounded-xl border border-cyan-400/20 bg-slate-950/50 p-3 text-xs'>
+        <div className='flex flex-wrap items-start justify-between gap-2'>
+          <div><b className='text-cyan-100'>Capture Detail</b><p className='mt-1 text-slate-400'>{selectedInboxCapture.device_identifier ?? 'RG360'} - {selectedInboxCapture.sites?.name ?? site} - {assistantDate(selectedInboxCapture.captured_at)} {assistantTime(selectedInboxCapture.captured_at)}</p></div>
+          <button type='button' onClick={() => { setSelectedPendingCaptureId(''); setEvidencePreviewError(null); }} className='rounded-md border border-white/10 px-2 py-1 font-bold text-slate-200'>Close</button>
+        </div>
+        {reviewPhotoUrl ? <img src={reviewPhotoUrl} alt='Selected private biometric evidence' className='max-h-72 rounded-lg border border-white/10 object-contain' /> : <p className='rounded-lg border border-amber-400/20 bg-amber-400/10 p-3 font-bold text-amber-100'>{evidencePreviewError ?? 'PHOTO UNAVAILABLE - RETAKE REQUIRED. This capture cannot be enrolled until private evidence opens successfully.'}</p>}
+        <div className='grid gap-2 rounded-lg border border-white/10 bg-black/20 p-3 sm:grid-cols-2'>
+          <span><b className='text-slate-200'>Overall status</b><br /><span className={isEligibleEnrollmentCapture(selectedInboxCapture) && reviewPhotoUrl ? 'text-emerald-200' : 'text-amber-200'}>{reviewPhotoUrl ? enrollmentCaptureLabel(selectedInboxCapture) : 'Retake Required'}</span></span>
+          <span><b className='text-slate-200'>Technical result</b><br /><span className='text-slate-400'>{pendingFaceStatus(selectedInboxCapture)}</span></span>
+          <span><b className='text-slate-200'>Quality</b><br /><span className='text-slate-400'>{selectedInboxCapture.image_quality_status ?? 'unknown'}</span></span>
+          <span><b className='text-slate-200'>Lifecycle</b><br /><span className='text-slate-400'>{biometricCaptureLifecycleLabel(selectedInboxCapture)}</span></span>
+        </div>
+        <div className='grid gap-2 sm:grid-cols-2'>
+          <button type='button' onClick={() => beginEnrollmentFromPendingFace(selectedInboxCapture, 'existing')} className='rounded-lg border border-cyan-400/30 px-3 py-2 font-bold text-cyan-200'>Existing Guard / Select Guard</button>
+          <button type='button' onClick={() => beginEnrollmentFromPendingFace(selectedInboxCapture, 'new')} className='rounded-lg border border-emerald-400/30 px-3 py-2 font-bold text-emerald-200'>Register New Guard</button>
+          <button type='button' onClick={() => openEvidence(biometricCaptureEvidencePath(selectedInboxCapture))} className='rounded-lg border border-white/10 px-3 py-2 font-bold text-slate-200'>Open Evidence</button>
+          <button type='button' disabled={pendingActionId === selectedInboxCapture.id} onClick={() => updatePendingFaceReview(selectedInboxCapture, 'quality_rejected', 'Retake required from unified Capture Inbox review.')} className='rounded-lg border border-amber-400/30 px-3 py-2 font-bold text-amber-200 disabled:opacity-50'>Request Retake</button>
+          <button type='button' disabled={pendingActionId === selectedInboxCapture.id} onClick={() => updatePendingFaceReview(selectedInboxCapture, 'ignore', window.prompt('Dismiss reason for this capture?') || 'Dismissed from unified Capture Inbox review.')} className='rounded-lg border border-rose-400/30 px-3 py-2 font-bold text-rose-200 disabled:opacity-50 sm:col-span-2'>Dismiss with Reason</button>
+        </div>
+        <p className='text-[11px] text-slate-500'>Actions are only available in this detail view. The original RG360 capture and audit history remain preserved.</p>
+      </div> : null}
     </section> : null}
     {activeView === 'testing' ? <section className='space-y-2 rounded-xl border border-white/10 bg-black/20 p-3'>
       <b className='text-cyan-200'>Biometric Testing</b>
@@ -2168,14 +2248,13 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
         <span>Device<br /><b>{row.device_identifier}</b></span>
         <span>Verification<br /><b className={row.verification_status === 'verified' ? 'text-emerald-200' : 'text-amber-200'}>{String(row.verification_status).replace(/_/g, ' ')}</b></span>
       </div>)}
-    </section> : null}
-    {activeView === 'reviews' ? <section className='space-y-2 rounded-xl border border-white/10 bg-black/20 p-3'>
-      <b className='text-cyan-200'>Supervisor Reviews</b>
-      {reviewPhotoUrl ? <img src={reviewPhotoUrl} alt='Private attendance evidence' className='max-h-56 rounded-lg border border-white/10 object-contain' /> : null}
-      {reviewRows.length === 0 ? <p className='text-xs text-slate-400'>No pending biometric attendance reviews.</p> : reviewRows.slice(0, 12).map((row) => <div key={row.id} className='flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/55 p-3 text-xs'>
-        <span><b>{row.guards?.full_name ?? String(row.guard_id ?? 'Unknown').slice(0, 8)}</b><span className='ml-2 text-slate-400'>{row.device_identifier} · {String(row.verification_status).replace(/_/g, ' ')}</span></span>
-        <button type='button' onClick={() => openEvidence(row.photo_reference, row.provider_result?.evidence_path)} className='rounded-md border border-cyan-400/30 px-2 py-1 font-bold text-cyan-200'>Open Evidence</button>
-      </div>)}
+      <div className='mt-3 space-y-2 rounded-xl border border-white/10 bg-black/20 p-3'>
+        <b className='text-cyan-200'>Supervisor Reviews</b>
+        {reviewRows.length === 0 ? <p className='text-xs text-slate-400'>No pending biometric attendance reviews.</p> : reviewRows.slice(0, 8).map((row) => <div key={row.id} className='flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/55 p-3 text-xs'>
+          <span><b>{row.guards?.full_name ?? String(row.guard_id ?? 'Unknown').slice(0, 8)}</b><span className='ml-2 text-slate-400'>{row.device_identifier} - {String(row.verification_status).replace(/_/g, ' ')}</span></span>
+          <button type='button' onClick={() => { setActiveView('captures'); openEvidence(row.photo_reference, row.provider_result?.evidence_path); }} className='rounded-md border border-cyan-400/30 px-2 py-1 font-bold text-cyan-200'>Open Evidence</button>
+        </div>)}
+      </div>
     </section> : null}
   </div>;
 }

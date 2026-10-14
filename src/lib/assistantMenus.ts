@@ -8,6 +8,7 @@ export type RouterState = {
   mode: AssistantMode;
   activeMenu: string;
   activeSiteId: string | null;
+  history?: string[];
 };
 
 export type Resolution =
@@ -302,22 +303,40 @@ function normalize(input: string): string {
   return input.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function pushMenuHistory(state: RouterState, nextMenu: string): string[] {
+  if (state.activeMenu === nextMenu) return state.history ?? [];
+  const history = state.history ?? [];
+  if (history[history.length - 1] === state.activeMenu) return history;
+  return [...history, state.activeMenu].slice(-12);
+}
+
+function menuState(state: RouterState, nextMenu: string): RouterState {
+  return { ...state, activeMenu: nextMenu, history: pushMenuHistory(state, nextMenu) };
+}
+
+function homeState(state: RouterState, nextMenu: string): RouterState {
+  return { ...state, activeMenu: nextMenu, history: [] };
+}
+
 function applyAction(state: RouterState, action: string, canManage: boolean, isPlatformOwner = false): Resolution {
   if (action === 'back') {
+    const history = state.history ?? [];
+    const historyParent = history[history.length - 1];
     const configuredParent = menuNode(state.activeMenu).parent ?? homeMenu(state.mode);
-    const parent = configuredParent === 'reports_root' ? (state.mode === 'management' ? 'management_reports' : 'user_reports') : configuredParent;
-    const next = { ...state, activeMenu: parent };
+    const fallbackParent = configuredParent === 'reports_root' ? (state.mode === 'management' ? 'management_reports' : 'user_reports') : configuredParent;
+    const parent = historyParent ?? fallbackParent;
+    const next = { ...state, activeMenu: parent, history: historyParent ? history.slice(0, -1) : [] };
     return { kind: 'menu', state: next, menuKey: parent };
   }
 
   if (action === 'switch_management') {
     if (!canManage) return { kind: 'denied', state, action: 'switch_management' };
-    const next: RouterState = { ...state, mode: 'management', activeMenu: MANAGEMENT_HOME };
+    const next: RouterState = { ...state, mode: 'management', activeMenu: MANAGEMENT_HOME, history: [] };
     return { kind: 'menu', state: next, menuKey: MANAGEMENT_HOME };
   }
 
   if (action === 'switch_user') {
-    const next: RouterState = { ...state, mode: 'user', activeMenu: USER_HOME };
+    const next: RouterState = { ...state, mode: 'user', activeMenu: USER_HOME, history: [] };
     return { kind: 'menu', state: next, menuKey: USER_HOME };
   }
 
@@ -332,7 +351,7 @@ function applyAction(state: RouterState, action: string, canManage: boolean, isP
     if (!ASSISTANT_MENUS[key]) return { kind: 'unknown', state };
     if (key.startsWith('management_') && !canManage) return { kind: 'denied', state, action: key };
     if (isDeviceSecurityReportAction(action) && !isPlatformOwner) return { kind: 'denied', state, action };
-    const next = { ...state, activeMenu: key };
+    const next = menuState(state, key);
     return { kind: 'menu', state: next, menuKey: key };
   }
 
@@ -363,14 +382,14 @@ export function resolveAssistantInput(
 
   if (input === 'menu' || input === 'main' || input === 'main menu' || input === 'home') {
     const key = homeMenu(state.mode);
-    return { kind: 'menu', state: { ...state, activeMenu: key }, menuKey: key };
+    return { kind: 'menu', state: homeState(state, key), menuKey: key };
   }
 
   if (input === 'back') return applyAction(state, 'back', opts.canManage, opts.isPlatformOwner);
 
   if (input === 'cancel' || input === 'exit' || input === 'stop') {
     const key = homeMenu(state.mode);
-    return { kind: 'menu', state: { ...state, activeMenu: key }, menuKey: key };
+    return { kind: 'menu', state: homeState(state, key), menuKey: key };
   }
 
   if (input === 'user' || input === 'user assistant') return applyAction(state, 'switch_user', opts.canManage, opts.isPlatformOwner);

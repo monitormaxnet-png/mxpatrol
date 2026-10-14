@@ -98,6 +98,7 @@ const NFCScanner = () => {
   const queryClient = useQueryClient();
   const { syncQueue, syncing, pendingCount } = useOfflineScanQueue();
   const [biometricTestMode, setBiometricTestModeState] = useState(false);
+  const [biometricFeedback, setBiometricFeedback] = useState('READY');
 
   const [gps, setGps] = useState<ScanGps>(null);
   const [gpsStatus, setGpsStatus] = useState<"idle" | "capturing" | "available" | "pending" | "unavailable">("idle");
@@ -134,6 +135,15 @@ const NFCScanner = () => {
       window.removeEventListener("pageshow", syncBiometricMode);
       document.removeEventListener("visibilitychange", syncBiometricMode);
     };
+  }, []);
+
+  useEffect(() => {
+    const onFeedback = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: string; message?: string }>).detail;
+      setBiometricFeedback(String(detail?.message || detail?.status || 'READY').toUpperCase());
+    };
+    window.addEventListener('mxpatrol:biometric-test-feedback', onFeedback);
+    return () => window.removeEventListener('mxpatrol:biometric-test-feedback', onFeedback);
   }, []);
 
   // Online/offline tracking
@@ -609,6 +619,7 @@ const NFCScanner = () => {
   const openBiometricTestMode = useCallback(() => {
     setBiometricTestMode(true);
     setBiometricTestModeState(true);
+    setBiometricFeedback('READY');
     setScannerStatus("idle");
     toast.info("BIOMETRIC TEST MODE: press Volume Up to capture face");
   }, []);
@@ -616,6 +627,7 @@ const NFCScanner = () => {
   const closeBiometricTestMode = useCallback(() => {
     setBiometricTestMode(false);
     setBiometricTestModeState(false);
+    setBiometricFeedback('READY');
     setScannerStatus(nfcSupported ? "scanning" : "idle");
     toast.info("Scanner mode restored");
   }, [nfcSupported]);
@@ -870,10 +882,18 @@ const NFCScanner = () => {
         ) : biometricTestMode ? (
           <section className="rg360-face-panel rg360-biometric-test-panel" aria-label="Biometric test mode">
             <TTechMxPatrolLogo variant="header" priority className="rg360-logo" />
-            <div className="rg360-state-icon rg360-tone-info"><ShieldAlert className="h-12 w-12" /></div>
+            <div className="rg360-face-guide" aria-hidden="true">
+              <div className="rg360-face-guide-frame">
+                <span className="rg360-face-guide-eye rg360-face-guide-eye-left" />
+                <span className="rg360-face-guide-eye rg360-face-guide-eye-right" />
+                <span className="rg360-face-guide-nose" />
+                <span className="rg360-face-guide-mouth" />
+              </div>
+            </div>
             <h1>BIOMETRIC TEST MODE</h1>
-            <p>PRESS VOLUME UP TO CAPTURE FACE</p>
-            <small>Captures are saved for supervisor review only. Attendance approval remains disabled.</small>
+            <p>POSITION FACE INSIDE FRAME</p>
+            <span className="rg360-face-guide-status">{biometricFeedback}</span>
+            <small>BIOMETRIC TEST evaluates the experimental TTECH engine only. It is separate from FACIAL ENROLLMENT and FACIAL ATTENDANCE. Press Volume Up to capture for supervisor review.</small>
             <Button type="button" className="rg360-secondary-action" onClick={closeBiometricTestMode}>
               BACK TO SCANNER
             </Button>
@@ -911,9 +931,13 @@ const NFCScanner = () => {
             />
             <PatrolContextCard patrol={activePatrol} latestFeedback={latestFeedback.detail} />
             {biometricTestAvailable ? (
-              <Button type="button" className="rg360-biometric-action" onClick={openBiometricTestMode}>
-                Biometric Test
-              </Button>
+              <div className="rg360-biometric-mode-grid" aria-label="Biometric modes">
+                <div className="rg360-biometric-mode-card"><b>FACIAL ENROLLMENT</b><span>Authorized guard registration only</span></div>
+                <div className="rg360-biometric-mode-card"><b>FACIAL ATTENDANCE</b><span>Clock In / Clock Out review-only</span></div>
+                <Button type="button" className="rg360-biometric-action" onClick={openBiometricTestMode}>
+                  BIOMETRIC TEST
+                </Button>
+              </div>
             ) : null}
 
             <StatusFooter

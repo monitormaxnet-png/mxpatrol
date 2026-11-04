@@ -1840,6 +1840,7 @@ function BiometricManagementPanel({ site, siteId, companyId }: { site: string; s
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [reviewPhotoUrl, setReviewPhotoUrl] = useState<string | null>(null);
+  const [evidencePreviewError, setEvidencePreviewError] = useState<string | null>(null);
 
   const guards = useQuery({
     queryKey: ['biometric_management_guards'],

@@ -47,7 +47,7 @@ serve(async (req) => {
 
     const action = body.action === "ack" ? "voice_command_ack" : "voice_command_fetch";
     const authCheck = await verifySecureDeviceRequest({ serviceClient: service, device, auth: body.device_auth, action });
-    if (!authCheck.ok) return fail(authCheck.message, 403, { code: authCheck.code });
+    if (!authCheck.ok) { const denied = authCheck as { message?: string; code?: string }; return fail(denied.message ?? "Device authentication failed", 403, { code: denied.code }); }
 
     const now = new Date().toISOString();
     if (body.action === "ack") {

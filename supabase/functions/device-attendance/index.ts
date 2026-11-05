@@ -89,7 +89,7 @@ async function identifyFace(input: { service: any; companyId: string; siteId: st
       status: "active",
       version: 1,
       vector: Array.isArray(row.vector) ? row.vector.map(Number) : [],
-    })).filter((template) => template.vector.length === processed.vector!.length);
+    })).filter((template: { vector: number[] }) => template.vector.length === processed.vector!.length);
 
     const match = identifyTtechFace({ vector: processed.vector, templates, companyId: input.companyId, siteId: input.siteId });
     const status = match.status === "matched" ? "review_required" : match.status === "no_templates" ? "review_required" : match.status;

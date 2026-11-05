@@ -55,7 +55,9 @@ schema. Apply the migration and deploy `management-actions` there only after app
    existing/conflicting row consistently with the unique index; repeat commit must
    not insert duplicates. For NFC, verify `04:A1:B2`, `04-a1.b2`, and `04a1b2`
    resolve to one company-scoped UID, and a physical scan of an imported checkpoint
-   finds that checkpoint.
+   finds that checkpoint. Preview company and site names containing literal `%`,
+   `_`, and `\` without false conflicts or a 500 error; an exact existing name
+   must still be reported as a conflict.
 4. As Company A admin, preview and commit rows referencing Company B. Both must be
    denied, and Company B row counts must not change. A non-management user must be
    denied before a job is created.

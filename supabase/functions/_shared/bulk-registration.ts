@@ -15,6 +15,7 @@ const fields: Record<Sheet, string[]> = {
 };
 const clean = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const upper = (value: unknown) => clean(value).toUpperCase();
+export const escapeIlikeLiteral = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 // Keep in sync with the scanner's normalizeNfcUid in src/lib/nfcUid.ts.
 export const normalizeBulkNfcUid = (value: unknown) => clean(value).replace(/[\s:.-]/g, '').toLowerCase();
 const authorize = (actor: ManagementActor) => {
@@ -87,7 +88,7 @@ async function assess(client: Client, actor: ManagementActor, row: Row, plannedC
     const code = upper(v['Company Code']);
     const byCode = await identifier(client, 'company_code', code);
     if (byCode) return { ...base, status: byCode.name.toLowerCase() === clean(v['Company Name']).toLowerCase() ? 'existing' : 'conflicting', message: `Company code belongs to ${byCode.name}` };
-    const byName = await one(client.from('companies').select('id, name').ilike('name', clean(v['Company Name'])));
+    const byName = await one(client.from('companies').select('id, name').ilike('name', escapeIlikeLiteral(clean(v['Company Name']))).limit(1));
     return byName ? { ...base, status: 'conflicting', message: 'Company name already exists under another code' } : { ...base, status: 'ready', message: 'Create company' };
   }
   let company: any;
@@ -99,7 +100,7 @@ async function assess(client: Client, actor: ManagementActor, row: Row, plannedC
     if (!company) return { ...base, status: 'ready', message: 'Create site after company' };
     const existing = await siteFor(client, company.id, row);
     if (existing) return { ...base, status: existing.name.toLowerCase() === clean(v['Site Name']).toLowerCase() ? 'existing' : 'conflicting', message: `Site code belongs to ${existing.name}` };
-    const byName = await one(client.from('sites').select('id').eq('company_id', company.id).ilike('name', clean(v['Site Name'])));
+    const byName = await one(client.from('sites').select('id').eq('company_id', company.id).ilike('name', escapeIlikeLiteral(clean(v['Site Name']))).limit(1));
     return byName ? { ...base, status: 'conflicting', message: 'Site name already exists under another code' } : { ...base, status: 'ready', message: 'Create site' };
   }
   const site = company ? await siteFor(client, company.id, row) : null;

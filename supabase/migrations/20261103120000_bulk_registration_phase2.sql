@@ -23,7 +23,16 @@ create unique index if not exists companies_registration_code_key on public.comp
 create unique index if not exists sites_company_registration_code_key on public.sites (company_id, upper(btrim(registration_code))) where nullif(btrim(registration_code), '') is not null;
 create unique index if not exists guards_company_employee_number_key on public.guards (company_id, upper(btrim(employee_number))) where nullif(btrim(employee_number), '') is not null;
 create unique index if not exists devices_serial_number_registration_key on public.devices (upper(btrim(serial_number))) where nullif(btrim(serial_number), '') is not null;
-create unique index if not exists checkpoints_company_nfc_registration_key on public.checkpoints (company_id, upper(btrim(nfc_tag_id))) where nullif(btrim(nfc_tag_id), '') is not null;
+
+-- Mirrors src/lib/nfcUid.ts so imported and scanner-read tags share one identity.
+create or replace function public.normalize_bulk_nfc_uid(p_value text)
+returns text language sql immutable strict parallel safe set search_path = pg_catalog as $$
+  select lower(regexp_replace(p_value, '[[:space:]:.-]', '', 'g'))
+$$;
+
+create unique index if not exists checkpoints_company_nfc_registration_key on public.checkpoints
+  (company_id, public.normalize_bulk_nfc_uid(nfc_tag_id))
+  where nullif(public.normalize_bulk_nfc_uid(nfc_tag_id), '') is not null;
 
 create or replace function public.lookup_bulk_registration_identifier(p_kind text, p_value text, p_company_id uuid default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -41,7 +50,9 @@ begin
     when 'device_identity' then
       select to_jsonb(d) into v_result from public.devices d where d.company_id = p_company_id and upper(btrim(d.device_identifier)) = v_value limit 1;
     when 'checkpoint_nfc' then
-      select to_jsonb(c) into v_result from public.checkpoints c where c.company_id = p_company_id and upper(btrim(c.nfc_tag_id)) = v_value limit 1;
+      select to_jsonb(c) into v_result from public.checkpoints c where c.company_id = p_company_id
+        and nullif(public.normalize_bulk_nfc_uid(c.nfc_tag_id), '') is not null
+        and public.normalize_bulk_nfc_uid(c.nfc_tag_id) = public.normalize_bulk_nfc_uid(p_value) limit 1;
     when 'guard_employee' then
       select to_jsonb(g) into v_result from public.guards g where g.company_id = p_company_id and upper(btrim(g.employee_number)) = v_value limit 1;
     else raise exception 'Unsupported bulk registration identifier';

@@ -15,6 +15,8 @@ const fields: Record<Sheet, string[]> = {
 };
 const clean = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const upper = (value: unknown) => clean(value).toUpperCase();
+// Keep in sync with the scanner's normalizeNfcUid in src/lib/nfcUid.ts.
+export const normalizeBulkNfcUid = (value: unknown) => clean(value).replace(/[\s:.-]/g, '').toLowerCase();
 const authorize = (actor: ManagementActor) => {
   if (!actor.user_id) throw new ManagementActionError('Authenticated user required', 401);
   if (actor.isPlatformOwner && actor.user_id) return;
@@ -27,7 +29,7 @@ const rowKeys = (row: Row) => {
   if (row.sheet === 'Companies') return [`company:${company}`];
   if (row.sheet === 'Sites') return [`site:${company}:${site}`];
   if (row.sheet === 'Devices') return [`device-serial:${upper(v['Serial Number'])}`, `device-id:${company}:${upper(v['Device ID'])}`];
-  if (row.sheet === 'Checkpoints') return [`checkpoint:${company}:${upper(v['NFC UID'])}`];
+  if (row.sheet === 'Checkpoints') return [`checkpoint:${company}:${normalizeBulkNfcUid(v['NFC UID'])}`];
   if (row.sheet === 'Guards') return [`guard:${company}:${upper(v['Employee Number'] || v['Guard ID'])}`];
   return [`whatsapp:${upper(v['Phone Number'])}`];
 };
@@ -46,6 +48,7 @@ function validate(row: Row, actor: ManagementActor): string | null {
   }
   if (row.sheet === 'Checkpoints' && !['', 'yes', 'no', 'true', 'false'].includes(clean(row.values.Active).toLowerCase())) return 'Active must be Yes or No';
   if (row.sheet === 'Checkpoints' && !['', 'yes', 'no', 'true', 'false'].includes(clean(row.values['Datalog Enabled']).toLowerCase())) return 'Datalog Enabled must be Yes or No';
+  if (row.sheet === 'Checkpoints' && !/^[a-z0-9]+$/.test(normalizeBulkNfcUid(row.values['NFC UID']))) return 'NFC UID must contain letters or digits';
   return null;
 }
 
@@ -110,7 +113,7 @@ async function assess(client: Client, actor: ManagementActor, row: Row, plannedC
     return { ...base, status: serial || identity ? 'existing' : 'ready', message: serial || identity ? 'Device profile already exists' : 'Create unpaired device profile' };
   }
   if (row.sheet === 'Checkpoints') {
-    const tag = company ? await identifier(client, 'checkpoint_nfc', upper(v['NFC UID']), company.id) : null;
+    const tag = company ? await identifier(client, 'checkpoint_nfc', normalizeBulkNfcUid(v['NFC UID']), company.id) : null;
     if (tag) return { ...base, status: tag.company_id === company?.id && tag.site_id === site?.id && tag.name.toLowerCase() === clean(v['Checkpoint Name']).toLowerCase() ? 'existing' : 'conflicting', message: 'NFC UID is already assigned' };
     return { ...base, status: 'ready', message: 'Create checkpoint; pending scans remain pending' };
   }
@@ -188,7 +191,7 @@ export async function commitBulkRegistration(client: Client, actor: ManagementAc
           const insert = row.sheet === 'Devices'
             ? { table: 'devices', values: { company_id: company.id, site_id: site.id, device_name: clean(v['Device Name']), device_identifier: clean(v['Device ID']), serial_number: clean(v['Serial Number']), status: 'offline', pairing_status: 'unpaired' } }
             : row.sheet === 'Checkpoints'
-            ? { table: 'checkpoints', values: { company_id: company.id, site_id: site.id, name: clean(v['Checkpoint Name']), nfc_tag_id: upper(v['NFC UID']), location_note: clean(v.Zone), status: ['no', 'false'].includes(clean(v.Active).toLowerCase()) ? 'inactive' : 'active', data_log_enabled: ['yes', 'true'].includes(clean(v['Datalog Enabled']).toLowerCase()) } }
+            ? { table: 'checkpoints', values: { company_id: company.id, site_id: site.id, name: clean(v['Checkpoint Name']), nfc_tag_id: normalizeBulkNfcUid(v['NFC UID']), location_note: clean(v.Zone), status: ['no', 'false'].includes(clean(v.Active).toLowerCase()) ? 'inactive' : 'active', data_log_enabled: ['yes', 'true'].includes(clean(v['Datalog Enabled']).toLowerCase()) } }
             : row.sheet === 'Guards'
             ? { table: 'guards', values: { company_id: company.id, site_id: site.id, badge_number: clean(v['Guard ID']), employee_number: upper(v['Employee Number'] || v['Guard ID']), full_name: clean(v['Full Name']), phone: clean(v.Phone) || null, is_active: false } }
             : { table: 'whatsapp_authorized_numbers', values: { company_id: company.id, phone: clean(v['Phone Number']), display_name: clean(v.Name), status: 'pending', allowed_site_ids: [site.id], metadata: { requested_role: clean(v['Requested Role']), created_via: 'bulk_registration', verification_required: true } } };

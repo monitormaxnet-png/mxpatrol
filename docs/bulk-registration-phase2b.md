@@ -16,7 +16,10 @@ location; they contain customer identifiers. The script does not modify data.
 2. Review duplicate groups for global device serial and company code; company-scoped
    NFC UID, guard employee number, and site code. The script includes IDs, company
    and site context, stored value, and normalized value. It predicts the migration's
-   code and unique-badge backfills when those columns do not yet exist.
+   code and unique-badge backfills when those columns do not yet exist. NFC UID
+   normalization now removes whitespace, colons, dots, and hyphens and lowercases
+   the result, matching scanner reads. Rerun this updated preflight even if the
+   earlier uppercase/trim-only audit found no duplicates.
 3. Review null, blank, and malformed identifiers. Historical blanks are retained;
    the new partial indexes exclude them. Decide whether malformed codes require
    manual correction before onboarding, without silently rewriting customer data.
@@ -50,7 +53,9 @@ schema. Apply the migration and deploy `management-actions` there only after app
    point to the intended company/site. Existing device pairing must remain unchanged.
 3. Test identical and case/whitespace-varied identifiers. Preview must report an
    existing/conflicting row consistently with the unique index; repeat commit must
-   not insert duplicates.
+   not insert duplicates. For NFC, verify `04:A1:B2`, `04-a1.b2`, and `04a1b2`
+   resolve to one company-scoped UID, and a physical scan of an imported checkpoint
+   finds that checkpoint.
 4. As Company A admin, preview and commit rows referencing Company B. Both must be
    denied, and Company B row counts must not change. A non-management user must be
    denied before a job is created.

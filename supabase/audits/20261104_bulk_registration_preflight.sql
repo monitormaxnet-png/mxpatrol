@@ -28,7 +28,7 @@ with guard_values as (
   union all
   select 'checkpoint_nfc', c.company_id::text,
     c.id, c.company_id, c.site_id, c.nfc_tag_id,
-    upper(btrim(c.nfc_tag_id))
+    lower(regexp_replace(c.nfc_tag_id, '[[:space:]:.-]', '', 'g'))
   from public.checkpoints c
   union all
   select 'guard_employee', g.company_id::text,
@@ -70,12 +70,14 @@ with guard_values as (
 )
 select identifier_type, id, company_id, site_id, field_name, raw_value,
   case when nullif(btrim(raw_value), '') is null then 'blank or missing'
+       when identifier_type = 'checkpoint_nfc' and nullif(lower(regexp_replace(raw_value, '[[:space:]:.-]', '', 'g')), '') is null then 'NFC UID has no letters or digits after normalization'
        when raw_value ~ '[[:cntrl:]]' then 'control characters'
        when raw_value <> btrim(raw_value) then 'leading or trailing whitespace'
        when identifier_type in ('company_code', 'site_code') and upper(btrim(raw_value)) !~ '^[A-Z0-9][A-Z0-9_-]{1,39}$' then 'invalid code format'
        else 'valid' end as finding
 from identifiers
 where nullif(btrim(raw_value), '') is null
+   or (identifier_type = 'checkpoint_nfc' and nullif(lower(regexp_replace(raw_value, '[[:space:]:.-]', '', 'g')), '') is null)
    or raw_value ~ '[[:cntrl:]]'
    or raw_value <> btrim(raw_value)
    or (identifier_type in ('company_code', 'site_code') and upper(btrim(raw_value)) !~ '^[A-Z0-9][A-Z0-9_-]{1,39}$')

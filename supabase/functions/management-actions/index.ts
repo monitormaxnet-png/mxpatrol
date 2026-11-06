@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { ManagementActionError, runManagementAction, type ManagementActor } from "../_shared/management-actions.ts";
+import { previewBulkRegistration, commitBulkRegistration } from "../_shared/bulk-registration.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,7 +60,7 @@ async function resolveActor(req: Request) {
     platformRole,
     isPlatformOwner,
   };
-  return { service, actor };
+  return { service, actor, hasProfile: !!profile };
 }
 
 Deno.serve(async (req) => {
@@ -69,8 +70,15 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({})) as { action?: string; input?: Record<string, unknown> };
     if (!body.action) return json({ error: "action is required" }, 400);
-    const { service, actor } = await resolveActor(req);
-    const result = await runManagementAction(service, actor, body.action, body.input ?? {});
+    const { service, actor, hasProfile } = await resolveActor(req);
+    if ((body.action === 'bulk_registration_preview' || body.action === 'bulk_registration_commit') && !hasProfile) {
+      throw new ManagementActionError('User profile required for bulk registration', 403);
+    }
+    const result = body.action === 'bulk_registration_preview'
+      ? await previewBulkRegistration(service, actor, body.input?.rows)
+      : body.action === 'bulk_registration_commit'
+      ? await commitBulkRegistration(service, actor, String(body.input?.job_id ?? ''))
+      : await runManagementAction(service, actor, body.action, body.input ?? {});
     return json(result);
   } catch (error) {
     const status = error instanceof ManagementActionError ? error.status : 500;

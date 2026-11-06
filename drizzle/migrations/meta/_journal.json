@@ -29,6 +29,13 @@
       "when": 1791586371747,
       "tag": "0003_ttech_biometric_foundation_template_phase3",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793891609004,
+      "tag": "0004_bulk_registration_phase2_trial_873ba14",
+      "breakpoints": true
     }
   ]
 }

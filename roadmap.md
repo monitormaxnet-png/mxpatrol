@@ -1,0 +1,5 @@
+- [ ] Identify the requested draft and confirm its separate test database.
+- [ ] Verify candidate 873ba14 and limit draft changes to migration 0004 plus matching journal/snapshot entries.
+- [ ] Apply and verify the migration in the isolated draft only; report exact changed files.
+- [ ] Keep acceptance and production deployment blocked pending fresh live preflight, backup confirmation, and release-owner approval.
+- [ ] Deploy management-actions only after separately approved acceptance has completed.

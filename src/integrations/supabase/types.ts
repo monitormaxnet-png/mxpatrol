@@ -814,6 +814,69 @@ export type Database = {
           },
         ]
       }
+      bulk_registration_jobs: {
+        Row: {
+          claim_token: string | null
+          claimed_count: number
+          company_id: string | null
+          created_at: string
+          cursor: number
+          expires_at: string
+          id: string
+          is_platform_owner: boolean
+          processing_started_at: string | null
+          result_rows: Json
+          rows: Json
+          status: string
+          user_id: string
+        }
+        Insert: {
+          claim_token?: string | null
+          claimed_count?: number
+          company_id?: string | null
+          created_at?: string
+          cursor?: number
+          expires_at?: string
+          id?: string
+          is_platform_owner?: boolean
+          processing_started_at?: string | null
+          result_rows?: Json
+          rows: Json
+          status?: string
+          user_id: string
+        }
+        Update: {
+          claim_token?: string | null
+          claimed_count?: number
+          company_id?: string | null
+          created_at?: string
+          cursor?: number
+          expires_at?: string
+          id?: string
+          is_platform_owner?: boolean
+          processing_started_at?: string | null
+          result_rows?: Json
+          rows?: Json
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bulk_registration_jobs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bulk_registration_jobs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       camera_events: {
         Row: {
           camera_id: string
@@ -1104,6 +1167,7 @@ export type Database = {
           id: string
           logo_url: string | null
           name: string
+          registration_code: string | null
           settings: Json | null
           updated_at: string
         }
@@ -1113,6 +1177,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name: string
+          registration_code?: string | null
           settings?: Json | null
           updated_at?: string
         }
@@ -1122,6 +1187,7 @@ export type Database = {
           id?: string
           logo_url?: string | null
           name?: string
+          registration_code?: string | null
           settings?: Json | null
           updated_at?: string
         }
@@ -2144,12 +2210,14 @@ export type Database = {
           biometric_template_version: number
           company_id: string
           created_at: string
+          employee_number: string | null
           full_name: string
           id: string
           is_active: boolean
           performance_score: number | null
           phone: string | null
           photo_url: string | null
+          site_id: string | null
           updated_at: string
           user_id: string | null
         }
@@ -2160,12 +2228,14 @@ export type Database = {
           biometric_template_version?: number
           company_id: string
           created_at?: string
+          employee_number?: string | null
           full_name: string
           id?: string
           is_active?: boolean
           performance_score?: number | null
           phone?: string | null
           photo_url?: string | null
+          site_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -2176,12 +2246,14 @@ export type Database = {
           biometric_template_version?: number
           company_id?: string
           created_at?: string
+          employee_number?: string | null
           full_name?: string
           id?: string
           is_active?: boolean
           performance_score?: number | null
           phone?: string | null
           photo_url?: string | null
+          site_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -2191,6 +2263,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guards_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
             referencedColumns: ["id"]
           },
         ]
@@ -3708,6 +3787,7 @@ export type Database = {
           gps_lng: number | null
           id: string
           name: string
+          registration_code: string | null
           status: string
         }
         Insert: {
@@ -3718,6 +3798,7 @@ export type Database = {
           gps_lng?: number | null
           id?: string
           name: string
+          registration_code?: string | null
           status?: string
         }
         Update: {
@@ -3728,6 +3809,7 @@ export type Database = {
           gps_lng?: number | null
           id?: string
           name?: string
+          registration_code?: string | null
           status?: string
         }
         Relationships: [
@@ -4324,6 +4406,28 @@ export type Database = {
     }
     Functions: {
       advance_due_patrol_session_statuses: { Args: never; Returns: number }
+      claim_bulk_registration_batch: {
+        Args: {
+          p_company_id: string
+          p_is_platform_owner: boolean
+          p_job_id: string
+          p_limit?: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      complete_bulk_registration_batch: {
+        Args: {
+          p_claim_token: string
+          p_company_id: string
+          p_cursor: number
+          p_is_platform_owner: boolean
+          p_job_id: string
+          p_results: Json
+          p_user_id: string
+        }
+        Returns: Json
+      }
       create_scan_investigation_for_log: {
         Args: {
           p_reason: string
@@ -4399,6 +4503,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      lookup_bulk_registration_identifier: {
+        Args: { p_company_id?: string; p_kind: string; p_value: string }
+        Returns: Json
+      }
       match_scan_to_patrol_session: {
         Args: { p_scan_log_id: string }
         Returns: {
@@ -4426,6 +4534,7 @@ export type Database = {
         }
         Returns: string
       }
+      normalize_bulk_nfc_uid: { Args: { p_value: string }; Returns: string }
       recalculate_patrol_session_progress: {
         Args: { p_session_id: string }
         Returns: undefined

@@ -74,6 +74,7 @@ export const ASSISTANT_MENUS: Record<string, MenuNode> = {
       { label: 'Change Site', action: 'change_site' },
       { label: 'User Assistant', action: 'switch_user' },
       { label: 'Attendance Management', action: 'menu:management_attendance' },
+      { label: 'Bulk Registration', action: 'bulk_registration' },
     ],
   },
   management_operations: {

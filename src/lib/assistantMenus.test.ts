@@ -24,6 +24,10 @@ describe("context-aware numeric menu routing", () => {
     expect(resolveAssistantInput(mgmtState(), "2", manager)).toMatchObject({ kind: "menu", menuKey: "management_devices" });
   });
 
+  it("opens Bulk Registration without renumbering existing management items", () => {
+    expect(resolveAssistantInput(mgmtState(), "12", manager)).toMatchObject({ kind: "action", action: "bulk_registration" });
+  });
+
   it("operations 2 opens the Patrol Status submenu", () => {
     expect(resolveAssistantInput(mgmtState("management_operations"), "2", manager)).toMatchObject({
       kind: "menu",

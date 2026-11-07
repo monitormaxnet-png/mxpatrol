@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Activity, AlertTriangle, ArrowRight, Bell, Bot, Camera, CheckCircle2, ChevronDown, Clock3, Cpu, FileText, Loader2, Lock, MapPin, Maximize2, Mic, Minimize2, Pause, Play, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
 import { MxPatrolVideoBackground } from '@/components/branding/MxPatrolVideoBackground';
@@ -122,6 +123,7 @@ function named(row: SessionRow): AssistantPatrolRow {
 }
 
 export default function CommandCenter() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { canManage, role } = useUserRole();
   const { isPlatformOwner } = usePlatformAdmin();
@@ -742,6 +744,7 @@ export default function CommandCenter() {
     setWorkspaceReturnMenu(state.activeMenu);
     if (expandedAction) requestAssistantWorkspace('expanded');
     else if (assistantLayoutSource === 'auto') setAssistantLayout('compact');
+    if (action === 'bulk_registration') { navigate('/bulk-registration'); return; }
     if (action === 'change_site') return addAssistant('CHANGE SITE', <SitePicker sites={availableSites} selectedId={selectedSiteId} onSelect={(site) => { setState((prev) => ({ ...prev, activeSiteId: site.id })); addAssistant('ACTIVE SITE UPDATED', <p>Now viewing <b>{site.name}</b>. All results are scoped to this site.</p>); }} />);
     if (action === 'dashboard_guidance') return addAssistant('DASHBOARD', <p>User Mode is for reports only. Use the Dashboard panels for live/current operations such as patrol status, devices, SOS, incidents, datalog, and live activity.</p>);
     if (action === 'live') return addAssistant('LIVE NOW - ' + selectedSite, <Summary devices={siteDevices} alerts={todayRows.alerts} incidents={openIncidents} patrols={operationPatrolRows} scans={todayRows.scans} />);

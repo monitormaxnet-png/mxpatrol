@@ -54,6 +54,7 @@ const SessionLogsPage = lazy(() => import("./pages/SessionLogsPage"));
 const ScanLogs = lazy(() => import("./pages/ScanLogs"));
 const SosAlerts = lazy(() => import("./pages/SosAlerts"));
 const Companies = lazy(() => import("./pages/Companies"));
+const BulkRegistration = lazy(() => import("./pages/BulkRegistration"));
 const InstallPage = lazy(() => import("./pages/InstallPage"));
 
 const queryClient = new QueryClient();
@@ -148,6 +149,7 @@ const App = () => (
               <Route path="/patrols/schedules" element={lazyRoute(<Patrols />)} />
               <Route path="/patrols/sessions" element={lazyRoute(<Patrols />)} />
               <Route path="/guards" element={lazyRoute(<Guards />)} />
+              <Route path="/bulk-registration" element={lazyRoute(<BulkRegistration />)} />
               <Route path="/guards/:id" element={lazyRoute(<GuardDetail />)} />
               <Route path="/checkpoints" element={lazyRoute(<Checkpoints />)} />
               <Route path="/shifts" element={lazyRoute(<Shifts />)} />

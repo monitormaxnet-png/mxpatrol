@@ -99,7 +99,7 @@ export default function BulkRegistration() {
   if (checking) return <p className="p-6">Checking access...</p>;
   if (!authorized) return <p className="p-6">Management access required.</p>;
 
-  return <main className="mx-auto max-w-6xl space-y-5 p-6 text-foreground">
+  return <section className="mx-bulk-registration mx-auto max-w-6xl space-y-5 p-6 text-foreground">
     <header><h1 className="text-2xl font-bold">Bulk Registration</h1><p className="text-sm text-muted-foreground">Download a template and review registration data before import.</p></header>
     <div className="flex flex-wrap gap-2">
       <button type="button" onClick={() => download()} className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm"><Download size={16} /> Master workbook</button>
@@ -119,5 +119,5 @@ export default function BulkRegistration() {
       <p className="text-sm text-amber-300">{results.filter((row) => row.message === 'Registered' && ['Devices', 'Guards', 'WhatsApp Users'].includes(row.sheet)).length} device, guard or WhatsApp profiles await their normal enrollment or verification steps.</p>
       {results.some((row) => row.status === 'invalid' || row.status === 'conflicting') && <button type="button" onClick={downloadErrors} className="rounded border px-3 py-2 text-sm">Download error report</button>}
     </section>}
-  </main>;
+  </section>;
 }

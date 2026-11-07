@@ -29,11 +29,11 @@ const AppBackgroundVideo = memo(() => {
         preload="auto"
         disablePictureInPicture
         aria-hidden="true"
-        className="app-background-video"
+        className="app-background-video pointer-events-none"
       >
         <source src={bgVideo.url} type="video/mp4" />
       </video>
-      <div className="app-video-overlay" aria-hidden="true" />
+      <div className="app-video-overlay pointer-events-none" aria-hidden="true" />
     </>
   );
 });

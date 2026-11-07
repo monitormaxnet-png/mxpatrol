@@ -13,6 +13,7 @@ const AppLayout = () => {
   const [showOnboarding, setShowOnboarding] = useState(true);
   const location = useLocation();
   const aiFirstCommandCenter = location.pathname === '/assistant' || location.pathname === '/dashboard' || location.pathname === '/command-center';
+  const bulkRegistrationWorkspace = location.pathname === '/bulk-registration';
   const internalMaintenanceAccess = new URLSearchParams(location.search).get('internal') === '1';
 
   const handleOnboardingComplete = async () => {
@@ -20,21 +21,21 @@ const AppLayout = () => {
     setShowOnboarding(false);
   };
 
-  if (!aiFirstCommandCenter && !internalMaintenanceAccess) {
+  if (!aiFirstCommandCenter && !bulkRegistrationWorkspace && !internalMaintenanceAccess) {
     return <Navigate to='/assistant' replace />;
   }
 
   if (aiFirstCommandCenter) {
     return (
-      <div className='min-h-screen bg-transparent'>
+      <div className='relative z-[1] min-h-screen bg-transparent'>
         <Outlet />
       </div>
     );
   }
 
   return (
-    <div className='flex min-h-screen bg-transparent grid-pattern'>
-      {needsOnboarding && showOnboarding && (
+    <div className='relative z-[1] flex min-h-screen bg-transparent grid-pattern'>
+      {!bulkRegistrationWorkspace && needsOnboarding && showOnboarding && (
         <OnboardingWizard onComplete={handleOnboardingComplete} />
       )}
       <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />

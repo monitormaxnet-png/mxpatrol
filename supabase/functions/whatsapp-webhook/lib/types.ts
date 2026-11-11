@@ -7,6 +7,7 @@ export type OutMessage = {
   footer?: string;
   /** Identifies which menu produced these options, so `back` and numeric replies stay in context. */
   menuKey?: string;
+  document?: { id: string; filename: string };
 };
 
 export type Role = "admin" | "supervisor" | "guard";

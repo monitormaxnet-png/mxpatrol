@@ -1,10 +1,17 @@
 import type { OutMessage } from "./types.ts";
+import { metaMenuPayload, sendMeta, type MetaConfig } from "../../_shared/whatsapp/meta.ts";
 
 // Deno runtime global — declared here so this module also typechecks in the
 // web/Vitest TypeScript program (which has no Deno types).
 declare const Deno: { env: { get(name: string): string | undefined } };
 
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
+
+export function metaConfig(): MetaConfig | null {
+  const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
+  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
+  return token && phoneNumberId ? { token, phoneNumberId } : null;
+}
 
 /** Plain-text fallback rendering: numbered options that users can reply to. */
 export function renderText(message: OutMessage): string {
@@ -33,6 +40,11 @@ export function twiml(body: string): string {
  * configured, and falls back to plain numbered text otherwise.
  */
 export async function sendWhatsApp(to: string, message: OutMessage, forcePlainText = false): Promise<boolean> {
+  const meta = metaConfig();
+  if (meta) {
+    await sendMeta(meta, metaMenuPayload(to, message, forcePlainText));
+    return true;
+  }
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
   const twilioKey = Deno.env.get("TWILIO_API_KEY");
   const from = Deno.env.get("TWILIO_WHATSAPP_NUMBER");
@@ -85,7 +97,14 @@ export async function sendWhatsApp(to: string, message: OutMessage, forcePlainTe
 }
 
 /** Sends a WhatsApp location pin. */
-export async function sendLocation(to: string, lat: number, lng: number, label: string): Promise<boolean> {
+export async function sendLocation(to: string, lat: number, lng: number, label: string, provider?: "meta" | "twilio"): Promise<boolean> {
+  const meta = provider === "twilio" ? null : metaConfig();
+  if (meta) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new Error("Invalid location");
+    const base = metaMenuPayload(to, { lines: [label] });
+    await sendMeta(meta, { messaging_product: "whatsapp", to: base.to, type: "location", location: { latitude: lat, longitude: lng, name: label.slice(0, 1000) } });
+    return true;
+  }
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
   const twilioKey = Deno.env.get("TWILIO_API_KEY");
   const from = Deno.env.get("TWILIO_WHATSAPP_NUMBER");

@@ -1588,6 +1588,8 @@ export function resolveMenuChoice(session: SessionRow, input: string): string | 
   const options = (session.temporary_data?.["last_options"] ?? []) as Array<{ id: string; label: string }>;
   if (!Array.isArray(options) || !options.length) return null;
   const trimmed = input.trim();
+  const exact = options.find((option) => option.id === trimmed);
+  if (exact) return exact.id;
   if (/^\d+$/.test(trimmed)) {
     const index = Number(trimmed);
     return index >= 1 && index <= options.length ? options[index - 1].id : null;

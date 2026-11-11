@@ -9,6 +9,8 @@ export type InboundWhatsAppMessage = {
   mediaUrls: string[];
   contentType: string;
   isTwilioForm: boolean;
+  provider?: "meta" | "twilio";
+  selectionId?: string;
 };
 
 export async function parseInboundWhatsAppRequest(req: Request): Promise<InboundWhatsAppMessage> {

@@ -4,7 +4,7 @@ import { normalizePhone, type Identity, type OutMessage, type SessionRow, type S
 import { emptyTwiml, parseInboundWhatsAppRequest, type InboundWhatsAppMessage } from "./lib/request.ts";
 import { allowedSites, resolveIdentity } from "./lib/identity.ts";
 import { clearFlow, loadSession, patchSession } from "./lib/session.ts";
-import { renderText, sendLocation, twiml } from "./lib/render.ts";
+import { renderText, sendLocation, twiml, metaConfig } from "./lib/render.ts";
 import { classifyIntent, keywordIntent, type Intent } from "./lib/askmx.ts";
 import { handleFlowInput, startFlow, startSecureDeviceAction } from "./lib/flows.ts";
 import { runManagementAction, type ManagementActor } from "../_shared/management-actions.ts";
@@ -45,6 +45,9 @@ import {
   resolveMenuChoice,
 } from "./lib/views.ts";
 
+import { verifyMetaSignature, verifyMetaChallenge, parseMetaPayload, metaMenuPayload, sendMeta, sendMetaPdf, type MetaInbound } from "../_shared/whatsapp/meta.ts";
+import { generateWhatsAppPdf, pdfTypeForAction } from "./lib/pdf-reports.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -67,6 +70,7 @@ type Ctx = {
   client: any;
   identity: Identity;
   session: SessionRow;
+  provider?: "meta" | "twilio";
 };
 
 function optionMenu(title: string, lines: string[], options: Array<{ id: string; label: string }>): OutMessage {
@@ -156,34 +160,27 @@ async function hasDuplicateInbound(ctx: Ctx, messageSid: string | null): Promise
     .eq("twilio_sid", messageSid)
     .limit(1);
   if (error) {
-    console.warn("[WA] duplicate check failed:", error.message);
-    return false;
+    throw new Error("Inbound duplicate lookup failed");
   }
   return Boolean(data?.length);
 }
 
-async function storeInbound(ctx: Ctx, inbound: InboundWhatsAppMessage) {
-  try {
-    const conversation = await ensureConversation(ctx);
-    if (!conversation) return;
-    await ctx.client.from("whatsapp_messages").insert({
-      conversation_id: conversation.id,
-      company_id: ctx.identity.company_id,
-      direction: "inbound",
-      message_body: inbound.body || (inbound.mediaUrls.length ? "[media]" : ""),
-      message_type: "text",
-      twilio_sid: inbound.messageSid,
-      metadata: {
-        to: inbound.to || null,
-        account_sid: inbound.accountSid,
-        profile_name: inbound.profileName,
-        wa_id: inbound.waId,
-        media_count: inbound.mediaUrls.length,
-      },
-    });
-  } catch (error) {
-    console.warn("[WA] inbound logging failed:", error);
-  }
+async function storeInbound(ctx: Ctx, inbound: InboundWhatsAppMessage): Promise<boolean> {
+  const conversation = await ensureConversation(ctx);
+  if (!conversation) throw new Error("Conversation unavailable");
+  const { error } = await ctx.client.from("whatsapp_messages").insert({
+    conversation_id: conversation.id,
+    company_id: ctx.identity.company_id,
+    direction: "inbound",
+    message_body: inbound.body || (inbound.mediaUrls.length ? "[media]" : "[unsupported message]"),
+    message_type: "text",
+    // Legacy column is the provider message-ID slot; its tenant-scoped unique index also protects Meta deliveries.
+    twilio_sid: inbound.messageSid,
+    metadata: { provider: inbound.provider ?? "twilio", processing: "running", to: inbound.to || null },
+  });
+  if (error?.code === "23505") return false;
+  if (error) throw new Error("Inbound message claim failed");
+  return true;
 }
 
 
@@ -302,7 +299,7 @@ async function runIntent(ctx: Ctx, intent: Intent): Promise<OutMessage> {
 
     case "device_detail": {
       const { message, gps } = await deviceDetail(ctx.client, ctx.identity, intent.device);
-      if (gps) await sendLocation(ctx.identity.phone, gps.lat, gps.lng, gps.label);
+      if (gps) await sendLocation(ctx.identity.phone, gps.lat, gps.lng, gps.label, ctx.provider);
       return message;
     }
 
@@ -584,13 +581,13 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
 
   if (id.startsWith("device:")) {
     const { message, gps } = await deviceDetail(ctx.client, ctx.identity, id.slice(7));
-    if (gps) await sendLocation(ctx.identity.phone, gps.lat, gps.lng, gps.label);
+    if (gps) await sendLocation(ctx.identity.phone, gps.lat, gps.lng, gps.label, ctx.provider);
     return message;
   }
 
   if (id.startsWith("location:")) {
     const { message, gps } = await deviceDetail(ctx.client, ctx.identity, id.slice(9));
-    if (gps) await sendLocation(ctx.identity.phone, gps.lat, gps.lng, gps.label);
+    if (gps) await sendLocation(ctx.identity.phone, gps.lat, gps.lng, gps.label, ctx.provider);
     return message;
   }
 
@@ -682,6 +679,16 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
       ? ctx.session.temporary_data.pending_report_action
       : null;
     if (pendingReportAction?.startsWith("report:")) {
+      if (ctx.provider === "meta" && pdfTypeForAction(pendingReportAction)) {
+        const config = metaConfig();
+        if (!config) throw new Error("Meta WhatsApp is not configured");
+        const report = await generateWhatsAppPdf(ctx.client, ctx.identity, siteId, pendingReportAction, id as "today" | "yesterday" | "week");
+        const documentId = await sendMetaPdf(config, ctx.identity.phone, report.blob, report.filename);
+        const nextTemporary = { ...(ctx.session.temporary_data ?? {}) };
+        delete nextTemporary.pending_report_action;
+        ctx.session = await patchSession(ctx.client, ctx.session, { temporary_data: nextTemporary });
+        return { title: "PDF REPORT", lines: [report.filename], document: { id: documentId, filename: report.filename }, options: [{ id: "reports", label: "Reports" }, { id: "menu", label: "Main Menu" }] };
+      }
       const nextTemporary = { ...(ctx.session.temporary_data ?? {}) };
       delete nextTemporary.pending_report_action;
       ctx.session = await patchSession(ctx.client, ctx.session, { temporary_data: nextTemporary });
@@ -698,16 +705,8 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
   return null;
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
-  const client = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-
+async function processInbound(client: any, inbound: InboundWhatsAppMessage) {
   try {
-    const inbound = await parseInboundWhatsAppRequest(req);
     const phone = normalizePhone(inbound.from);
     const body = inbound.body;
     const mediaUrls = inbound.mediaUrls;
@@ -721,6 +720,11 @@ serve(async (req) => {
     const resolved = await resolveIdentity(client, phone, body);
     if (resolved.kind === "unknown") {
       const text = renderText(LOCKOUT);
+      if (inbound.provider === "meta") {
+        const config = metaConfig();
+        if (!config) throw new Error("Meta WhatsApp is not configured");
+        await sendMeta(config, metaMenuPayload(phone, LOCKOUT));
+      }
       return inbound.isTwilioForm
         ? new Response(twiml(text), { headers: { ...corsHeaders, "Content-Type": "text/xml" } })
         : new Response(JSON.stringify({ success: true, response: text }), {
@@ -730,7 +734,7 @@ serve(async (req) => {
 
     const identity = { ...resolved.identity, phone };
     const session = await loadSession(client, identity);
-    const ctx: Ctx = { client, identity, session };
+    const ctx: Ctx = { client, identity, session, provider: inbound.provider ?? "twilio" };
 
     if (await hasDuplicateInbound(ctx, inbound.messageSid)) {
       console.info("[WA] duplicate inbound ignored", { messageSid: inbound.messageSid, companyId: identity.company_id });
@@ -741,7 +745,7 @@ serve(async (req) => {
         });
     }
 
-    await storeInbound(ctx, inbound);
+    if (!(await storeInbound(ctx, inbound))) return new Response(JSON.stringify({ success: true, duplicate: true }), { headers: corsHeaders });
     if (resolved.kind !== "linked") await createInboundWhatsAppAlert(ctx, inbound);
 
     let message: OutMessage;
@@ -764,7 +768,7 @@ serve(async (req) => {
     } else if (/^back$/i.test(body.trim())) {
       message = (await runSelection(ctx, "back")) ?? mainMenu(identity, ctx.session);
     } else {
-      const selectionId = resolveMenuChoice(ctx.session, body);
+      const selectionId = resolveMenuChoice(ctx.session, inbound.selectionId ?? body);
       const selectionMessage = selectionId ? await runSelection(ctx, selectionId) : null;
 
       if (selectionMessage) {
@@ -777,6 +781,19 @@ serve(async (req) => {
       }
     }
 
+    if (inbound.provider === "meta") {
+      const config = metaConfig();
+      if (!config) throw new Error("Meta WhatsApp is not configured");
+      const id = await sendMeta(config, metaMenuPayload(phone, message));
+      await patchSession(ctx.client, ctx.session, { temporary_data: { ...(ctx.session.temporary_data ?? {}), last_options: message.options ?? [], last_menu_key: message.menuKey ?? ctx.session.temporary_data?.last_menu_key ?? null } });
+      const conversation = await ensureConversation(ctx);
+      if (conversation) {
+        const { error } = await client.from("whatsapp_messages").insert({ company_id: identity.company_id, conversation_id: conversation.id, direction: "outbound", message_type: message.document ? "document" : "system", message_body: renderText(message), twilio_sid: message.document?.id ?? id, metadata: { provider: "meta", reply_message_id: id, status: "accepted", filename: message.document?.filename ?? null } });
+        if (error) throw new Error("Outbound message logging failed");
+      }
+      await client.from("whatsapp_messages").update({ metadata: { provider: "meta", processing: "completed" } }).eq("company_id", identity.company_id).eq("direction", "inbound").eq("twilio_sid", inbound.messageSid);
+      return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+    }
     const text = await respondWith(ctx, message);
 
     if (inbound.isTwilioForm) {
@@ -786,10 +803,58 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("[WA] webhook error:", error);
+    console.error("[WA] webhook processing failed:", error instanceof Error ? error.message : "Unknown error");
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
+  }
+}
+
+async function processMetaDelivery(client: any, messages: MetaInbound[], statuses: Record<string, unknown>[]) {
+  for (const status of statuses) {
+    if (typeof status.id !== "string" || !["sent", "delivered", "read", "failed"].includes(String(status.status))) continue;
+    const { data: records, error } = await client.from("whatsapp_messages").select("id, company_id, metadata").eq("direction", "outbound").eq("twilio_sid", status.id);
+    if (error) throw new Error("Status lookup failed");
+    for (const record of records ?? []) {
+      if (record.metadata?.provider !== "meta") continue;
+      await client.from("whatsapp_messages").update({ metadata: { ...record.metadata, status: status.status, status_timestamp: status.timestamp, errors: status.errors ?? [] } }).eq("company_id", record.company_id).eq("id", record.id);
+    }
+  }
+  for (const message of messages) {
+    const result = await processInbound(client, { from: message.from, to: message.phoneNumberId, body: message.body, messageSid: message.id, accountSid: null, profileName: null, waId: message.from, mediaUrls: [], contentType: "application/json", isTwilioForm: false, provider: "meta", selectionId: message.selectionId });
+    if (!result.ok) console.warn("[WA] inbound processing failed; review message state before replay");
+  }
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  if (req.method === "GET") {
+    const challenge = verifyMetaChallenge(new URL(req.url), Deno.env.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN"));
+    return challenge ? new Response(challenge, { headers: { ...corsHeaders, "Content-Type": "text/plain" } }) : json({ error: "Verification failed" }, 403);
+  }
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) return json({ error: "Service unavailable" }, 503);
+  const client = createClient(url, key);
+  try {
+    if ((req.headers.get("content-type") ?? "").includes("application/json")) {
+      const raw = await req.text();
+      if (raw.length > 1000000) return json({ error: "Payload too large" }, 413);
+      const config = metaConfig();
+      const appSecret = Deno.env.get("WHATSAPP_APP_SECRET");
+      if (!config || !appSecret) return json({ error: "Meta WhatsApp configuration incomplete" }, 503);
+      if (!(await verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), appSecret))) return json({ error: "Invalid webhook signature" }, 401);
+      const payload = parseMetaPayload(JSON.parse(raw), config.phoneNumberId);
+      // Acknowledge promptly. Menu/AI/PDF work can exceed Meta's webhook timeout.
+      EdgeRuntime.waitUntil(processMetaDelivery(client, payload.messages, payload.statuses).catch(() => console.error("[WA] Meta background processing failed")));
+      return json({ success: true });
+    }
+    // Keep the configured Twilio sandbox working until Meta cutover is complete.
+    return await processInbound(client, await parseInboundWhatsAppRequest(req));
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Invalid webhook payload" }, 400);
   }
 });

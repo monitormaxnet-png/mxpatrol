@@ -683,8 +683,15 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
       if (ctx.provider === "meta" && pdfTypeForAction(pendingReportAction)) {
         const config = metaConfig();
         if (!config) throw new Error("Meta WhatsApp is not configured");
-        const report = await generateWhatsAppPdf(ctx.client, ctx.identity, siteId, pendingReportAction, id as "today" | "yesterday" | "week");
-        const documentId = await sendMetaPdf(config, ctx.identity.phone, report.blob, report.filename);
+        let report;
+        let documentId;
+        try {
+          report = await generateWhatsAppPdf(ctx.client, ctx.identity, siteId, pendingReportAction, id as "today" | "yesterday" | "week");
+          documentId = await sendMetaPdf(config, ctx.identity.phone, report.blob, report.filename);
+        } catch {
+          // Keep the pending selection so a fresh user message can retry safely.
+          return { title: "REPORT UNAVAILABLE", lines: ["The PDF could not be sent. Choose a shorter period or try again."], options: reportDateRangeMenu(pendingReportAction).options, menuKey: "report_date_range" };
+        }
         const nextTemporary = { ...(ctx.session.temporary_data ?? {}) };
         delete nextTemporary.pending_report_action;
         ctx.session = await patchSession(ctx.client, ctx.session, { temporary_data: nextTemporary });

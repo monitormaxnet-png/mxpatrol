@@ -47,6 +47,7 @@ import {
 
 import { verifyMetaSignature, verifyMetaChallenge, parseMetaPayload, metaMenuPayload, sendMeta, sendMetaPdf, type MetaInbound } from "../_shared/whatsapp/meta.ts";
 import { generateWhatsAppPdf, pdfTypeForAction } from "./lib/pdf-reports.ts";
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -706,6 +707,7 @@ async function runSelection(ctx: Ctx, id: string): Promise<OutMessage | null> {
 }
 
 async function processInbound(client: any, inbound: InboundWhatsAppMessage) {
+  let claimedCompany: string | null = null;
   try {
     const phone = normalizePhone(inbound.from);
     const body = inbound.body;
@@ -746,6 +748,7 @@ async function processInbound(client: any, inbound: InboundWhatsAppMessage) {
     }
 
     if (!(await storeInbound(ctx, inbound))) return new Response(JSON.stringify({ success: true, duplicate: true }), { headers: corsHeaders });
+    claimedCompany = identity.company_id;
     if (resolved.kind !== "linked") await createInboundWhatsAppAlert(ctx, inbound);
 
     let message: OutMessage;
@@ -803,6 +806,9 @@ async function processInbound(client: any, inbound: InboundWhatsAppMessage) {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
+    if (claimedCompany && inbound.messageSid) {
+      await client.from("whatsapp_messages").update({ metadata: { provider: inbound.provider ?? "twilio", processing: "failed", error: "Processing failed; send a new request to retry" } }).eq("company_id", claimedCompany).eq("direction", "inbound").eq("twilio_sid", inbound.messageSid);
+    }
     console.error("[WA] webhook processing failed:", error instanceof Error ? error.message : "Unknown error");
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
@@ -852,7 +858,8 @@ serve(async (req) => {
       EdgeRuntime.waitUntil(processMetaDelivery(client, payload.messages, payload.statuses).catch(() => console.error("[WA] Meta background processing failed")));
       return json({ success: true });
     }
-    // Keep the configured Twilio sandbox working until Meta cutover is complete.
+    // Once Meta is fully configured, only signed Meta callbacks may run operations.
+    if (metaConfig() && Deno.env.get("WHATSAPP_APP_SECRET")) return json({ error: "Use the signed Meta webhook" }, 401);
     return await processInbound(client, await parseInboundWhatsAppRequest(req));
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Invalid webhook payload" }, 400);

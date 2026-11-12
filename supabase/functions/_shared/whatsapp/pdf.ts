@@ -594,36 +594,6 @@ function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("") + ">";
 }
 
-function dataUrlToBytes(dataUrl: string): Uint8Array {
-  const base64 = dataUrl.split(",")[1] ?? "";
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-async function loadReportLogoForPdf(): Promise<PdfReportLogo | null> {
-  if (typeof window === "undefined" || typeof Image === "undefined" || typeof document === "undefined") return null;
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.decoding = "async";
-    image.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const context = canvas.getContext("2d");
-      if (!context) return resolve(null);
-      context.fillStyle = "#ffffff";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(image, 0, 0);
-      const bytes = dataUrlToBytes(canvas.toDataURL("image/jpeg", 0.92));
-      resolve({ width: canvas.width, height: canvas.height, hex: bytesToHex(bytes) });
-    };
-    image.onerror = () => resolve(null);
-    image.src = MX_PATROL_REPORT_LOGO_SRC;
-  });
-}
-
 function pdfBlobFromString(pdf: string): Blob {
   if (!pdf.startsWith("%PDF-")) throw new Error("PDF generation failed: invalid PDF header.");
   return new Blob([new TextEncoder().encode(pdf)], { type: "application/pdf" });
@@ -776,20 +746,6 @@ export function buildMxPdfReportBlob(input: MxPdfReportInput, logo?: PdfReportLo
   offsets.slice(1).forEach((offset) => { pdf += String(offset).padStart(10, "0") + " 00000 n \n"; });
   pdf += "trailer << /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
   return pdfBlobFromString(pdf);
-}
-
-export async function downloadMxPdfReport(input: MxPdfReportInput, filename = reportFilename(input)): Promise<void> {
-  const pdfBlob = buildMxPdfReportBlob(input, await loadReportLogoForPdf());
-  if (pdfBlob.type !== "application/pdf") throw new Error("PDF generation failed: expected application/pdf output.");
-  const url = URL.createObjectURL(pdfBlob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = ensurePdfFilename(filename);
-  link.rel = "noopener";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function buildMxPdfReportResult(input: MxPdfReportInput) {

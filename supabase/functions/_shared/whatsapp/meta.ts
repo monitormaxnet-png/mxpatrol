@@ -104,8 +104,9 @@ export async function sendMetaPdf(config: MetaConfig, to: string, pdf: Blob, fil
   try {
     const base = metaMenuPayload(to, { lines: ["Report"] });
     return await sendMeta(config, { messaging_product: "whatsapp", to: base.to, type: "document", document: { id: uploaded.id, filename } }, fetcher);
-  } finally {
+  } catch (error) {
     try { await metaRequest(config, uploaded.id, { method: "DELETE" }, fetcher); }
     catch { console.warn("[WA] Meta media cleanup failed; check provider retention"); }
+    throw error;
   }
 }

@@ -2789,6 +2789,7 @@ export type Database = {
           gps_lat: number | null
           gps_lng: number | null
           id: string
+          patrol_session_id: string | null
           required: boolean
           route_checkpoint_id: string | null
           scan_log_id: string | null
@@ -2812,6 +2813,7 @@ export type Database = {
           gps_lat?: number | null
           gps_lng?: number | null
           id?: string
+          patrol_session_id?: string | null
           required?: boolean
           route_checkpoint_id?: string | null
           scan_log_id?: string | null
@@ -2835,6 +2837,7 @@ export type Database = {
           gps_lat?: number | null
           gps_lng?: number | null
           id?: string
+          patrol_session_id?: string | null
           required?: boolean
           route_checkpoint_id?: string | null
           scan_log_id?: string | null
@@ -2865,6 +2868,20 @@ export type Database = {
             columns: ["data_log_form_id"]
             isOneToOne: false
             referencedRelation: "data_log_forms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patrol_session_checkpoints_patrol_session_id_fkey"
+            columns: ["patrol_session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_session_reports"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "patrol_session_checkpoints_patrol_session_id_fkey"
+            columns: ["patrol_session_id"]
+            isOneToOne: false
+            referencedRelation: "patrol_sessions"
             referencedColumns: ["id"]
           },
           {

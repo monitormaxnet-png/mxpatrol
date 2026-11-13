@@ -36,6 +36,13 @@
       "when": 1793891609004,
       "tag": "0004_bulk_registration_phase2_trial_873ba14",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794553498775,
+      "tag": "0005_command_center_activity_and_patrol_compat",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
 import { z } from "npm:zod@3.25.76";
 import { metaMenuPayload, sendMeta, MetaError } from "../_shared/whatsapp/meta.ts";
+import { isServiceRoleBearer } from "../_shared/whatsapp/serviceAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,15 +32,27 @@ serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !anonKey) throw new Error("Service unavailable");
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const userClient = createClient(SUPABASE_URL, anonKey, { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } });
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    const authHeader = req.headers.get("Authorization") ?? "";
+    // Trusted internal callers (e.g. device-scan) authenticate with the service-role key.
+    const isServiceCaller = isServiceRoleBearer(authHeader, SUPABASE_SERVICE_ROLE_KEY);
+    let userId: string | null = null;
+    if (!isServiceCaller) {
+      const userClient = createClient(SUPABASE_URL, anonKey, { global: { headers: { Authorization: authHeader } } });
+      const { data: { user }, error: authError } = await userClient.auth.getUser();
+      if (authError || !user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+      userId = user.id;
+    }
     const parsed = SendSchema.safeParse(await req.json());
     if (!parsed.success) return new Response(JSON.stringify({ error: "Invalid message fields" }), { status: 400, headers: corsHeaders });
     const { to, message, message_type, company_id, content_sid, content_variables } = parsed.data;
-    const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).maybeSingle();
-    const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-    if (profile?.company_id !== company_id || !roles?.some((row) => ["admin", "supervisor"].includes(row.role))) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+    if (isServiceCaller) {
+      const { data: company } = await supabase.from("companies").select("id").eq("id", company_id).maybeSingle();
+      if (!company) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+    } else {
+      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", userId!).maybeSingle();
+      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId!);
+      if (profile?.company_id !== company_id || !roles?.some((row) => ["admin", "supervisor"].includes(row.role))) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+    }
     const metaToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
     const metaPhoneId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
     if (metaToken && metaPhoneId && Deno.env.get("WHATSAPP_APP_SECRET")) {

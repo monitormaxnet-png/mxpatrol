@@ -10,6 +10,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const DIAGNOSTIC_VERSION = "whatsapp-send-diag-1";
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 const SendSchema = z.object({
   to: z.string().regex(/^(whatsapp:)?\+?[1-9]\d{6,14}$/),
@@ -20,7 +21,7 @@ const SendSchema = z.object({
   content_variables: z.record(z.union([z.string(), z.number()])).optional(),
 }).refine((value) => Boolean(value.message || value.content_sid), "Message or template required");
 
-serve(async (req) => {
+async function handleRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -39,7 +40,15 @@ serve(async (req) => {
     if (!isServiceCaller) {
       const userClient = createClient(SUPABASE_URL, anonKey, { global: { headers: { Authorization: authHeader } } });
       const { data: { user }, error: authError } = await userClient.auth.getUser();
-      if (authError || !user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+      if (authError || !user) {
+        console.info("whatsapp-send auth failure", {
+          hasAuthHeader: Boolean(authHeader),
+          hasBearerPrefix: /^Bearer\s+/i.test(authHeader),
+          hasRuntimeServiceKey: Boolean(SUPABASE_SERVICE_ROLE_KEY),
+          constantTimeMatch: isServiceCaller,
+        });
+        return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+      }
       userId = user.id;
     }
     const parsed = SendSchema.safeParse(await req.json());
@@ -208,4 +217,10 @@ serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
+}
+
+serve(async (req) => {
+  const response = await handleRequest(req);
+  response.headers.set("X-Edge-Version", DIAGNOSTIC_VERSION);
+  return response;
 });

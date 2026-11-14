@@ -399,7 +399,7 @@ Deno.serve(async (req) => {
 
           if (assignment.phone) {
             try {
-              await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-send`, {
+              const notification = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-send`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
                 body: JSON.stringify({
@@ -416,6 +416,7 @@ Deno.serve(async (req) => {
                   company_id: device.company_id,
                 }),
               });
+              if (!notification.ok) console.warn("device-scan NFC assignment WhatsApp notify failed", { status: notification.status });
             } catch (notifyError) {
               console.warn("device-scan NFC assignment WhatsApp notify failed", notifyError);
             }

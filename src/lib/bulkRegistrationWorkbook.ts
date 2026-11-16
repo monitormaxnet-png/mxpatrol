@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { normalizeNfcUid } from './nfcUid';
 
 export const REGISTRATION_SHEETS = {
   Companies: ['Record ID', 'Company Code', 'Company Name', 'Contact Person', 'Phone', 'Email', 'Address'],
@@ -24,14 +25,16 @@ const REQUIRED: Record<RegistrationSheet, string[]> = {
 
 export function validateRegistrationRows(rows: RegistrationRow[]): RegistrationPreviewRow[] {
   const seen = new Set<string>();
-  const uniqueKey = (row: RegistrationRow) => {
+  const uniqueKeys = (row: RegistrationRow) => {
     const v = row.values;
-    if (row.sheet === 'Companies') return v['Company Code'];
-    if (row.sheet === 'Sites') return `${v['Company Code']}:${v['Site Code']}`;
-    if (row.sheet === 'Devices') return v['Serial Number'];
-    if (row.sheet === 'Checkpoints') return `${v['Company Code']}:${v['NFC UID']}`;
-    if (row.sheet === 'Guards') return `${v['Company Code']}:${v['Guard ID']}`;
-    return v['Phone Number'];
+    const company = v['Company Code']?.trim().toUpperCase();
+    const site = v['Site Code']?.trim().toUpperCase();
+    if (row.sheet === 'Companies') return [`company:${company}`];
+    if (row.sheet === 'Sites') return [`site:${company}:${site}`];
+    if (row.sheet === 'Devices') return [`device-serial:${v['Serial Number']?.trim().toUpperCase()}`, `device-id:${company}:${v['Device ID']?.trim().toUpperCase()}`];
+    if (row.sheet === 'Checkpoints') return [`checkpoint:${company}:${normalizeNfcUid(v['NFC UID'])}`];
+    if (row.sheet === 'Guards') return [`guard:${company}:${(v['Employee Number'] || v['Guard ID'])?.trim().toUpperCase()}`];
+    return [`whatsapp:${v['Phone Number']?.trim().toUpperCase()}`];
   };
   return rows.map((row) => {
     const issues = REQUIRED[row.sheet].filter((field) => !row.values[field]).map((field) => `${field} is required`);
@@ -41,9 +44,9 @@ export function validateRegistrationRows(rows: RegistrationRow[]): RegistrationP
       if (!['user', 'guard', 'supervisor', 'admin'].includes(v['Requested Role'].toLowerCase())) issues.push('Requested Role is invalid');
     }
     if (row.sheet === 'Checkpoints' && !['yes', 'no', 'true', 'false', ''].includes(v['Datalog Enabled'].toLowerCase())) issues.push('Datalog Enabled must be Yes or No');
-    const key = `${row.sheet}:${uniqueKey(row).toLowerCase()}`;
-    const duplicate = seen.has(key);
-    seen.add(key);
+    const keys = uniqueKeys(row);
+    const duplicate = keys.some((key) => seen.has(key));
+    keys.forEach((key) => seen.add(key));
     return { ...row, issues, status: issues.length ? 'invalid' : duplicate ? 'duplicate' : 'valid' };
   });
 }

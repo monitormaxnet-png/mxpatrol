@@ -39,9 +39,9 @@ const AppLayout = () => {
         <OnboardingWizard onComplete={handleOnboardingComplete} />
       )}
       <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className='flex flex-1 flex-col lg:pl-64'>
+      <div className={`flex flex-1 flex-col lg:pl-64 ${bulkRegistrationWorkspace ? 'min-w-0' : ''}`}>
         <TopBar onMenuClick={() => setSidebarOpen(true)} />
-        <main className='flex-1 p-4 lg:p-6'>
+        <main className={`flex-1 p-4 lg:p-6 ${bulkRegistrationWorkspace ? 'min-w-0' : ''}`}>
           <Outlet />
         </main>
       </div>

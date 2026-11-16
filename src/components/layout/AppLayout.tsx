@@ -12,8 +12,8 @@ const AppLayout = () => {
   const { needsOnboarding, completeOnboarding } = useOnboardingStatus();
   const [showOnboarding, setShowOnboarding] = useState(true);
   const location = useLocation();
-  const aiFirstCommandCenter = location.pathname === '/assistant' || location.pathname === '/dashboard' || location.pathname === '/command-center';
   const bulkRegistrationWorkspace = location.pathname === '/bulk-registration';
+  const aiFirstCommandCenter = location.pathname === '/assistant' || location.pathname === '/dashboard' || location.pathname === '/command-center' || bulkRegistrationWorkspace;
   const internalMaintenanceAccess = new URLSearchParams(location.search).get('internal') === '1';
 
   const handleOnboardingComplete = async () => {
@@ -21,7 +21,7 @@ const AppLayout = () => {
     setShowOnboarding(false);
   };
 
-  if (!aiFirstCommandCenter && !bulkRegistrationWorkspace && !internalMaintenanceAccess) {
+  if (!aiFirstCommandCenter && !internalMaintenanceAccess) {
     return <Navigate to='/assistant' replace />;
   }
 
@@ -35,13 +35,13 @@ const AppLayout = () => {
 
   return (
     <div className='relative z-[1] flex min-h-screen bg-transparent grid-pattern'>
-      {!bulkRegistrationWorkspace && needsOnboarding && showOnboarding && (
+      {needsOnboarding && showOnboarding && (
         <OnboardingWizard onComplete={handleOnboardingComplete} />
       )}
       <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className={`flex flex-1 flex-col lg:pl-64 ${bulkRegistrationWorkspace ? 'min-w-0' : ''}`}>
+      <div className='flex flex-1 flex-col lg:pl-64'>
         <TopBar onMenuClick={() => setSidebarOpen(true)} />
-        <main className={`flex-1 p-4 lg:p-6 ${bulkRegistrationWorkspace ? 'min-w-0' : ''}`}>
+        <main className='flex-1 p-4 lg:p-6'>
           <Outlet />
         </main>
       </div>

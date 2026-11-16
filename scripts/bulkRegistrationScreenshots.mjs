@@ -32,11 +32,19 @@ try {
       if (url.pathname.includes('/rest/v1/platform_admins')) {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ role: 'owner' }) });
       }
+      if (url.pathname.includes('/rest/v1/user_roles')) {
+        const single = route.request().headers().accept?.includes('application/vnd.pgrst.object+json');
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(single ? { role: 'admin' } : [{ role: 'admin' }]) });
+      }
       if (url.pathname.includes('/auth/v1/user')) {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(user) });
       }
       if (url.pathname.endsWith('/functions/v1/management-actions')) {
-        const rows = route.request().postDataJSON().input.rows;
+        const request = route.request().postDataJSON();
+        if (request.action !== 'bulk_registration_preview') {
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ record: { rows: [] } }) });
+        }
+        const rows = request.input.rows;
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
           job_id: 'local-preview-only',
           rows: rows.map((row, index) => ({ sheet: row.sheet, rowNumber: row.rowNumber,
@@ -54,7 +62,9 @@ try {
     await page.getByRole('heading', { name: 'Bulk Registration' }).waitFor({ timeout: 20000 });
     await page.screenshot({ path: new URL(`bulk-registration-${label}-${name}.png`, output).pathname.slice(1), fullPage: true });
     console.log(`${name}: ${await page.title()} | ${await page.locator('.mx-bulk-registration').boundingBox().then((box) => Math.round(box?.height ?? 0))}px panel`);
-    if (label === 'after') {
+    if (label.endsWith('after')) {
+      await page.getByRole('heading', { name: 'Web AI Assistant' }).waitFor();
+      if (await page.getByText('System Status', { exact: true }).count()) throw new Error('Legacy sidebar is still visible');
       if (name === 'desktop') {
         for (const choice of ['Master Workbook', 'Companies', 'Sites', 'Devices', 'Checkpoints', 'Guards', 'WhatsApp Users']) {
           const pending = page.waitForEvent('download');
@@ -79,11 +89,20 @@ try {
       await page.getByText('4 rows', { exact: true }).waitFor();
       await page.getByRole('button', { name: 'Validate in Supabase' }).click();
       await page.getByText('4 rows checked').waitFor();
+      await page.getByRole('button', { name: 'Back to Assistant' }).click();
+      await page.getByRole('heading', { name: 'Web AI Assistant' }).waitFor();
+      await page.goBack({ waitUntil: 'domcontentloaded' });
+      await page.getByText('4 rows checked').waitFor();
+      await page.getByRole('button', { name: 'Back to Assistant' }).click();
+      await page.locator('.mx-ai-input').fill('12');
+      await page.getByRole('button', { name: 'Send' }).click();
+      await page.waitForURL('**/bulk-registration');
+      await page.getByText('4 rows checked').waitFor();
       const widths = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth,
         elements: [...document.querySelectorAll('.br-page, .br-stage, .br-table-wrap, .br-table, .br-actions, main')]
           .map((element) => ({ name: element.className, width: Math.round(element.getBoundingClientRect().width), right: Math.round(element.getBoundingClientRect().right) })) }));
       console.log(`${name} widths: ${JSON.stringify(widths)}`);
-      await page.screenshot({ path: new URL(`bulk-registration-after-preview-${name}.png`, output).pathname.slice(1), fullPage: true });
+      await page.screenshot({ path: new URL(`bulk-registration-${label}-preview-${name}.png`, output).pathname.slice(1), fullPage: true });
       console.log(`${name}: synthetic upload and mocked Supabase preview passed`);
     }
     await context.close();

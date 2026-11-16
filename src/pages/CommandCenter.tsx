@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Activity, AlertTriangle, ArrowRight, Bell, Bot, Camera, CheckCircle2, ChevronDown, Clock3, Cpu, FileText, Loader2, Lock, MapPin, Maximize2, Mic, Minimize2, Pause, Play, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Activity, AlertTriangle, ArrowLeft, ArrowRight, Bell, Bot, Camera, CheckCircle2, ChevronDown, Clock3, Cpu, FileText, Loader2, Lock, MapPin, Maximize2, Mic, Minimize2, Pause, Play, Route, Send, ScanLine, Shield, ShieldAlert, ShieldCheck, Smartphone, Users, X } from 'lucide-react';
 import { TTechMxPatrolLogo } from '@/components/branding/TTechMxPatrolLogo';
 import { MxPatrolVideoBackground } from '@/components/branding/MxPatrolVideoBackground';
 import { useAuth } from '@/contexts/AuthContext';
@@ -53,6 +53,7 @@ import { setFeedbackSoundEnabled } from '@/lib/feedbackSound';
 import { startSosSiren, stopSosSiren } from '@/lib/sosSirenManager';
 
 const LiveMap = lazy(() => import('@/components/dashboard/LiveMap'));
+const BulkRegistration = lazy(() => import('./BulkRegistration'));
 
 type Message = { id: number; from: 'assistant' | 'user'; title?: string; body: ReactNode };
 type AdaptivePanelLayout = 'compact' | 'expanded';
@@ -124,6 +125,8 @@ function named(row: SessionRow): AssistantPatrolRow {
 
 export default function CommandCenter() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const bulkRegistrationOpen = location.pathname === '/bulk-registration';
   const { user } = useAuth();
   const { canManage, role } = useUserRole();
   const { isPlatformOwner } = usePlatformAdmin();
@@ -131,6 +134,7 @@ export default function CommandCenter() {
   const queryClient = useQueryClient();
   useRealtimeSubscriptions();
   const [state, setState] = useState<RouterState>({ mode: 'user', activeMenu: USER_HOME, activeSiteId: null });
+  const [bulkRegistrationVisited, setBulkRegistrationVisited] = useState(bulkRegistrationOpen);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inlinePanel, setInlinePanel] = useState<ReactNode | null>(null);
@@ -152,6 +156,13 @@ export default function CommandCenter() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
   const forceNextScrollRef = useRef(false);
+
+  useEffect(() => {
+    if (bulkRegistrationOpen) setBulkRegistrationVisited(true);
+    if (bulkRegistrationOpen && canManage) {
+      setState((current) => current.mode === 'management' ? current : { ...current, mode: 'management', activeMenu: MANAGEMENT_HOME, history: [] });
+    }
+  }, [bulkRegistrationOpen, canManage]);
 
   const platformCompanies = useQuery({
     queryKey: ['assistant_platform_companies', isPlatformOwner],
@@ -902,7 +913,7 @@ export default function CommandCenter() {
 
   const switchMode = () => submit(mode === 'management' ? 'user' : 'management');
   const homeNode = menuNode(homeMenu(mode));
-  const assistantExpanded = assistantLayout === 'expanded';
+  const assistantExpanded = !bulkRegistrationOpen && assistantLayout === 'expanded';
   const mapExpanded = mapLayout === 'expanded';
 
   useEffect(() => {
@@ -1008,7 +1019,7 @@ export default function CommandCenter() {
             </div>
           </header>
 
-          <main className='mx-command-zones grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(22rem,27rem)_minmax(22rem,1fr)_minmax(20rem,25rem)]'>
+          <main className={'mx-command-zones grid min-h-0 flex-1 gap-4 ' + (bulkRegistrationOpen ? 'mx-command-zones--bulk' : 'xl:grid-cols-[minmax(22rem,27rem)_minmax(22rem,1fr)_minmax(20rem,25rem)]')}>
             <section className={(assistantExpanded ? 'mx-ai-assistant-expanded ' : '') + 'mx-ai-assistant mx-command-left flex h-[calc(100vh-7.5rem)] min-h-0 flex-col overflow-hidden'} data-layout={assistantLayout}>
               <div className='shrink-0 border-b border-white/10 px-4 py-3'>
                 <div className='flex items-start justify-between gap-3'>
@@ -1019,7 +1030,7 @@ export default function CommandCenter() {
                   </div>
                   <div className='flex shrink-0 items-center gap-2'>
                     <span className='rounded-full border border-cyan-400/20 px-2 py-1 text-[11px] font-bold text-cyan-200'>{mode === 'management' ? 'Management' : 'User'}</span>
-                    <button type='button' onClick={toggleAssistantLayout} className='mx-ai-layout-toggle' aria-label={assistantExpanded ? 'Collapse Web AI Assistant' : 'Expand Web AI Assistant'} title={assistantExpanded ? 'Collapse assistant' : 'Expand assistant'}>{assistantExpanded ? <Minimize2 className='h-3.5 w-3.5' /> : <Maximize2 className='h-3.5 w-3.5' />}</button>
+                    {!bulkRegistrationOpen && <button type='button' onClick={toggleAssistantLayout} className='mx-ai-layout-toggle' aria-label={assistantExpanded ? 'Collapse Web AI Assistant' : 'Expand Web AI Assistant'} title={assistantExpanded ? 'Collapse assistant' : 'Expand assistant'}>{assistantExpanded ? <Minimize2 className='h-3.5 w-3.5' /> : <Maximize2 className='h-3.5 w-3.5' />}</button>}
                   </div>
                 </div>
               </div>
@@ -1047,7 +1058,17 @@ export default function CommandCenter() {
               </div>
             </section>
 
-            <section className='mx-command-center-stage hidden h-[calc(100vh-7.5rem)] min-h-0 xl:block' aria-label='MX Patrol background video focus' />
+            {bulkRegistrationVisited && <section className='mx-bulk-workspace' aria-label='Bulk Registration workspace' style={bulkRegistrationOpen ? undefined : { display: 'none' }}>
+              <div className='mx-bulk-workspace-toolbar'>
+                <span>Management workspace</span>
+                <button type='button' onClick={() => navigate('/assistant')}><ArrowLeft className='h-4 w-4' aria-hidden='true' /> Back to Assistant</button>
+              </div>
+              <div className='mx-bulk-workspace-body'>
+                <Suspense fallback={<p className='p-4 text-sm text-slate-200'>Loading registration...</p>}><BulkRegistration /></Suspense>
+              </div>
+            </section>}
+
+            {!bulkRegistrationOpen && <><section className='mx-command-center-stage hidden h-[calc(100vh-7.5rem)] min-h-0 xl:block' aria-label='MX Patrol background video focus' />
 
             <aside className='mx-command-right h-[calc(100vh-7.5rem)] min-h-0 overflow-y-auto px-1 py-1'>
               <section className='mx-ops-rail space-y-5'>
@@ -1099,7 +1120,7 @@ export default function CommandCenter() {
                   </div>
                 </div> : null}
               </section>
-            </aside>
+            </aside></>}
           </main>
         </div>
       </div>

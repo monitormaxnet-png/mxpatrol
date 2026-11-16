@@ -39,6 +39,14 @@ export default function BulkRegistration() {
   const [busy, setBusy] = useState<'preview' | 'commit' | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const unfinishedImport = rows.length > 0 && (jobId !== null || results.length === 0 || busy !== null);
+  useEffect(() => {
+    if (!unfinishedImport) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [unfinishedImport]);
+
   useEffect(() => {
     if (!user) { setChecking(false); return; }
     Promise.all([

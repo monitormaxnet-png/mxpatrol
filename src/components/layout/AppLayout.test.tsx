@@ -32,6 +32,8 @@ describe('primary workspace routing', () => {
     renderAt('/bulk-registration');
     expect(screen.getByText('Bulk Registration Page')).toBeInTheDocument();
     expect(screen.queryByText('Onboarding Wizard')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sidebar')).not.toBeInTheDocument();
+    expect(screen.queryByText('Top Bar')).not.toBeInTheDocument();
   });
 
   it('keeps other maintenance routes behind the existing internal flag', async () => {

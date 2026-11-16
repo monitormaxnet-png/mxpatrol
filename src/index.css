@@ -3892,6 +3892,20 @@
 }
 
 /* Bulk registration is a light, content-sized workspace over the app background. */
+.mx-command-center .mx-command-zones--bulk {
+  grid-template-columns: minmax(19rem, 25rem) minmax(0, 1fr) !important;
+  align-items: start;
+}
+.mx-command-center .mx-command-zones--bulk .mx-command-left {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+.mx-bulk-workspace { display: flex; min-width: 0; height: calc(100vh - 7.5rem); flex-direction: column; }
+.mx-bulk-workspace-toolbar { display: flex; min-height: 2.8rem; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.35rem 0.8rem; border: 1px solid rgba(255, 255, 255, 0.14); border-bottom: 0; border-radius: 4px 4px 0 0; background: rgba(4, 10, 14, 0.78); color: #cbd5e1; font-size: 0.75rem; font-weight: 700; }
+.mx-bulk-workspace-toolbar button { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2rem; padding: 0.25rem 0.6rem; border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 4px; color: #a5f3fc; white-space: nowrap; }
+.mx-bulk-workspace-toolbar button:hover, .mx-bulk-workspace-toolbar button:focus-visible { border-color: #67e8f9; background: rgba(34, 211, 238, 0.1); }
+.mx-bulk-workspace-body { min-width: 0; min-height: 0; overflow-y: auto; }
+.mx-interface .mx-bulk-workspace .br-page { max-width: none; border-radius: 0 0 4px 4px; }
 .mx-interface .br-page { padding: 1.25rem 1.5rem; }
 .mx-interface .br-page * { text-shadow: none; }
 .br-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding-bottom: 1rem; }
@@ -3955,6 +3969,12 @@
 .br-subsection .br-note { margin: 0.6rem 0; }
 
 @media (max-width: 900px) { .br-template-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1279px) {
+  .mx-command-center .mx-command-zones--bulk { grid-template-columns: 1fr !important; }
+  .mx-command-center .mx-command-zones--bulk .mx-command-left { height: min(38vh, 20rem) !important; max-height: min(38vh, 20rem) !important; }
+  .mx-bulk-workspace { height: auto; }
+  .mx-bulk-workspace-body { overflow-y: visible; }
+}
 @media (max-width: 520px) {
   .mx-interface .br-page { padding: 1rem; }
   .br-heading { align-items: flex-start; flex-direction: column; gap: 0.2rem; }

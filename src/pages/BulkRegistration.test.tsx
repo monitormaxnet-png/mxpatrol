@@ -68,6 +68,15 @@ describe('Bulk Registration workspace', () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it('warns before unloading an unfinished workbook', async () => {
+    render(<BulkRegistration />);
+    await screen.findByRole('heading', { name: 'Upload Workbook' });
+    await upload(1);
+    const unload = new Event('beforeunload', { cancelable: true });
+    expect(window.dispatchEvent(unload)).toBe(false);
+    expect(unload.defaultPrevented).toBe(true);
+  });
+
   it('requires confirmation and reports every row across two commit batches', async () => {
     const source = rows(41);
     const verdicts = source.map((row) => ({ sheet: row.sheet, rowNumber: row.rowNumber, status: 'ready', message: 'Ready' }));

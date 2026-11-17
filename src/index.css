@@ -2393,25 +2393,201 @@
   z-index: 2;
   min-height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: clamp(12px, 2vw, 24px);
   background: transparent !important;
-  transform: translateY(-20px);
 }
 
 .login-form-content {
   position: relative;
   z-index: 2;
-  width: min(90vw, 460px);
-  background: transparent !important;
-  border: none;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  width: min(330px, 100%);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(74, 222, 128, 0.38);
+  border-radius: 8px;
+  background: rgba(2, 12, 16, 0.78);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.mx-login-panel__trigger {
   display: flex;
-  flex-direction: column;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 13px;
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mx-login-panel__trigger:hover {
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.mx-login-panel__trigger:disabled {
+  cursor: wait;
+}
+
+.mx-login-panel__trigger:focus-visible,
+.mx-login-panel__visibility:focus-visible,
+.mx-login-panel__link:focus-visible,
+.mx-login-panel .sign-in-button:focus-visible {
+  outline: 2px solid #67e8f9;
+  outline-offset: -2px;
+}
+
+.mx-login-panel__logo {
+  flex: 0 0 112px;
+  width: 112px;
+  height: 56px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mx-login-panel__logo .animated-logo-video {
+  height: 100%;
+  object-fit: contain;
+}
+
+.mx-login-panel__title {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mx-login-panel__title svg {
+  flex: none;
+  color: #86efac;
+}
+
+.mx-login-panel__chevron {
+  flex: none;
+  color: #a5f3fc;
+  transition: transform 240ms ease;
+}
+
+.mx-login-panel[data-expanded="true"] .mx-login-panel__chevron {
+  transform: rotate(180deg);
+}
+
+.mx-login-panel__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows 240ms ease, opacity 200ms ease, visibility 0s linear 240ms;
+}
+
+.mx-login-panel[data-expanded="true"] .mx-login-panel__body {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition: grid-template-rows 240ms ease, opacity 200ms ease, visibility 0s;
+}
+
+.mx-login-panel__body-inner {
+  min-height: 0;
+  max-height: calc(100dvh - 6rem);
+  overflow: hidden auto;
+  padding: 0 14px;
+  border-top: 1px solid transparent;
+}
+
+.mx-login-panel[data-expanded="true"] .mx-login-panel__body-inner {
+  padding-top: 12px;
+  padding-bottom: 14px;
+  border-top-color: rgba(74, 222, 128, 0.18);
+}
+
+.mx-login-panel__form {
+  display: grid;
   gap: 12px;
+}
+
+.mx-login-panel__field {
+  display: grid;
+  gap: 5px;
+}
+
+.mx-login-panel__field-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mx-login-panel__input-wrap {
+  position: relative;
+}
+
+.mx-login-panel__input-icon {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  z-index: 1;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.mx-login-panel__visibility {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  transform: translateY(-50%);
+  color: #cbd5e1;
+  border-radius: 4px;
+}
+
+.mx-login-panel__visibility:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mx-login-panel__link {
+  color: #67e8f9;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.mx-login-panel__link:hover {
+  text-decoration: underline;
+}
+
+.mx-login-panel__error {
+  color: #fecaca;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mx-login-panel .sign-in-button {
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 6px;
+  background: #22d3ee;
+  color: #04202a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mx-login-panel .sign-in-button:hover {
+  background: #67e8f9;
 }
 
 .login-side-dots {
@@ -2482,7 +2658,7 @@
 .login-form-content input:focus,
 .login-form-content input:focus-visible {
   border: none !important;
-  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.18), 0 0 0 2px rgba(34, 211, 238, 0.08) !important;
+  box-shadow: inset 0 0 0 1px #67e8f9, 0 0 0 2px rgba(34, 211, 238, 0.38) !important;
   outline: none;
 }
 
@@ -2495,8 +2671,32 @@
 }
 
 .login-request-access {
-  margin-top: 0;
+  margin-top: 12px;
+  color: #cbd5e1;
+  font-size: 11px;
+  text-align: center;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+@media (max-width: 360px) {
+  .mx-login-panel__logo {
+    flex-basis: 96px;
+    width: 96px;
+    height: 48px;
+  }
+
+  .mx-login-panel__trigger {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mx-login-panel__body,
+  .mx-login-panel[data-expanded="true"] .mx-login-panel__body,
+  .mx-login-panel__chevron {
+    transition-duration: 0.01ms;
+  }
 }
 
 @keyframes mx-dot-blink {

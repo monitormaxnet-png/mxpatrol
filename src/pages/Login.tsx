@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, ArrowRight, Eye, EyeOff, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
 import { TTechMxPatrolLogo } from "@/components/branding/TTechMxPatrolLogo";
 import { MxPatrolVideoBackground } from "@/components/branding/MxPatrolVideoBackground";
 
@@ -13,16 +12,26 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const panelBodyRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  useLayoutEffect(() => {
+    panelBodyRef.current?.toggleAttribute("inert", !expanded);
+  }, [expanded]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError(null);
     setLoading(true);
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
+      setExpanded(true);
+      setLoginError(error.message);
       toast.error("Login failed", { description: error.message });
     } else {
       navigate("/dashboard");
@@ -33,79 +42,84 @@ const Login = () => {
   return (
     <MxPatrolVideoBackground shellClassName="mx-login" shadeClassName="mx-login-background-shade">
       <main className="mx-login-interface">
+        <section className="login-form-content mx-login-panel" data-expanded={expanded} aria-label="Sign in">
+          <button
+            type="button"
+            className="mx-login-panel__trigger"
+            aria-label={expanded ? "Collapse sign-in panel" : "Expand sign-in panel"}
+            aria-expanded={expanded}
+            aria-controls="mx-login-panel-fields"
+            disabled={loading}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <TTechMxPatrolLogo variant="login" priority className="mx-login-panel__logo" decorative />
+            <span className="mx-login-panel__title"><Lock aria-hidden="true" size={15} /> Sign In</span>
+            <ChevronDown className="mx-login-panel__chevron" aria-hidden="true" size={17} />
+          </button>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="login-form-content"
-      >
-        {/* Logo */}
-        <div className="login-side-dots login-logo-dots">
-          <TTechMxPatrolLogo variant="login" priority className="login-logo-video" />
-        </div>
+          <div ref={panelBodyRef} id="mx-login-panel-fields" className="mx-login-panel__body" aria-hidden={!expanded}>
+            <div className="mx-login-panel__body-inner">
+              <form onSubmit={handleLogin} className="mx-login-panel__form">
+                <div className="mx-login-panel__field">
+                  <label htmlFor="mx-login-email">Email</label>
+                  <div className="mx-login-panel__input-wrap">
+                    <Mail aria-hidden="true" className="mx-login-panel__input-icon" size={16} />
+                    <Input
+                      id="mx-login-email"
+                      type="email"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="operator@company.com"
+                      className="login-input pl-10"
+                      required
+                    />
+                  </div>
+                </div>
 
-        <form onSubmit={handleLogin} className="space-y-3">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Email</label>
-            <div className="login-side-dots">
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="operator@company.com"
-                  className="login-input pl-10"
-                  required
-                />
-              </div>
+                <div className="mx-login-panel__field">
+                  <div className="mx-login-panel__field-heading">
+                    <label htmlFor="mx-login-password">Password</label>
+                    <Link to="/forgot-password" className="mx-login-panel__link">Forgot password?</Link>
+                  </div>
+                  <div className="mx-login-panel__input-wrap">
+                    <Lock aria-hidden="true" className="mx-login-panel__input-icon" size={16} />
+                    <Input
+                      id="mx-login-password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Password"
+                      className="login-input pl-10 pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      className="mx-login-panel__visibility"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                    </button>
+                  </div>
+                </div>
+
+                {loginError && <p className="mx-login-panel__error" role="alert">{loginError}</p>}
+
+                <Button type="submit" disabled={loading} className="sign-in-button">
+                  {loading ? "Signing in..." : "Sign In"}
+                  <ArrowRight aria-hidden="true" size={16} />
+                </Button>
+              </form>
+
+              <p className="login-request-access">
+                Don't have an account? <Link to="/signup" className="mx-login-panel__link">Request access</Link>
+              </p>
             </div>
           </div>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-muted-foreground">Password</label>
-              <Link to="/forgot-password" className="text-xs text-primary hover:underline">
-                Forgot password?
-              </Link>
-            </div>
-            <div className="login-side-dots">
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
-                  className="login-input pl-10 pr-10"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="login-side-dots login-button-dots">
-            <Button type="submit" disabled={loading} className="sign-in-button gap-2">
-              {loading ? "Signing in..." : "Sign In"}
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </form>
-
-        <p className="login-request-access text-center text-sm text-muted-foreground">
-          Don't have an account?{" "}
-          <Link to="/signup" className="text-primary hover:underline">
-            Request access
-          </Link>
-        </p>
-      </motion.div>
+        </section>
       </main>
     </MxPatrolVideoBackground>
   );
